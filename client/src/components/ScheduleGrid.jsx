@@ -88,13 +88,7 @@ export default function ScheduleGrid({
 
   const handleExportIcal = async (memberId) => {
     try {
-      const blob = await downloadIcalMember(memberId);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'schedule.ics';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadIcalMember(memberId);
       showToast('iCal file downloaded', 'success');
     } catch (err) {
       showToast('Export failed: ' + err.message, 'error');

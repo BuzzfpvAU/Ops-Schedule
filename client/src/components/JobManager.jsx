@@ -50,13 +50,7 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
 
   const handleExportIcal = async (job) => {
     try {
-      const blob = await downloadIcalJob(job.id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `schedule-${job.code}.ics`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadIcalJob(job.id);
       showToast('iCal file downloaded', 'success');
     } catch (err) {
       showToast('Export failed: ' + err.message, 'error');
