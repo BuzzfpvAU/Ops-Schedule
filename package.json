@@ -8,9 +8,14 @@
     "dev:client": "cd client && npm run dev",
     "dev:server": "cd server && npm run dev",
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
-    "build": "cd client && npm run build"
+    "build": "cd client && npm run build",
+    "db:migrate": "npx wrangler d1 execute ops-schedule --remote --file=worker/migrations/0001_init.sql",
+    "deploy": "npm run build && npx wrangler deploy",
+    "dev:worker": "npx wrangler dev"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "hono": "^4.12.8",
+    "wrangler": "^4.75.0"
   }
 }
