@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
-const app = new Hono();
+const app = new Hono({ strict: false });
+const api = new Hono();
 
-app.use('/api/*', cors());
+api.use('/api/*', cors());
 
 // Helper: generate UUID
 function uuid() {
@@ -11,26 +12,26 @@ function uuid() {
 }
 
 // Health check
-app.get('/api/health', (c) => {
+api.get('/api/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // ─── Team Members ───
 
-app.get('/api/team-members', async (c) => {
+api.get('/api/team-members', async (c) => {
   const db = c.env.DB;
   const { results } = await db.prepare('SELECT * FROM team_members WHERE active = 1 ORDER BY sort_order, name').all();
   return c.json(results);
 });
 
-app.get('/api/team-members/:id', async (c) => {
+api.get('/api/team-members/:id', async (c) => {
   const db = c.env.DB;
   const member = await db.prepare('SELECT * FROM team_members WHERE id = ?').bind(c.req.param('id')).first();
   if (!member) return c.json({ error: 'Team member not found' }, 404);
   return c.json(member);
 });
 
-app.post('/api/team-members', async (c) => {
+api.post('/api/team-members', async (c) => {
   const db = c.env.DB;
   const { name, role, location, timezone, color, sort_order } = await c.req.json();
   if (!name) return c.json({ error: 'Name is required' }, 400);
@@ -44,7 +45,7 @@ app.post('/api/team-members', async (c) => {
   return c.json(member, 201);
 });
 
-app.put('/api/team-members/:id', async (c) => {
+api.put('/api/team-members/:id', async (c) => {
   const db = c.env.DB;
   const { name, role, location, timezone, color, sort_order } = await c.req.json();
   const existing = await db.prepare('SELECT * FROM team_members WHERE id = ?').bind(c.req.param('id')).first();
@@ -66,7 +67,7 @@ app.put('/api/team-members/:id', async (c) => {
   return c.json(member);
 });
 
-app.delete('/api/team-members/:id', async (c) => {
+api.delete('/api/team-members/:id', async (c) => {
   const db = c.env.DB;
   const result = await db.prepare(
     "UPDATE team_members SET active = 0, updated_at = datetime('now') WHERE id = ?"
@@ -77,27 +78,27 @@ app.delete('/api/team-members/:id', async (c) => {
 
 // ─── Jobs ───
 
-app.get('/api/jobs', async (c) => {
+api.get('/api/jobs', async (c) => {
   const db = c.env.DB;
   const { results } = await db.prepare('SELECT * FROM jobs WHERE active = 1 ORDER BY code').all();
   return c.json(results);
 });
 
-app.get('/api/jobs/:id', async (c) => {
+api.get('/api/jobs/:id', async (c) => {
   const db = c.env.DB;
   const job = await db.prepare('SELECT * FROM jobs WHERE id = ?').bind(c.req.param('id')).first();
   if (!job) return c.json({ error: 'Job not found' }, 404);
   return c.json(job);
 });
 
-app.get('/api/jobs/code/:code', async (c) => {
+api.get('/api/jobs/code/:code', async (c) => {
   const db = c.env.DB;
   const job = await db.prepare('SELECT * FROM jobs WHERE code = ? AND active = 1').bind(c.req.param('code')).first();
   if (!job) return c.json({ error: 'Job not found' }, 404);
   return c.json(job);
 });
 
-app.post('/api/jobs', async (c) => {
+api.post('/api/jobs', async (c) => {
   const db = c.env.DB;
   const { code, name, description, color, client, file_url } = await c.req.json();
   if (!code || !name) return c.json({ error: 'Code and name are required' }, 400);
@@ -114,7 +115,7 @@ app.post('/api/jobs', async (c) => {
   return c.json(job, 201);
 });
 
-app.put('/api/jobs/:id', async (c) => {
+api.put('/api/jobs/:id', async (c) => {
   const db = c.env.DB;
   const { code, name, description, color, client, file_url } = await c.req.json();
   const existing = await db.prepare('SELECT * FROM jobs WHERE id = ?').bind(c.req.param('id')).first();
@@ -141,7 +142,7 @@ app.put('/api/jobs/:id', async (c) => {
   return c.json(job);
 });
 
-app.delete('/api/jobs/:id', async (c) => {
+api.delete('/api/jobs/:id', async (c) => {
   const db = c.env.DB;
   const result = await db.prepare(
     "UPDATE jobs SET active = 0, updated_at = datetime('now') WHERE id = ?"
@@ -152,7 +153,7 @@ app.delete('/api/jobs/:id', async (c) => {
 
 // ─── Schedule ───
 
-app.get('/api/schedule', async (c) => {
+api.get('/api/schedule', async (c) => {
   const db = c.env.DB;
   const { start, end } = c.req.query();
   if (!start || !end) return c.json({ error: 'start and end dates are required (YYYY-MM-DD)' }, 400);
@@ -172,7 +173,7 @@ app.get('/api/schedule', async (c) => {
   return c.json(results);
 });
 
-app.get('/api/schedule/member/:memberId', async (c) => {
+api.get('/api/schedule/member/:memberId', async (c) => {
   const db = c.env.DB;
   const { start, end } = c.req.query();
   const memberId = c.req.param('memberId');
@@ -197,7 +198,7 @@ app.get('/api/schedule/member/:memberId', async (c) => {
   return c.json(results);
 });
 
-app.put('/api/schedule', async (c) => {
+api.put('/api/schedule', async (c) => {
   const db = c.env.DB;
   const { team_member_id, job_id, date, notes } = await c.req.json();
   if (!team_member_id || !job_id || !date) {
@@ -247,7 +248,7 @@ app.put('/api/schedule', async (c) => {
   });
 });
 
-app.put('/api/schedule/bulk', async (c) => {
+api.put('/api/schedule/bulk', async (c) => {
   const db = c.env.DB;
   const { team_member_id, job_id, dates, notes } = await c.req.json();
   if (!team_member_id || !job_id || !dates || !Array.isArray(dates)) {
@@ -273,7 +274,7 @@ app.put('/api/schedule/bulk', async (c) => {
   });
 });
 
-app.delete('/api/schedule/:id', async (c) => {
+api.delete('/api/schedule/:id', async (c) => {
   const db = c.env.DB;
   const existing = await db.prepare('SELECT * FROM schedule_entries WHERE id = ?').bind(c.req.param('id')).first();
   if (!existing) return c.json({ error: 'Schedule entry not found' }, 404);
@@ -289,7 +290,7 @@ app.delete('/api/schedule/:id', async (c) => {
   });
 });
 
-app.delete('/api/schedule/member/:memberId/date/:date', async (c) => {
+api.delete('/api/schedule/member/:memberId/date/:date', async (c) => {
   const db = c.env.DB;
   const result = await db.prepare(
     'DELETE FROM schedule_entries WHERE team_member_id = ? AND date = ?'
@@ -300,7 +301,7 @@ app.delete('/api/schedule/member/:memberId/date/:date', async (c) => {
 
 // ─── Notifications ───
 
-app.get('/api/notifications/member/:memberId', async (c) => {
+api.get('/api/notifications/member/:memberId', async (c) => {
   const db = c.env.DB;
   const { results } = await db.prepare(
     'SELECT * FROM notifications WHERE team_member_id = ? ORDER BY read ASC, created_at DESC LIMIT 50'
@@ -308,7 +309,7 @@ app.get('/api/notifications/member/:memberId', async (c) => {
   return c.json(results);
 });
 
-app.get('/api/notifications/member/:memberId/unread', async (c) => {
+api.get('/api/notifications/member/:memberId/unread', async (c) => {
   const db = c.env.DB;
   const result = await db.prepare(
     'SELECT COUNT(*) as count FROM notifications WHERE team_member_id = ? AND read = 0'
@@ -316,7 +317,7 @@ app.get('/api/notifications/member/:memberId/unread', async (c) => {
   return c.json({ count: result.count });
 });
 
-app.post('/api/notifications', async (c) => {
+api.post('/api/notifications', async (c) => {
   const db = c.env.DB;
   const { team_member_id, type, message, date, job_code } = await c.req.json();
   if (!team_member_id || !message) {
@@ -332,13 +333,13 @@ app.post('/api/notifications', async (c) => {
   return c.json(notification, 201);
 });
 
-app.put('/api/notifications/:id/read', async (c) => {
+api.put('/api/notifications/:id/read', async (c) => {
   const db = c.env.DB;
   await db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').bind(c.req.param('id')).run();
   return c.json({ success: true });
 });
 
-app.put('/api/notifications/member/:memberId/read-all', async (c) => {
+api.put('/api/notifications/member/:memberId/read-all', async (c) => {
   const db = c.env.DB;
   await db.prepare('UPDATE notifications SET read = 1 WHERE team_member_id = ?').bind(c.req.param('memberId')).run();
   return c.json({ success: true });
@@ -346,7 +347,7 @@ app.put('/api/notifications/member/:memberId/read-all', async (c) => {
 
 // ─── Export ───
 
-app.get('/api/export/ical/member/:memberId', async (c) => {
+api.get('/api/export/ical/member/:memberId', async (c) => {
   const db = c.env.DB;
   const { start, end } = c.req.query();
   const member = await db.prepare('SELECT * FROM team_members WHERE id = ?').bind(c.req.param('memberId')).first();
@@ -398,7 +399,7 @@ app.get('/api/export/ical/member/:memberId', async (c) => {
   });
 });
 
-app.get('/api/export/ical/job/:jobId', async (c) => {
+api.get('/api/export/ical/job/:jobId', async (c) => {
   const db = c.env.DB;
   const job = await db.prepare('SELECT * FROM jobs WHERE id = ?').bind(c.req.param('jobId')).first();
   if (!job) return c.json({ error: 'Job not found' }, 404);
@@ -440,7 +441,7 @@ app.get('/api/export/ical/job/:jobId', async (c) => {
   });
 });
 
-app.get('/api/export/gcal-link', (c) => {
+api.get('/api/export/gcal-link', (c) => {
   const { title, date, description } = c.req.query();
   if (!title || !date) return c.json({ error: 'title and date required' }, 400);
 
@@ -460,6 +461,12 @@ app.get('/api/export/gcal-link', (c) => {
     url: `https://calendar.google.com/calendar/render?${params.toString()}`
   });
 });
+
+// Mount api routes under /ops
+app.route('/ops', api);
+
+// Redirect root to /ops
+app.get('/', (c) => c.redirect('/ops/'));
 
 // Helper: group consecutive same-job entries
 function groupConsecutiveEntries(entries) {
