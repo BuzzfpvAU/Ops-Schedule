@@ -1,12 +1,23 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function initDb() {
-  const dbPath = path.join(__dirname, '..', 'data', 'ops-schedule.db');
+  const defaultPath = path.join(__dirname, '..', 'data', 'ops-schedule.db');
+  const dbPath = process.env.DATABASE_PATH || defaultPath;
+
+  // Ensure the directory exists
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
+  const existed = fs.existsSync(dbPath);
   const db = new Database(dbPath);
+  console.log(`Database: ${dbPath} (${existed ? 'existing' : 'new'})`);
 
   // Enable WAL mode for better concurrent access
   db.pragma('journal_mode = WAL');
@@ -74,6 +85,43 @@ export function initDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_notifications_member ON notifications(team_member_id, read);
+  `);
+
+  // Migrate: add auth columns to team_members
+  const columns = db.pragma('table_info(team_members)').map(c => c.name);
+  if (!columns.includes('email')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN email TEXT`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_email ON team_members(email) WHERE email IS NOT NULL`);
+  }
+  if (!columns.includes('password_hash')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN password_hash TEXT`);
+  }
+  if (!columns.includes('is_admin')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN is_admin INTEGER DEFAULT 0`);
+  }
+  if (!columns.includes('must_change_password')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN must_change_password INTEGER DEFAULT 0`);
+  }
+
+  // New tables for auth
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS passkey_credentials (
+      id TEXT PRIMARY KEY,
+      team_member_id TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      team_member_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
   `);
 
   return db;
