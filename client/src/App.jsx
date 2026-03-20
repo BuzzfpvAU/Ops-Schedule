@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from './context/AuthContext.jsx';
+import LoginPage from './components/LoginPage.jsx';
+import SetupPage from './components/SetupPage.jsx';
+import ForgotPassword from './components/ForgotPassword.jsx';
+import ResetPassword from './components/ResetPassword.jsx';
+import ChangePassword from './components/ChangePassword.jsx';
 import ScheduleGrid from './components/ScheduleGrid.jsx';
 import TeamManager from './components/TeamManager.jsx';
 import JobManager from './components/JobManager.jsx';
@@ -9,6 +15,9 @@ import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember,
 import { getWeekDates, formatDateRange } from './utils/dates.js';
 
 export default function App() {
+  const { user, loading, needsSetup, logout } = useAuth();
+  const [authView, setAuthView] = useState('login');
+
   const [activeTab, setActiveTab] = useState('schedule');
   const [teamMembers, setTeamMembers] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -16,10 +25,25 @@ export default function App() {
   const [schedule, setSchedule] = useState([]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [toasts, setToasts] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
   const [exportModal, setExportModal] = useState(null);
 
   const weekDates = getWeekDates(weekOffset);
+
+  // Check for reset token in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const resetToken = urlParams.get('token');
+
+  // Auth gates
+  if (loading) return <div className="loading-screen">Loading...</div>;
+  if (resetToken) return <ResetPassword token={resetToken} onDone={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }} />;
+  if (needsSetup) return <SetupPage />;
+  if (!user) {
+    if (authView === 'forgot') return <ForgotPassword onBack={() => setAuthView('login')} />;
+    return <LoginPage onForgotPassword={() => setAuthView('forgot')} />;
+  }
+  if (user.mustChangePassword) return <ChangePassword forced onDone={() => window.location.reload()} />;
+
+  const currentUser = teamMembers.find(m => m.id === user?.memberId);
 
   const showToast = useCallback((message, type = 'info') => {
     const id = Date.now();
@@ -33,15 +57,10 @@ export default function App() {
       setTeamMembers(members);
       setJobs(jobList);
       setEquipmentList(equip);
-
-      // Set current user to first member if not set
-      if (!currentUser && members.length > 0) {
-        setCurrentUser(members[0]);
-      }
     } catch (err) {
       showToast('Failed to load data: ' + err.message, 'error');
     }
-  }, [currentUser, showToast]);
+  }, [showToast]);
 
   const loadSchedule = useCallback(async () => {
     try {
@@ -56,7 +75,7 @@ export default function App() {
   }, [weekDates, showToast]);
 
   useEffect(() => {
-    // Auto-seed on first load if database is empty
+    if (!user) return;
     (async () => {
       try {
         const status = await getSeedStatus();
@@ -69,8 +88,8 @@ export default function App() {
       }
       loadData();
     })();
-  }, []);
-  useEffect(() => { loadSchedule(); }, [weekOffset]);
+  }, [user]);
+  useEffect(() => { if (user) loadSchedule(); }, [weekOffset, user]);
 
   const refreshAll = () => {
     loadData();
@@ -82,20 +101,6 @@ export default function App() {
       <header className="header">
         <h1>Ops Schedule</h1>
         <div className="header-actions">
-          {currentUser && (
-            <select
-              value={currentUser?.id || ''}
-              onChange={(e) => {
-                const member = teamMembers.find(m => m.id === e.target.value);
-                setCurrentUser(member);
-              }}
-              style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #475569', background: '#334155', color: 'white', fontSize: 13 }}
-            >
-              {teamMembers.map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          )}
           {currentUser && (
             <button
               className="header-export-btn"
@@ -119,19 +124,27 @@ export default function App() {
             </button>
           )}
           {currentUser && <NotificationBell memberId={currentUser.id} />}
+          <div className="user-info">
+            <span className="user-name">{user.name}</span>
+            <span className={`role-badge ${user.isAdmin ? 'admin' : 'user'}`}>
+              {user.isAdmin ? 'Admin' : 'User'}
+            </span>
+            <button className="logout-btn" onClick={logout} title="Sign out">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          </div>
         </div>
       </header>
 
       <nav className="nav-tabs">
-        {['schedule', 'jobs', 'team', 'equipment'].map(tab => (
-          <button
-            key={tab}
-            className={`nav-tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab === 'schedule' ? 'Schedule' : tab === 'jobs' ? 'Jobs / Projects' : tab === 'equipment' ? 'Equipment' : 'Team'}
-          </button>
-        ))}
+        <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>Schedule</button>
+        {user.isAdmin && (
+          <>
+            <button className={`nav-tab ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>Jobs / Projects</button>
+            <button className={`nav-tab ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>Team</button>
+            <button className={`nav-tab ${activeTab === 'equipment' ? 'active' : ''}`} onClick={() => setActiveTab('equipment')}>Equipment</button>
+          </>
+        )}
       </nav>
 
       <main className="main-content">
@@ -149,20 +162,19 @@ export default function App() {
             dateRangeLabel={formatDateRange(weekDates)}
           />
         )}
-        {activeTab === 'jobs' && (
+        {activeTab === 'jobs' && user.isAdmin && (
           <JobManager jobs={jobs} onRefresh={loadData} showToast={showToast} />
         )}
-        {activeTab === 'equipment' && (
+        {activeTab === 'equipment' && user.isAdmin && (
           <EquipmentManager equipment={equipmentList} onRefresh={loadData} showToast={showToast} />
         )}
-        {activeTab === 'team' && (
+        {activeTab === 'team' && user.isAdmin && (
           <TeamManager members={teamMembers} equipment={equipmentList} onRefresh={loadData} showToast={showToast} />
         )}
       </main>
 
       <Toast toasts={toasts} />
 
-      {/* Export calendar modal */}
       {exportModal && currentUser && (
         <div className="modal-overlay" onClick={() => setExportModal(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

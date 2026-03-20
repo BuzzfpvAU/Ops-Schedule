@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useAuth } from '../context/AuthContext.jsx';
 import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, createNotification, updateScheduleStatus, createJob, getJobs as fetchJobs, updateTeamMember, STATUSES } from '../api.js';
+
+const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
 export default function ScheduleGrid({
   teamMembers, equipment, jobs, schedule, weekDates, weekOffset,
@@ -27,6 +30,9 @@ export default function ScheduleGrid({
     const locs = [...new Set(teamMembers.map(m => m.location).filter(Boolean))];
     return locs.sort();
   }, [teamMembers]);
+
+  const { user: authUser } = useAuth();
+  const isAdmin = authUser?.isAdmin;
 
   // Toggle a location in the multi-select
   const toggleLocation = (loc) => {
@@ -173,6 +179,8 @@ export default function ScheduleGrid({
   }, [allEntities, schedule, weekDates]);
 
   const handleCellClick = (memberId, dateStr, e) => {
+    // Non-admin can only click their own row
+    if (!isAdmin && memberId !== authUser?.memberId) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const dropdownHeight = 420;
     const spaceBelow = window.innerHeight - rect.bottom;
@@ -626,13 +634,16 @@ export default function ScheduleGrid({
                         <td
                           key={d.dateStr}
                           className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`}
-                          onClick={(e) => handleCellClick(member.id, d.dateStr, e)}
+                          onClick={(isAdmin || member.id === authUser?.memberId) ? (e) => handleCellClick(member.id, d.dateStr, e) : undefined}
+                          style={(!isAdmin && member.id !== authUser?.memberId) ? { cursor: 'default' } : undefined}
                         >
-                          <div className="empty-cell">
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                              <path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                            </svg>
-                          </div>
+                          {(isAdmin || member.id === authUser?.memberId) && (
+                            <div className="empty-cell">
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                <path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                              </svg>
+                            </div>
+                          )}
                         </td>
                       );
                     }
@@ -710,10 +721,12 @@ export default function ScheduleGrid({
                               );
                             } else {
                               return (
-                                <td key={d.dateStr} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`} onClick={(e) => handleCellClick(item.id, d.dateStr, e)}>
-                                  <div className="empty-cell">
-                                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                                  </div>
+                                <td key={d.dateStr} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`} onClick={isAdmin ? (e) => handleCellClick(item.id, d.dateStr, e) : undefined} style={!isAdmin ? { cursor: 'default' } : undefined}>
+                                  {isAdmin && (
+                                    <div className="empty-cell">
+                                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                                    </div>
+                                  )}
                                 </td>
                               );
                             }
@@ -745,16 +758,18 @@ export default function ScheduleGrid({
           className="assignment-dropdown"
           style={{ position: 'fixed', left: dropdown.x, top: dropdown.y }}
         >
-          <div className="dropdown-header">
-            <input
-              ref={searchInputRef}
-              type="text"
-              className="dropdown-search"
-              placeholder="Search jobs..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+          {isAdmin && (
+            <div className="dropdown-header">
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="dropdown-search"
+                placeholder="Search jobs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          )}
           {!scheduleMap[`${dropdown.memberId}-${dropdown.date}`] && (
             <div className="dropdown-quick-actions">
               <button
@@ -794,84 +809,94 @@ export default function ScheduleGrid({
               </button>
             </div>
           )}
-          <div className="dropdown-actions-row">
-            <button
-              className="dropdown-multi-day-btn"
-              onClick={() => {
-                setMultiDayModal({
-                  memberId: dropdown.memberId,
-                  startDate: dropdown.date,
-                  endDate: dropdown.date,
-                  jobId: '',
-                  status: 'tentative',
-                });
-                setDropdown(null);
-                setSearchTerm('');
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <rect x="1" y="2.5" width="12" height="9.5" rx="1.5" stroke="currentColor" strokeWidth="1"/>
-                <path d="M1 5.5h12" stroke="currentColor" strokeWidth="1"/>
-                <path d="M4 1v3M10 1v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-                <path d="M4 8h6" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-              </svg>
-              Multi-day assignment
-            </button>
-          </div>
-          <div className="dropdown-days-row">
-            <label className="dropdown-days-label">Days</label>
-            <div className="dropdown-days-control">
-              <button type="button" className="days-btn" onClick={() => setAssignDays(Math.max(1, assignDays - 1))}>−</button>
-              <input type="number" className="days-input" min="1" max="90" value={assignDays} onChange={(e) => setAssignDays(Math.max(1, parseInt(e.target.value) || 1))} />
-              <button type="button" className="days-btn" onClick={() => setAssignDays(assignDays + 1)}>+</button>
-            </div>
-            {assignDays > 1 && <span className="dropdown-days-hint">→ {assignDays} days from {dropdown.date}</span>}
-          </div>
-          <div className="dropdown-list">
-            {filteredJobs.map(job => (
+          {isAdmin && (
+            <div className="dropdown-actions-row">
               <button
-                key={job.id}
-                className="dropdown-item"
-                onClick={() => handleAssign(dropdown.memberId, dropdown.date, job)}
+                className="dropdown-multi-day-btn"
+                onClick={() => {
+                  setMultiDayModal({
+                    memberId: dropdown.memberId,
+                    startDate: dropdown.date,
+                    endDate: dropdown.date,
+                    jobId: '',
+                    status: 'tentative',
+                  });
+                  setDropdown(null);
+                  setSearchTerm('');
+                }}
               >
-                <span className="dropdown-dot" style={{ background: job.color }}></span>
-                <span className="dropdown-job-name">{job.name}</span>
-                <span className="dropdown-job-code">{job.code}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="1" y="2.5" width="12" height="9.5" rx="1.5" stroke="currentColor" strokeWidth="1"/>
+                  <path d="M1 5.5h12" stroke="currentColor" strokeWidth="1"/>
+                  <path d="M4 1v3M10 1v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+                  <path d="M4 8h6" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+                </svg>
+                Multi-day assignment
               </button>
-            ))}
-            {filteredJobs.length === 0 && (
-              <div className="dropdown-empty">
-                {jobs.length === 0 ? 'No jobs created yet' : 'No matching jobs'}
+            </div>
+          )}
+          {isAdmin && (
+            <div className="dropdown-days-row">
+              <label className="dropdown-days-label">Days</label>
+              <div className="dropdown-days-control">
+                <button type="button" className="days-btn" onClick={() => setAssignDays(Math.max(1, assignDays - 1))}>−</button>
+                <input type="number" className="days-input" min="1" max="90" value={assignDays} onChange={(e) => setAssignDays(Math.max(1, parseInt(e.target.value) || 1))} />
+                <button type="button" className="days-btn" onClick={() => setAssignDays(assignDays + 1)}>+</button>
               </div>
-            )}
-          </div>
+              {assignDays > 1 && <span className="dropdown-days-hint">→ {assignDays} days from {dropdown.date}</span>}
+            </div>
+          )}
+          {isAdmin && (
+            <div className="dropdown-list">
+              {filteredJobs.map(job => (
+                <button
+                  key={job.id}
+                  className="dropdown-item"
+                  onClick={() => handleAssign(dropdown.memberId, dropdown.date, job)}
+                >
+                  <span className="dropdown-dot" style={{ background: job.color }}></span>
+                  <span className="dropdown-job-name">{job.name}</span>
+                  <span className="dropdown-job-code">{job.code}</span>
+                </button>
+              ))}
+              {filteredJobs.length === 0 && (
+                <div className="dropdown-empty">
+                  {jobs.length === 0 ? 'No jobs created yet' : 'No matching jobs'}
+                </div>
+              )}
+            </div>
+          )}
           {scheduleMap[`${dropdown.memberId}-${dropdown.date}`] && (
             <div className="dropdown-footer">
-              <div className="status-picker">
-                <span className="status-picker-label">Status</span>
-                <div className="status-buttons">
-                  {Object.entries(STATUSES).map(([key, { label, color }]) => {
-                    const currentStatus = scheduleMap[`${dropdown.memberId}-${dropdown.date}`]?.status || 'tentative';
-                    return (
-                      <button
-                        key={key}
-                        className={`status-btn ${currentStatus === key ? 'active' : ''}`}
-                        style={{ '--status-color': color }}
-                        title={label}
-                        onClick={() => handleStatusChange(dropdown.memberId, dropdown.date, key)}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+              {isAdmin && (
+                <div className="status-picker">
+                  <span className="status-picker-label">Status</span>
+                  <div className="status-buttons">
+                    {Object.entries(STATUSES).map(([key, { label, color }]) => {
+                      const currentStatus = scheduleMap[`${dropdown.memberId}-${dropdown.date}`]?.status || 'tentative';
+                      return (
+                        <button
+                          key={key}
+                          className={`status-btn ${currentStatus === key ? 'active' : ''}`}
+                          style={{ '--status-color': color }}
+                          title={label}
+                          onClick={() => handleStatusChange(dropdown.memberId, dropdown.date, key)}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <button className="dropdown-clear" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                Clear assignment
-              </button>
+              )}
+              {(isAdmin || USER_ALLOWED_STATUSES.includes(scheduleMap[`${dropdown.memberId}-${dropdown.date}`]?.status)) && (
+                <button className="dropdown-clear" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  Clear assignment
+                </button>
+              )}
             </div>
           )}
         </div>
