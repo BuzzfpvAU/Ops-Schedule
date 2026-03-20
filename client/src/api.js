@@ -8,6 +8,7 @@ export const STATUSES = {
   tentative: { label: 'Tentative', color: '#eab308' },
   note: { label: 'Note', color: '#3b82f6' },
   toil: { label: 'TOIL', color: '#a855f7' },
+  leave: { label: 'Leave', color: '#10b981' },
   unavailable: { label: 'Not Available', color: '#ef4444' },
 };
 

@@ -338,6 +338,7 @@ export default function ScheduleGrid({
   const handleQuickAssign = async (memberId, date, statusKey) => {
     const statusMap = {
       toil: { name: 'TOIL', code: 'TOIL' },
+      leave: { name: 'Leave', code: 'LEAVE' },
       unavailable: { name: 'Not Available', code: 'NOT-AVAIL' },
     };
     const info = statusMap[statusKey];
@@ -602,7 +603,14 @@ export default function ScheduleGrid({
                               '--task-text': getTextColor(statusInfo.color),
                             }}
                             title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_file_url ? '\nFiles: ' + span.entry.job_file_url : ''}`}
-                            onClick={(e) => handleCellClick(member.id, d.dateStr, e)}
+                            onClick={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const relativeX = e.clientX - rect.left;
+                              const dayWidth = rect.width / span.length;
+                              const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
+                              const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
+                              handleCellClick(member.id, clickedDate, e);
+                            }}
                           >
                             <span className="task-label">
                               {span.entry.job_name || span.entry.job_code}
@@ -687,7 +695,14 @@ export default function ScheduleGrid({
                               const statusInfo = STATUSES[statusKey] || STATUSES.tentative;
                               return (
                                 <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''}`}>
-                                  <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]`} onClick={(e) => handleCellClick(item.id, d.dateStr, e)}>
+                                  <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]`} onClick={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const relativeX = e.clientX - rect.left;
+                                  const dayWidth = rect.width / span.length;
+                                  const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
+                                  const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
+                                  handleCellClick(item.id, clickedDate, e);
+                                }}>
                                     <span className="task-label">{span.entry.job_name || span.entry.job_code}</span>
                                     {isMulti && <span className="task-days">{span.length}d</span>}
                                   </div>
@@ -760,6 +775,14 @@ export default function ScheduleGrid({
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.2"/><path d="M7 4v3.5l2.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
                 TOIL
+              </button>
+              <button
+                className="quick-action-btn"
+                style={{ '--qa-color': STATUSES.leave.color }}
+                onClick={() => handleQuickAssign(dropdown.memberId, dropdown.date, 'leave')}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1C4.5 1 2.5 3 2.5 5.5c0 1.5.7 2.8 1.8 3.7L7 13l2.7-3.8c1.1-.9 1.8-2.2 1.8-3.7C11.5 3 9.5 1 7 1z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Leave
               </button>
               <button
                 className="quick-action-btn"
