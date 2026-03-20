@@ -1,8 +1,12 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDb } from './db.js';
+import { requireAuth, requireAdmin } from './middleware/auth.js';
+import authRoutes from './routes/auth.js';
+import passkeyRoutes from './routes/passkey.js';
 import teamRoutes from './routes/teams.js';
 import jobRoutes from './routes/jobs.js';
 import scheduleRoutes from './routes/schedule.js';
@@ -15,30 +19,49 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// CORS: allow credentials from frontend origin
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3001',
+  process.env.APP_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (same-origin, curl, etc.)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(null, false);
+  },
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 // Initialize database
 const db = initDb();
 
-// Make db available to routes
+// Make db available to ALL routes (including auth)
 app.use((req, res, next) => {
   req.db = db;
   next();
 });
 
-// API Routes
-app.use('/api/team-members', teamRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/schedule', scheduleRoutes);
-app.use('/api/export', exportRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/seed', seedRoutes);
+// Auth routes (no requireAuth needed — they handle their own auth)
+app.use('/api/auth', authRoutes);
+app.use('/api/auth/passkey', passkeyRoutes);
 
-// Health check
+// Health check (no auth)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Protected API routes (require login)
+app.use('/api/team-members', requireAuth, requireAdmin, teamRoutes);
+app.use('/api/jobs', requireAuth, requireAdmin, jobRoutes);
+app.use('/api/schedule', requireAuth, scheduleRoutes);
+app.use('/api/export', requireAuth, exportRoutes);
+app.use('/api/notifications', requireAuth, notificationRoutes);
+app.use('/api/seed', requireAuth, requireAdmin, seedRoutes);
 
 // Serve static frontend files in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
@@ -51,5 +74,4 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Ops Schedule server running on port ${PORT}`);
-  console.log(`Serving frontend from ${clientDist}`);
 });
