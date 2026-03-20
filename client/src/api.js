@@ -15,6 +15,7 @@ export const STATUSES = {
 async function api(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
+    credentials: 'include',
     ...options,
   });
   if (!res.ok) {
@@ -242,4 +243,67 @@ export async function seedDatabase() {
 
 export async function getSeedStatus() {
   return api('/seed/status');
+}
+
+// ── Auth ──
+
+export async function authLogin(email, password) {
+  return api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+}
+
+export async function authLogout() {
+  return api('/auth/logout', { method: 'POST' });
+}
+
+export async function authMe() {
+  return api('/auth/me');
+}
+
+export async function authStatus() {
+  return api('/auth/status');
+}
+
+export async function authSetup(email, password, name) {
+  return api('/auth/setup', { method: 'POST', body: JSON.stringify({ email, password, name }) });
+}
+
+export async function authChangePassword(currentPassword, newPassword) {
+  return api('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+}
+
+export async function authForgotPassword(email) {
+  return api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export async function authResetPassword(token, newPassword) {
+  return api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword }) });
+}
+
+export async function authAdminResetPassword(memberId, tempPassword) {
+  return api('/auth/admin-reset-password', { method: 'POST', body: JSON.stringify({ memberId, tempPassword }) });
+}
+
+// Passkey
+export async function passkeyRegisterOptions() {
+  return api('/auth/passkey/register-options', { method: 'POST' });
+}
+
+export async function passkeyRegisterVerify(body) {
+  return api('/auth/passkey/register-verify', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function passkeyLoginOptions(email) {
+  return api('/auth/passkey/login-options', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export async function passkeyLoginVerify(body) {
+  return api('/auth/passkey/login-verify', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Admin: set email/password for a team member
+export async function setMemberCredentials(memberId, email, password) {
+  return api(`/team-members/${memberId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ email, password_hash: '__SET_PASSWORD__', _password: password }),
+  });
 }
