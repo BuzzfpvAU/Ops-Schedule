@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createTeamMember, updateTeamMember, deleteTeamMember, createEquipment } from '../api.js';
+import { createTeamMember, updateTeamMember, deleteTeamMember, createEquipment, authAdminResetPassword } from '../api.js';
 
 const TIMEZONES = [
   { value: 'Australia/Sydney', label: 'AEST - Sydney/Melbourne/Brisbane' },
@@ -20,7 +20,8 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
   const [editing, setEditing] = useState(null);
   const [modalType, setModalType] = useState('member'); // 'member' or 'equipment'
   const [form, setForm] = useState({
-    name: '', role: '', location: '', timezone: 'Australia/Sydney', color: '#3B82F6', sort_order: 0
+    name: '', role: '', location: '', timezone: 'Australia/Sydney', color: '#3B82F6', sort_order: 0,
+    email: '', password: '', is_admin: false
   });
 
   const openCreate = (type = 'member') => {
@@ -29,7 +30,8 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
     setForm({
       name: '', role: type === 'equipment' ? 'Equipment' : '', location: '', timezone: 'Australia/Sydney',
       color: type === 'equipment' ? '#64748b' : DEFAULT_COLORS[members.length % DEFAULT_COLORS.length],
-      sort_order: type === 'equipment' ? 100 + equipmentItems.length : members.length
+      sort_order: type === 'equipment' ? 100 + equipmentItems.length : members.length,
+      email: '', password: '', is_admin: false
     });
     setShowModal(true);
   };
@@ -39,7 +41,8 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
     setModalType(type);
     setForm({
       name: member.name, role: member.role, location: member.location,
-      timezone: member.timezone, color: member.color, sort_order: member.sort_order
+      timezone: member.timezone, color: member.color, sort_order: member.sort_order,
+      email: member.email || '', password: '', is_admin: !!member.is_admin
     });
     setShowModal(true);
   };
@@ -104,6 +107,8 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{member.name}</div>
                 <div style={{ fontSize: 13, color: '#64748b' }}>
                   {member.role}{member.role && member.location ? ' · ' : ''}{member.location}
+                  {member.email && <span style={{ marginLeft: 6 }}>{member.email}</span>}
+                  {member.is_admin === 1 && <span style={{ marginLeft: 6, color: '#4A6CF7', fontSize: 11, fontWeight: 600 }}>ADMIN</span>}
                 </div>
               </div>
             </div>
@@ -172,6 +177,64 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
                   />
                 </div>
               </div>
+
+              {modalType !== 'equipment' && (
+                <>
+                  <div className="form-group" style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #334155' }}>
+                    <label>Email (for login)</label>
+                    <input
+                      type="email"
+                      value={form.email || ''}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      placeholder="user@company.com"
+                    />
+                  </div>
+                  {!editing && (
+                    <div className="form-group">
+                      <label>Password</label>
+                      <input
+                        type="password"
+                        value={form.password || ''}
+                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                        placeholder="Min 8 characters"
+                      />
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!form.is_admin}
+                        onChange={(e) => setForm({ ...form, is_admin: e.target.checked })}
+                      />
+                      Admin access
+                    </label>
+                  </div>
+                  {editing && (
+                    <div className="form-group">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={async () => {
+                          const tempPass = prompt('Enter a temporary password (min 8 characters):');
+                          if (!tempPass || tempPass.length < 8) {
+                            showToast('Password must be at least 8 characters', 'error');
+                            return;
+                          }
+                          try {
+                            await authAdminResetPassword(editing.id, tempPass);
+                            showToast('Password reset. User must change it on next login.', 'success');
+                          } catch (err) {
+                            showToast(err.message, 'error');
+                          }
+                        }}
+                      >
+                        Reset Password
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="modal-actions">
                 <button type="button" className="btn" onClick={() => setShowModal(false)}>Cancel</button>
