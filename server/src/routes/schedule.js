@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
 
   const entries = req.db.prepare(`
     SELECT
-      se.id, se.team_member_id, se.job_id, se.date, se.notes,
+      se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
       tm.name as member_name, tm.color as member_color, tm.timezone,
       j.code as job_code, j.name as job_name, j.color as job_color, j.file_url as job_file_url
     FROM schedule_entries se
@@ -30,7 +30,7 @@ router.get('/member/:memberId', (req, res) => {
   const { start, end } = req.query;
   let query = `
     SELECT
-      se.id, se.team_member_id, se.job_id, se.date, se.notes,
+      se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
       j.code as job_code, j.name as job_name, j.color as job_color, j.file_url as job_file_url
     FROM schedule_entries se
     JOIN jobs j ON se.job_id = j.id
@@ -50,12 +50,11 @@ router.get('/member/:memberId', (req, res) => {
 
 // PUT assign/update a schedule entry (upsert)
 router.put('/', (req, res) => {
-  const { team_member_id, job_id, date, notes } = req.body;
+  const { team_member_id, job_id, date, notes, status } = req.body;
   if (!team_member_id || !job_id || !date) {
     return res.status(400).json({ error: 'team_member_id, job_id, and date are required' });
   }
 
-  // Check if entry exists for this member+date
   const existing = req.db.prepare(
     'SELECT * FROM schedule_entries WHERE team_member_id = ? AND date = ?'
   ).get(team_member_id, date);
@@ -66,21 +65,21 @@ router.put('/', (req, res) => {
   if (existing) {
     req.db.prepare(`
       UPDATE schedule_entries
-      SET job_id = ?, notes = ?, updated_at = datetime('now')
+      SET job_id = ?, notes = ?, status = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(job_id, notes || '', existing.id);
+    `).run(job_id, notes || '', status || existing.status || 'tentative', existing.id);
     id = existing.id;
   } else {
     id = uuidv4();
     req.db.prepare(`
-      INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, team_member_id, job_id, date, notes || '');
+      INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, team_member_id, job_id, date, notes || '', status || 'tentative');
   }
 
   const entry = req.db.prepare(`
     SELECT
-      se.id, se.team_member_id, se.job_id, se.date, se.notes,
+      se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
       tm.name as member_name,
       j.code as job_code, j.name as job_name, j.color as job_color
     FROM schedule_entries se
@@ -89,7 +88,6 @@ router.put('/', (req, res) => {
     WHERE se.id = ?
   `).get(id);
 
-  // Include notification metadata
   const isNew = !existing;
   const isChanged = !isNew && previousJobId !== job_id;
 
@@ -103,23 +101,40 @@ router.put('/', (req, res) => {
   });
 });
 
-// PUT bulk assign (assign a job across multiple dates)
+// PUT update status only
+router.put('/status', (req, res) => {
+  const { team_member_id, date, status } = req.body;
+  if (!team_member_id || !date || !status) {
+    return res.status(400).json({ error: 'team_member_id, date, and status are required' });
+  }
+
+  const result = req.db.prepare(`
+    UPDATE schedule_entries
+    SET status = ?, updated_at = datetime('now')
+    WHERE team_member_id = ? AND date = ?
+  `).run(status, team_member_id, date);
+
+  if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
+  res.json({ success: true });
+});
+
+// PUT bulk assign
 router.put('/bulk', (req, res) => {
-  const { team_member_id, job_id, dates, notes } = req.body;
+  const { team_member_id, job_id, dates, notes, status } = req.body;
   if (!team_member_id || !job_id || !dates || !Array.isArray(dates)) {
     return res.status(400).json({ error: 'team_member_id, job_id, and dates array are required' });
   }
 
   const upsert = req.db.prepare(`
-    INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(team_member_id, date)
-    DO UPDATE SET job_id = excluded.job_id, notes = excluded.notes, updated_at = datetime('now')
+    DO UPDATE SET job_id = excluded.job_id, notes = excluded.notes, status = excluded.status, updated_at = datetime('now')
   `);
 
   const insertMany = req.db.transaction((dates) => {
     for (const date of dates) {
-      upsert.run(uuidv4(), team_member_id, job_id, date, notes || '');
+      upsert.run(uuidv4(), team_member_id, job_id, date, notes || '', status || 'tentative');
     }
   });
 

@@ -22,6 +22,8 @@ export function initDb() {
       timezone TEXT DEFAULT 'Australia/Sydney',
       color TEXT DEFAULT '#3B82F6',
       sort_order INTEGER DEFAULT 0,
+      is_equipment INTEGER DEFAULT 0,
+      info_url TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -46,6 +48,7 @@ export function initDb() {
       job_id TEXT NOT NULL,
       date TEXT NOT NULL,
       notes TEXT DEFAULT '',
+      status TEXT DEFAULT 'tentative',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE,

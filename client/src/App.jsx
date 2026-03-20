@@ -2,19 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ScheduleGrid from './components/ScheduleGrid.jsx';
 import TeamManager from './components/TeamManager.jsx';
 import JobManager from './components/JobManager.jsx';
+import EquipmentManager from './components/EquipmentManager.jsx';
 import Toast from './components/Toast.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
-import { getTeamMembers, getJobs, getSchedule } from './api.js';
+import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus } from './api.js';
 import { getWeekDates, formatDateRange } from './utils/dates.js';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('schedule');
   const [teamMembers, setTeamMembers] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [equipmentList, setEquipmentList] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [exportModal, setExportModal] = useState(null);
 
   const weekDates = getWeekDates(weekOffset);
 
@@ -26,9 +29,10 @@ export default function App() {
 
   const loadData = useCallback(async () => {
     try {
-      const [members, jobList] = await Promise.all([getTeamMembers(), getJobs()]);
+      const [members, jobList, equip] = await Promise.all([getTeamMembers(), getJobs(), getEquipment()]);
       setTeamMembers(members);
       setJobs(jobList);
+      setEquipmentList(equip);
 
       // Set current user to first member if not set
       if (!currentUser && members.length > 0) {
@@ -51,7 +55,21 @@ export default function App() {
     }
   }, [weekDates, showToast]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    // Auto-seed on first load if database is empty
+    (async () => {
+      try {
+        const status = await getSeedStatus();
+        if (status.empty) {
+          await seedDatabase();
+          showToast('Sample data loaded', 'success');
+        }
+      } catch (err) {
+        console.warn('Seed check failed:', err.message);
+      }
+      loadData();
+    })();
+  }, []);
   useEffect(() => { loadSchedule(); }, [weekOffset]);
 
   const refreshAll = () => {
@@ -78,18 +96,40 @@ export default function App() {
               ))}
             </select>
           )}
+          {currentUser && (
+            <button
+              className="header-export-btn"
+              title="Download my calendar"
+              onClick={() => {
+                const today = new Date();
+                const monthLater = new Date(today);
+                monthLater.setDate(today.getDate() + 30);
+                setExportModal({
+                  startDate: today.toISOString().slice(0, 10),
+                  endDate: monthLater.toISOString().slice(0, 10),
+                });
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M2 6.5h12" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M5 1.5v3M11 1.5v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                <path d="M8 9v3M6.5 10.5l1.5 1.5 1.5-1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
           {currentUser && <NotificationBell memberId={currentUser.id} />}
         </div>
       </header>
 
       <nav className="nav-tabs">
-        {['schedule', 'jobs', 'team'].map(tab => (
+        {['schedule', 'jobs', 'team', 'equipment'].map(tab => (
           <button
             key={tab}
             className={`nav-tab ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab === 'schedule' ? 'Schedule' : tab === 'jobs' ? 'Jobs / Projects' : 'Team'}
+            {tab === 'schedule' ? 'Schedule' : tab === 'jobs' ? 'Jobs / Projects' : tab === 'equipment' ? 'Equipment' : 'Team'}
           </button>
         ))}
       </nav>
@@ -98,6 +138,7 @@ export default function App() {
         {activeTab === 'schedule' && (
           <ScheduleGrid
             teamMembers={teamMembers}
+            equipment={equipmentList}
             jobs={jobs}
             schedule={schedule}
             weekDates={weekDates}
@@ -111,12 +152,64 @@ export default function App() {
         {activeTab === 'jobs' && (
           <JobManager jobs={jobs} onRefresh={loadData} showToast={showToast} />
         )}
+        {activeTab === 'equipment' && (
+          <EquipmentManager equipment={equipmentList} onRefresh={loadData} showToast={showToast} />
+        )}
         {activeTab === 'team' && (
-          <TeamManager members={teamMembers} onRefresh={loadData} showToast={showToast} />
+          <TeamManager members={teamMembers} equipment={equipmentList} onRefresh={loadData} showToast={showToast} />
         )}
       </main>
 
       <Toast toasts={toasts} />
+
+      {/* Export calendar modal */}
+      {exportModal && currentUser && (
+        <div className="modal-overlay" onClick={() => setExportModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Download My Calendar</h2>
+            <p className="modal-subtitle">
+              Export schedule for {currentUser.name} as an iCal file
+            </p>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>From</label>
+                <input
+                  type="date"
+                  value={exportModal.startDate}
+                  onChange={(e) => setExportModal({ ...exportModal, startDate: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>To</label>
+                <input
+                  type="date"
+                  value={exportModal.endDate}
+                  onChange={(e) => setExportModal({ ...exportModal, endDate: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setExportModal(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  try {
+                    await downloadIcalMember(currentUser.id, exportModal.startDate, exportModal.endDate);
+                    showToast('Calendar downloaded', 'success');
+                    setExportModal(null);
+                  } catch (err) {
+                    showToast('Export failed: ' + err.message, 'error');
+                  }
+                }}
+              >
+                Download .ics
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

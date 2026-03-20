@@ -4,9 +4,13 @@
   "description": "Team operations schedule planner",
   "private": true,
   "scripts": {
-    "dev": "cd client && npm run dev",
-    "install:all": "cd client && npm install",
-    "build": "cd client && npm run build"
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "dev": "npm run dev:server & npm run dev:client",
+    "install:all": "cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "seed": "curl -s -X POST http://localhost:3001/api/seed | node -e \"process.stdin.on('data',d=>console.log(JSON.parse(d)))\""
   },
   "devDependencies": {}
 }

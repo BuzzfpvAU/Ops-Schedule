@@ -1,294 +1,120 @@
-// localStorage-backed API layer
-// Same function signatures as the original fetch-based API
+// Server-backed API layer
+// All data is stored in SQLite on the server, shared across all users/devices
 
-const KEYS = {
-  teamMembers: 'ops_team_members',
-  jobs: 'ops_jobs',
-  schedule: 'ops_schedule_entries',
-  notifications: 'ops_notifications',
+const API = '/api';
+
+export const STATUSES = {
+  confirmed: { label: 'Confirmed', color: '#22c55e' },
+  tentative: { label: 'Tentative', color: '#eab308' },
+  note: { label: 'Note', color: '#3b82f6' },
+  toil: { label: 'TOIL', color: '#a855f7' },
+  unavailable: { label: 'Not Available', color: '#ef4444' },
 };
 
-function getStore(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) || [];
-  } catch {
-    return [];
+async function api(path, options = {}) {
+  const res = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `API error ${res.status}`);
   }
-}
-
-function setStore(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-function now() {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
-
-function uuid() {
-  return crypto.randomUUID();
+  return res.json();
 }
 
 // ── Team Members ──
 
-export function getTeamMembers() {
-  return getStore(KEYS.teamMembers)
-    .filter(m => m.active === 1)
-    .sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+export async function getTeamMembers() {
+  return api('/team-members');
 }
 
-export function createTeamMember(data) {
-  const members = getStore(KEYS.teamMembers);
-  const member = {
-    id: uuid(),
-    name: data.name,
-    role: data.role || '',
-    location: data.location || '',
-    timezone: data.timezone || 'Australia/Sydney',
-    color: data.color || '#3B82F6',
-    sort_order: data.sort_order || 0,
-    active: 1,
-    created_at: now(),
-    updated_at: now(),
-  };
-  members.push(member);
-  setStore(KEYS.teamMembers, members);
-  return member;
+export async function getEquipment() {
+  return api('/team-members/equipment');
 }
 
-export function updateTeamMember(id, data) {
-  const members = getStore(KEYS.teamMembers);
-  const idx = members.findIndex(m => m.id === id);
-  if (idx === -1) throw new Error('Team member not found');
-
-  const existing = members[idx];
-  members[idx] = {
-    ...existing,
-    name: data.name || existing.name,
-    role: data.role ?? existing.role,
-    location: data.location ?? existing.location,
-    timezone: data.timezone || existing.timezone,
-    color: data.color || existing.color,
-    sort_order: data.sort_order ?? existing.sort_order,
-    updated_at: now(),
-  };
-  setStore(KEYS.teamMembers, members);
-  return members[idx];
+export async function createEquipment(data) {
+  return createTeamMember({ ...data, is_equipment: 1 });
 }
 
-export function deleteTeamMember(id) {
-  const members = getStore(KEYS.teamMembers);
-  const idx = members.findIndex(m => m.id === id);
-  if (idx === -1) throw new Error('Team member not found');
-  members[idx].active = 0;
-  members[idx].updated_at = now();
-  setStore(KEYS.teamMembers, members);
-  return { success: true };
+export async function createTeamMember(data) {
+  return api('/team-members', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTeamMember(id, data) {
+  return api(`/team-members/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTeamMember(id) {
+  return api(`/team-members/${id}`, { method: 'DELETE' });
 }
 
 // ── Jobs ──
 
-export function getJobs() {
-  return getStore(KEYS.jobs)
-    .filter(j => j.active === 1)
-    .sort((a, b) => a.code.localeCompare(b.code));
+export async function getJobs() {
+  return api('/jobs');
 }
 
-export function createJob(data) {
-  if (!data.code || !data.name) throw new Error('Code and name are required');
-  const jobs = getStore(KEYS.jobs);
-  if (jobs.find(j => j.code === data.code)) throw new Error('Job code already exists');
-
-  const job = {
-    id: uuid(),
-    code: data.code,
-    name: data.name,
-    description: data.description || '',
-    color: data.color || '#3B82F6',
-    client: data.client || '',
-    file_url: data.file_url || '',
-    active: 1,
-    created_at: now(),
-    updated_at: now(),
-  };
-  jobs.push(job);
-  setStore(KEYS.jobs, jobs);
-  return job;
+export async function createJob(data) {
+  return api('/jobs', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
-export function updateJob(id, data) {
-  const jobs = getStore(KEYS.jobs);
-  const idx = jobs.findIndex(j => j.id === id);
-  if (idx === -1) throw new Error('Job not found');
-
-  const existing = jobs[idx];
-  if (data.code && data.code !== existing.code) {
-    if (jobs.find(j => j.code === data.code && j.id !== id)) {
-      throw new Error('Job code already exists');
-    }
-  }
-
-  jobs[idx] = {
-    ...existing,
-    code: data.code || existing.code,
-    name: data.name || existing.name,
-    description: data.description ?? existing.description,
-    color: data.color || existing.color,
-    client: data.client ?? existing.client,
-    file_url: data.file_url ?? existing.file_url,
-    updated_at: now(),
-  };
-  setStore(KEYS.jobs, jobs);
-  return jobs[idx];
+export async function updateJob(id, data) {
+  return api(`/jobs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }
 
-export function deleteJob(id) {
-  const jobs = getStore(KEYS.jobs);
-  const idx = jobs.findIndex(j => j.id === id);
-  if (idx === -1) throw new Error('Job not found');
-  jobs[idx].active = 0;
-  jobs[idx].updated_at = now();
-  setStore(KEYS.jobs, jobs);
-  return { success: true };
+export async function deleteJob(id) {
+  return api(`/jobs/${id}`, { method: 'DELETE' });
 }
 
 // ── Schedule ──
 
-export function getSchedule(start, end) {
-  const entries = getStore(KEYS.schedule);
-  const members = getStore(KEYS.teamMembers);
-  const jobs = getStore(KEYS.jobs);
-
-  const memberMap = Object.fromEntries(members.map(m => [m.id, m]));
-  const jobMap = Object.fromEntries(jobs.map(j => [j.id, j]));
-
-  return entries
-    .filter(e => e.date >= start && e.date <= end)
-    .map(e => {
-      const m = memberMap[e.team_member_id] || {};
-      const j = jobMap[e.job_id] || {};
-      return {
-        id: e.id,
-        team_member_id: e.team_member_id,
-        job_id: e.job_id,
-        date: e.date,
-        notes: e.notes,
-        member_name: m.name,
-        member_color: m.color,
-        timezone: m.timezone,
-        job_code: j.code,
-        job_name: j.name,
-        job_color: j.color,
-        job_file_url: j.file_url,
-      };
-    })
-    .sort((a, b) => {
-      const ma = memberMap[a.team_member_id] || {};
-      const mb = memberMap[b.team_member_id] || {};
-      return ((ma.sort_order || 0) - (mb.sort_order || 0)) || (ma.name || '').localeCompare(mb.name || '') || a.date.localeCompare(b.date);
-    });
+export async function getSchedule(start, end) {
+  return api(`/schedule?start=${start}&end=${end}`);
 }
 
-export function assignSchedule(data) {
-  const { team_member_id, job_id, date, notes } = data;
-  if (!team_member_id || !job_id || !date) throw new Error('team_member_id, job_id, and date are required');
-
-  const entries = getStore(KEYS.schedule);
-  const existingIdx = entries.findIndex(e => e.team_member_id === team_member_id && e.date === date);
-  const previousJobId = existingIdx >= 0 ? entries[existingIdx].job_id : null;
-
-  let id;
-  if (existingIdx >= 0) {
-    id = entries[existingIdx].id;
-    entries[existingIdx].job_id = job_id;
-    entries[existingIdx].notes = notes || '';
-    entries[existingIdx].updated_at = now();
-  } else {
-    id = uuid();
-    entries.push({ id, team_member_id, job_id, date, notes: notes || '', created_at: now(), updated_at: now() });
-  }
-  setStore(KEYS.schedule, entries);
-
-  const members = getStore(KEYS.teamMembers);
-  const jobs = getStore(KEYS.jobs);
-  const m = members.find(x => x.id === team_member_id) || {};
-  const j = jobs.find(x => x.id === job_id) || {};
-
-  const isNew = existingIdx < 0;
-  const isChanged = !isNew && previousJobId !== job_id;
-
-  return {
-    id,
-    team_member_id,
-    job_id,
-    date,
-    notes: notes || '',
-    member_name: m.name,
-    job_code: j.code,
-    job_name: j.name,
-    job_color: j.color,
-    _notification: {
-      type: isNew ? 'assigned' : (isChanged ? 'changed' : 'updated'),
-      team_member_id,
-      date,
-    },
-  };
+export async function assignSchedule(data) {
+  return api('/schedule', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }
 
-export function bulkAssignSchedule(data) {
-  const { team_member_id, job_id, dates, notes } = data;
-  if (!team_member_id || !job_id || !dates || !Array.isArray(dates)) {
-    throw new Error('team_member_id, job_id, and dates array are required');
-  }
-
-  const entries = getStore(KEYS.schedule);
-  for (const date of dates) {
-    const existingIdx = entries.findIndex(e => e.team_member_id === team_member_id && e.date === date);
-    if (existingIdx >= 0) {
-      entries[existingIdx].job_id = job_id;
-      entries[existingIdx].notes = notes || '';
-      entries[existingIdx].updated_at = now();
-    } else {
-      entries.push({ id: uuid(), team_member_id, job_id, date, notes: notes || '', created_at: now(), updated_at: now() });
-    }
-  }
-  setStore(KEYS.schedule, entries);
-
-  return {
-    success: true,
-    count: dates.length,
-    _notification: {
-      type: 'bulk_assigned',
-      team_member_id,
-      dates,
-    },
-  };
+export async function bulkAssignSchedule(data) {
+  return api('/schedule/bulk', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }
 
-export function deleteScheduleEntry(id) {
-  const entries = getStore(KEYS.schedule);
-  const existing = entries.find(e => e.id === id);
-  if (!existing) throw new Error('Schedule entry not found');
-
-  setStore(KEYS.schedule, entries.filter(e => e.id !== id));
-  return {
-    success: true,
-    _notification: {
-      type: 'removed',
-      team_member_id: existing.team_member_id,
-      date: existing.date,
-    },
-  };
+export async function updateScheduleStatus(memberId, date, status) {
+  return api('/schedule/status', {
+    method: 'PUT',
+    body: JSON.stringify({ team_member_id: memberId, date, status }),
+  });
 }
 
-export function clearScheduleEntry(memberId, date) {
-  const entries = getStore(KEYS.schedule);
-  const filtered = entries.filter(e => !(e.team_member_id === memberId && e.date === date));
-  const deleted = entries.length - filtered.length;
-  setStore(KEYS.schedule, filtered);
-  return { success: true, deleted };
+export async function deleteScheduleEntry(id) {
+  return api(`/schedule/${id}`, { method: 'DELETE' });
 }
 
-// ── Export ──
+export async function clearScheduleEntry(memberId, date) {
+  return api(`/schedule/member/${memberId}/date/${date}`, { method: 'DELETE' });
+}
+
+// ── Export (client-side iCal generation from server data) ──
 
 function buildIcsEvents(events) {
   let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//OpsSchedule//EN\r\n';
@@ -302,7 +128,7 @@ function buildIcsEvents(events) {
     ics += `DTEND;VALUE=DATE:${endStr}\r\n`;
     ics += `SUMMARY:${evt.summary}\r\n`;
     if (evt.description) ics += `DESCRIPTION:${evt.description.replace(/\n/g, '\\n')}\r\n`;
-    ics += `UID:${uuid()}@ops-schedule\r\n`;
+    ics += `UID:${crypto.randomUUID()}@ops-schedule\r\n`;
     ics += 'END:VEVENT\r\n';
   }
   ics += 'END:VCALENDAR\r\n';
@@ -319,42 +145,41 @@ function downloadBlob(content, filename, type = 'text/calendar') {
   URL.revokeObjectURL(url);
 }
 
-export function downloadIcalMember(memberId) {
-  const members = getStore(KEYS.teamMembers);
-  const member = members.find(m => m.id === memberId);
+export async function downloadIcalMember(memberId, startDate, endDate) {
+  // Fetch member info
+  const members = await getTeamMembers();
+  const equipment = await getEquipment();
+  const allMembers = [...members, ...equipment];
+  const member = allMembers.find(m => m.id === memberId);
   if (!member) throw new Error('Team member not found');
 
-  const entries = getStore(KEYS.schedule).filter(e => e.team_member_id === memberId).sort((a, b) => a.date.localeCompare(b.date));
-  const jobs = getStore(KEYS.jobs);
-  const jobMap = Object.fromEntries(jobs.map(j => [j.id, j]));
+  // Fetch their schedule from server
+  const memberSchedule = await api(`/schedule/member/${memberId}?${startDate ? `start=${startDate}&end=${endDate}` : ''}`);
 
-  const events = entries.map(e => {
-    const j = jobMap[e.job_id] || {};
-    let desc = `Job: ${j.code} - ${j.name}`;
-    if (j.description) desc += `\n${j.description}`;
-    if (j.file_url) desc += `\nFiles: ${j.file_url}`;
+  const events = memberSchedule.map(e => {
+    let desc = `Job: ${e.job_code} - ${e.job_name}`;
+    if (e.job_file_url) desc += `\nFiles: ${e.job_file_url}`;
     if (e.notes) desc += `\nNotes: ${e.notes}`;
-    return { date: e.date, summary: `${j.code} - ${j.name}`, description: desc };
+    return { date: e.date, summary: `${e.job_code} - ${e.job_name}`, description: desc };
   });
 
   const ics = buildIcsEvents(events);
   downloadBlob(ics, `schedule-${member.name.replace(/\s+/g, '-')}.ics`);
 }
 
-export function downloadIcalJob(jobId) {
-  const jobs = getStore(KEYS.jobs);
+export async function downloadIcalJob(jobId) {
+  const jobs = await getJobs();
   const job = jobs.find(j => j.id === jobId);
   if (!job) throw new Error('Job not found');
 
-  const entries = getStore(KEYS.schedule).filter(e => e.job_id === jobId).sort((a, b) => a.date.localeCompare(b.date));
-  const members = getStore(KEYS.teamMembers);
-  const memberMap = Object.fromEntries(members.map(m => [m.id, m]));
+  // Get all schedule entries and filter by job
+  const allSchedule = await getSchedule('2020-01-01', '2030-12-31');
+  const entries = allSchedule.filter(e => e.job_id === jobId);
 
-  // Group by date
   const byDate = {};
   for (const e of entries) {
     if (!byDate[e.date]) byDate[e.date] = [];
-    byDate[e.date].push((memberMap[e.team_member_id] || {}).name || 'Unknown');
+    byDate[e.date].push(e.member_name || 'Unknown');
   }
 
   const events = Object.entries(byDate).map(([date, memberNames]) => ({
@@ -385,51 +210,35 @@ export function getGcalLink(title, date, description) {
 
 // ── Notifications ──
 
-export function getNotifications(memberId) {
-  return getStore(KEYS.notifications)
-    .filter(n => n.team_member_id === memberId)
-    .sort((a, b) => (a.read - b.read) || new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 50);
+export async function getNotifications(memberId) {
+  return api(`/notifications/member/${memberId}`);
 }
 
-export function getUnreadCount(memberId) {
-  const count = getStore(KEYS.notifications)
-    .filter(n => n.team_member_id === memberId && n.read === 0)
-    .length;
-  return { count };
+export async function getUnreadCount(memberId) {
+  return api(`/notifications/member/${memberId}/unread`);
 }
 
-export function createNotification(data) {
-  if (!data.team_member_id || !data.message) throw new Error('team_member_id and message required');
-  const notifications = getStore(KEYS.notifications);
-  const notification = {
-    id: uuid(),
-    team_member_id: data.team_member_id,
-    type: data.type || 'info',
-    message: data.message,
-    date: data.date || null,
-    job_code: data.job_code || null,
-    read: 0,
-    created_at: now(),
-  };
-  notifications.push(notification);
-  setStore(KEYS.notifications, notifications);
-  return notification;
+export async function createNotification(data) {
+  return api('/notifications', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
-export function markNotificationRead(id) {
-  const notifications = getStore(KEYS.notifications);
-  const n = notifications.find(x => x.id === id);
-  if (n) n.read = 1;
-  setStore(KEYS.notifications, notifications);
-  return { success: true };
+export async function markNotificationRead(id) {
+  return api(`/notifications/${id}/read`, { method: 'PUT' });
 }
 
-export function markAllRead(memberId) {
-  const notifications = getStore(KEYS.notifications);
-  for (const n of notifications) {
-    if (n.team_member_id === memberId) n.read = 1;
-  }
-  setStore(KEYS.notifications, notifications);
-  return { success: true };
+export async function markAllRead(memberId) {
+  return api(`/notifications/member/${memberId}/read-all`, { method: 'PUT' });
+}
+
+// ── Seed ──
+
+export async function seedDatabase() {
+  return api('/seed', { method: 'POST' });
+}
+
+export async function getSeedStatus() {
+  return api('/seed/status');
 }

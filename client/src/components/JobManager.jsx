@@ -50,7 +50,7 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
 
   const handleExportIcal = async (job) => {
     try {
-      downloadIcalJob(job.id);
+      await downloadIcalJob(job.id);
       showToast('iCal file downloaded', 'success');
     } catch (err) {
       showToast('Export failed: ' + err.message, 'error');
