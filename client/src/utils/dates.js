@@ -1,15 +1,21 @@
+// Get today's date string in AEST (Australia/Sydney)
+function getTodayAEST() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+}
+
 // Generate date objects for a range of dates
 export function generateDateRange(startDate, endDate) {
   const dates = [];
   const current = new Date(startDate);
   const end = new Date(endDate);
+  const todayStr = getTodayAEST();
   while (current <= end) {
-    const dateStr = current.toISOString().slice(0, 10);
+    const dateStr = toDateStr(current);
     const dayName = current.toLocaleDateString('en-AU', { weekday: 'short' });
     const dayNum = current.getDate();
     const month = current.toLocaleDateString('en-AU', { month: 'short' });
     const isWeekend = current.getDay() === 0 || current.getDay() === 6;
-    const isToday = dateStr === new Date().toISOString().slice(0, 10);
+    const isToday = dateStr === todayStr;
 
     dates.push({ date: new Date(current), dateStr, dayName, dayNum, month, isWeekend, isToday });
     current.setDate(current.getDate() + 1);
@@ -28,6 +34,14 @@ export function getMondayOfWeek(offset = 0) {
   return monday;
 }
 
+// Format a Date to YYYY-MM-DD string (local time, not UTC)
+function toDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // Get initial date range: 2 weeks back + 4 weeks forward from current Monday
 export function getInitialDateRange() {
   const monday = getMondayOfWeek(0);
@@ -36,8 +50,8 @@ export function getInitialDateRange() {
   const end = new Date(monday);
   end.setDate(end.getDate() + 27); // 4 weeks forward (28 days total from Monday)
   return {
-    startDate: start.toISOString().slice(0, 10),
-    endDate: end.toISOString().slice(0, 10),
+    startDate: toDateStr(start),
+    endDate: toDateStr(end),
   };
 }
 
@@ -46,20 +60,24 @@ export function extendDateRange(currentStart, currentEnd, direction, days = 14) 
   if (direction === 'past') {
     const newStart = new Date(currentStart);
     newStart.setDate(newStart.getDate() - days);
+    const dayBefore = new Date(currentStart);
+    dayBefore.setDate(dayBefore.getDate() - 1);
     return {
-      startDate: newStart.toISOString().slice(0, 10),
-      endDate: new Date(new Date(currentStart).getTime() - 86400000).toISOString().slice(0, 10),
-      rangeStart: newStart.toISOString().slice(0, 10),
+      startDate: toDateStr(newStart),
+      endDate: toDateStr(dayBefore),
+      rangeStart: toDateStr(newStart),
       rangeEnd: currentEnd,
     };
   } else {
     const newEnd = new Date(currentEnd);
     newEnd.setDate(newEnd.getDate() + days);
+    const dayAfter = new Date(currentEnd);
+    dayAfter.setDate(dayAfter.getDate() + 1);
     return {
-      startDate: new Date(new Date(currentEnd).getTime() + 86400000).toISOString().slice(0, 10),
-      endDate: newEnd.toISOString().slice(0, 10),
+      startDate: toDateStr(dayAfter),
+      endDate: toDateStr(newEnd),
       rangeStart: currentStart,
-      rangeEnd: newEnd.toISOString().slice(0, 10),
+      rangeEnd: toDateStr(newEnd),
     };
   }
 }
