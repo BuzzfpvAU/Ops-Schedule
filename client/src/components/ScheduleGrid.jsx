@@ -428,8 +428,10 @@ export default function ScheduleGrid({
     return lum > 0.6 ? '#1a1a2e' : '#ffffff';
   };
 
+  const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
+  const isRealJob = (j) => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code);
   const filteredJobs = jobs.filter(j =>
-    !j.code.startsWith('NOTE-') &&
+    isRealJob(j) &&
     (!searchTerm || j.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     j.name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -920,7 +922,7 @@ export default function ScheduleGrid({
                 onChange={(e) => setMultiDayModal({ ...multiDayModal, jobId: e.target.value })}
               >
                 <option value="">Select a job...</option>
-                {jobs.filter(j => !j.code.startsWith('NOTE-')).map(j => (
+                {jobs.filter(j => isRealJob(j)).map(j => (
                   <option key={j.id} value={j.id}>{j.name} ({j.code})</option>
                 ))}
               </select>

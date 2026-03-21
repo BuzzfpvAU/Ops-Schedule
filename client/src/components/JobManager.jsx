@@ -8,8 +8,9 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '' });
 
-  // Filter out note-type jobs (auto-created by schedule notes)
-  const realJobs = jobs.filter(j => !j.code.startsWith('NOTE-'));
+  // Filter out auto-created status jobs (notes, toil, leave, unavailable)
+  const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
+  const realJobs = jobs.filter(j => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code));
 
   const openCreate = () => {
     setEditing(null);
