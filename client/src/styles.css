@@ -608,8 +608,8 @@ body {
 }
 
 .schedule-table thead th {
-  /* Ensure header cells fully cover body cells when scrolling */
-  background: var(--bg-surface);
+  /* Solid background so task bars don't bleed through when scrolling */
+  background: #1a1d28;
 }
 
 .member-col-header {
@@ -621,17 +621,17 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
-  background: var(--bg-surface);
+  background: #1a1d28 !important;
   border-bottom: 1px solid var(--border);
   position: sticky;
   left: 0;
-  z-index: 11;
+  z-index: 12;
 }
 
 .day-header {
   padding: 10px 6px;
   text-align: center;
-  background: var(--bg-surface);
+  background: #1a1d28;
   border-bottom: 1px solid var(--border);
   border-left: 1px solid var(--border-subtle);
   vertical-align: middle;
@@ -665,7 +665,7 @@ body {
 }
 
 .day-header.today {
-  background: var(--accent-dim);
+  background: #1c2040;
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
@@ -682,7 +682,7 @@ body {
 }
 
 .day-header.weekend {
-  background: rgba(12, 13, 18, 0.6);
+  background: #111319;
 }
 
 .day-header.weekend .day-name,
@@ -697,7 +697,7 @@ body {
 
 .export-col-header {
   width: 44px;
-  background: var(--bg-surface);
+  background: #1a1d28;
   border-bottom: 1px solid var(--border);
 }
 
@@ -787,7 +787,7 @@ body {
 }
 
 .equipment-row .member-cell {
-  background: color-mix(in srgb, var(--row-bg, var(--bg-raised)) 90%, var(--bg)) !important;
+  background: var(--row-bg, #14161e) !important;
 }
 
 .equipment-avatar {
@@ -803,7 +803,7 @@ body {
 }
 
 .member-row.group-even {
-  --row-bg: var(--bg-raised);
+  --row-bg: #14161e;
 }
 
 .member-row.group-odd {
@@ -811,24 +811,32 @@ body {
 }
 
 .member-row.group-odd td {
-  background: var(--row-bg);
+  background: #1a1d28;
 }
 
 /* Alternating rows within each group */
-.member-row.row-odd td {
-  background: rgba(255, 255, 255, 0.02);
+.member-row.group-even.row-odd td {
+  background: #171924;
+}
+
+.member-row.group-even.row-odd {
+  --row-bg: #171924;
 }
 
 .member-row.group-odd.row-odd td {
   background: #1e2130;
 }
 
-.member-row:hover {
-  background: var(--bg-hover);
+.member-row.group-odd.row-odd {
+  --row-bg: #1e2130;
 }
 
 .member-row:hover td {
   background: var(--bg-hover) !important;
+}
+
+.member-row:hover {
+  --row-bg: var(--bg-hover);
 }
 
 .member-cell {
@@ -837,8 +845,8 @@ body {
   border-right: 1px solid var(--border);
   position: sticky;
   left: 0;
-  background: var(--row-bg, var(--bg-raised));
-  z-index: 1;
+  background: var(--row-bg, #14161e);
+  z-index: 2;
   min-width: 220px;
   white-space: nowrap;
 }
@@ -900,12 +908,11 @@ body {
 }
 
 .task-cell.today {
-  background: var(--accent-dim) !important;
-  box-shadow: inset 0 0 0 1px rgba(123, 147, 255, 0.12);
+  background: #161a30 !important;
 }
 
 .task-cell.weekend {
-  background: #0d0e1380;
+  background: #0f1018;
 }
 
 .task-cell.empty {
