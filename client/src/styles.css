@@ -703,19 +703,29 @@ body {
 
 /* ─── State Group Headers ────────────────────────────────────────── */
 .state-group-header td {
-  padding: 6px 16px;
-  background: var(--bg) !important;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, rgba(123, 147, 255, 0.06) 0%, var(--bg) 60%) !important;
   border-bottom: 1px solid var(--border);
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .state-group-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--accent);
   font-family: 'JetBrains Mono', monospace;
+}
+
+.state-group-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
 }
 
 /* ─── Equipment Group Headers ────────────────────────────────────── */
@@ -724,23 +734,27 @@ body {
 }
 
 .equipment-group-header td {
-  padding: 4px 16px;
-  background: var(--bg) !important;
+  padding: 6px 16px 6px 28px;
+  background: rgba(255, 193, 69, 0.04) !important;
   border-bottom: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-subtle);
   font-size: 11px;
   color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .equipment-group-header:hover td {
-  background: var(--bg-hover) !important;
+  background: rgba(255, 193, 69, 0.08) !important;
 }
 
 .equipment-toggle {
   display: inline-flex;
   align-items: center;
-  margin-right: 6px;
+  margin-right: 4px;
   transition: transform 0.15s;
-  color: var(--text-dim);
+  color: var(--warning);
 }
 
 .equipment-toggle.expanded {
@@ -748,9 +762,9 @@ body {
 }
 
 .equipment-icon {
-  margin-right: 5px;
+  margin-right: 4px;
   vertical-align: middle;
-  color: var(--text-dim);
+  color: var(--warning);
 }
 
 .equipment-group-label {
@@ -759,6 +773,7 @@ body {
   text-transform: uppercase;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
+  color: var(--warning);
 }
 
 .equipment-row .member-cell {

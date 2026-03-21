@@ -629,6 +629,7 @@ export default function ScheduleGrid({
                   <tr key={`group-${location}`} className="state-group-header">
                     <td colSpan={weekDates.length + 1}>
                       <span className="state-group-label">{location}</span>
+                      <span className="state-group-count">{membersInGroup.length} {membersInGroup.length === 1 ? 'member' : 'members'}{eqItems && eqItems.length > 0 ? ` · ${eqItems.length} equipment` : ''}</span>
                     </td>
                   </tr>
                 );
