@@ -429,8 +429,9 @@ export default function ScheduleGrid({
   };
 
   const filteredJobs = jobs.filter(j =>
-    !searchTerm || j.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    j.name.toLowerCase().includes(searchTerm.toLowerCase())
+    !j.code.startsWith('NOTE-') &&
+    (!searchTerm || j.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    j.name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -919,7 +920,7 @@ export default function ScheduleGrid({
                 onChange={(e) => setMultiDayModal({ ...multiDayModal, jobId: e.target.value })}
               >
                 <option value="">Select a job...</option>
-                {jobs.map(j => (
+                {jobs.filter(j => !j.code.startsWith('NOTE-')).map(j => (
                   <option key={j.id} value={j.id}>{j.name} ({j.code})</option>
                 ))}
               </select>

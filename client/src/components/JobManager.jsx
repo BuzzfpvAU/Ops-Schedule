@@ -8,9 +8,12 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '' });
 
+  // Filter out note-type jobs (auto-created by schedule notes)
+  const realJobs = jobs.filter(j => !j.code.startsWith('NOTE-'));
+
   const openCreate = () => {
     setEditing(null);
-    setForm({ code: '', name: '', description: '', color: DEFAULT_COLORS[jobs.length % DEFAULT_COLORS.length], client: '', file_url: '' });
+    setForm({ code: '', name: '', description: '', color: DEFAULT_COLORS[realJobs.length % DEFAULT_COLORS.length], client: '', file_url: '' });
     setShowModal(true);
   };
 
@@ -65,13 +68,13 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
           <button className="btn btn-primary" onClick={openCreate}>+ Add Job</button>
         </div>
 
-        {jobs.length === 0 && (
+        {realJobs.length === 0 && (
           <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32, fontSize: 14 }}>
             No jobs yet. Click "Add Job" to create your first job code.
           </p>
         )}
 
-        {jobs.map(job => (
+        {realJobs.map(job => (
           <div key={job.id} className="list-item">
             <div className="list-item-info">
               <span className="job-color-dot" style={{ background: job.color }}></span>
