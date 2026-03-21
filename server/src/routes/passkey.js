@@ -96,4 +96,20 @@ router.post('/login-verify', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.get('/list', requireAuth, (req, res) => {
+  try {
+    const creds = req.db.prepare('SELECT id, created_at FROM passkey_credentials WHERE team_member_id = ? ORDER BY created_at DESC').all(req.user.memberId);
+    res.json(creds);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/:id', requireAuth, (req, res) => {
+  try {
+    const cred = req.db.prepare('SELECT id FROM passkey_credentials WHERE id = ? AND team_member_id = ?').get(req.params.id, req.user.memberId);
+    if (!cred) return res.status(404).json({ error: 'Passkey not found' });
+    req.db.prepare('DELETE FROM passkey_credentials WHERE id = ? AND team_member_id = ?').run(req.params.id, req.user.memberId);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 export default router;

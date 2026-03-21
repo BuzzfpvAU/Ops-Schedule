@@ -1771,3 +1771,21 @@ body {
 .logout-btn:hover {
   color: #ef4444;
 }
+
+.passkey-btn {
+  background: none;
+  border: 1px solid var(--border, #ddd);
+  color: #888;
+  cursor: pointer;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.passkey-btn:hover {
+  color: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  background: rgba(59, 130, 246, 0.05);
+}

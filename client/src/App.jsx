@@ -11,6 +11,7 @@ import JobManager from './components/JobManager.jsx';
 import EquipmentManager from './components/EquipmentManager.jsx';
 import Toast from './components/Toast.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
+import PasskeyManager from './components/PasskeyManager.jsx';
 import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus } from './api.js';
 import { getWeekDates, formatDateRange } from './utils/dates.js';
 
@@ -29,6 +30,7 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [exportModal, setExportModal] = useState(null);
+  const [showPasskeys, setShowPasskeys] = useState(false);
   const [resetToken, setResetToken] = useState(initialResetToken);
 
   // Memoize weekDates so it only recalculates when weekOffset changes
@@ -147,6 +149,9 @@ export default function App() {
             <span className={`role-badge ${user.isAdmin ? 'admin' : 'user'}`}>
               {user.isAdmin ? 'Admin' : 'User'}
             </span>
+            <button className="passkey-btn" onClick={() => setShowPasskeys(true)} title="Manage passkeys">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            </button>
             <button className="logout-btn" onClick={logout} title="Sign out">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
@@ -193,6 +198,10 @@ export default function App() {
       </main>
 
       <Toast toasts={toasts} />
+
+      {showPasskeys && (
+        <PasskeyManager onClose={() => setShowPasskeys(false)} showToast={showToast} />
+      )}
 
       {exportModal && currentUser && (
         <div className="modal-overlay" onClick={() => setExportModal(null)}>
