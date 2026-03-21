@@ -628,8 +628,10 @@ export default function ScheduleGrid({
                 rows.push(
                   <tr key={`group-${location}`} className="state-group-header">
                     <td colSpan={weekDates.length + 1}>
-                      <span className="state-group-label">{location}</span>
-                      <span className="state-group-count">{membersInGroup.length} {membersInGroup.length === 1 ? 'member' : 'members'}{eqItems && eqItems.length > 0 ? ` · ${eqItems.length} equipment` : ''}</span>
+                      <div className="sticky-header-content">
+                        <span className="state-group-label">{location}</span>
+                        <span className="state-group-count">{membersInGroup.length} {membersInGroup.length === 1 ? 'member' : 'members'}{eqItems && eqItems.length > 0 ? ` · ${eqItems.length} equipment` : ''}</span>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -721,11 +723,13 @@ export default function ScheduleGrid({
                   rows.push(
                     <tr key={`equip-header-${location}`} className="equipment-group-header" onClick={() => toggleEquipment(location)}>
                       <td colSpan={weekDates.length + 1}>
-                        <span className={`equipment-toggle ${isCollapsed ? '' : 'expanded'}`}>
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </span>
-                        <svg className="equipment-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v4M5 3h4M2 7h10v5H2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        <span className="equipment-group-label">Equipment ({eqItems.length})</span>
+                        <div className="sticky-header-content">
+                          <span className={`equipment-toggle ${isCollapsed ? '' : 'expanded'}`}>
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </span>
+                          <svg className="equipment-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v4M5 3h4M2 7h10v5H2z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          <span className="equipment-group-label">Equipment ({eqItems.length})</span>
+                        </div>
                       </td>
                     </tr>
                   );

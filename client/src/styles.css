@@ -701,15 +701,23 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* ─── Sticky header content (shared by state + equipment headers) ── */
+.sticky-header-content {
+  position: sticky;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  width: 220px;
+}
+
 /* ─── State Group Headers ────────────────────────────────────────── */
 .state-group-header td {
-  padding: 8px 16px;
-  background: linear-gradient(90deg, rgba(123, 147, 255, 0.06) 0%, var(--bg) 60%) !important;
+  padding: 8px 0;
+  background: var(--bg) !important;
   border-bottom: 1px solid var(--border);
   border-top: 2px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .state-group-label {
@@ -726,6 +734,7 @@ body {
   font-weight: 500;
   color: var(--text-dim);
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 /* ─── Equipment Group Headers ────────────────────────────────────── */
@@ -734,15 +743,16 @@ body {
 }
 
 .equipment-group-header td {
-  padding: 6px 16px 6px 28px;
+  padding: 6px 0;
   background: rgba(255, 193, 69, 0.04) !important;
   border-bottom: 1px solid var(--border-subtle);
   border-top: 1px solid var(--border-subtle);
   font-size: 11px;
   color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: 4px;
+}
+
+.equipment-group-header .sticky-header-content {
+  padding-left: 28px;
 }
 
 .equipment-group-header:hover td {
