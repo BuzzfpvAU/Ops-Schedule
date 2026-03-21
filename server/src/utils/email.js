@@ -3,16 +3,24 @@ import { Resend } from 'resend';
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
+// Resend free tier: use onboarding@resend.dev (only sends to account owner's email)
+// Production: set RESEND_DOMAIN to a verified domain (e.g. taskz.id) to send to any email
+const FROM_ADDRESS = process.env.RESEND_DOMAIN
+  ? `Ops Schedule <noreply@${process.env.RESEND_DOMAIN}>`
+  : 'Ops Schedule <onboarding@resend.dev>';
+
 export async function sendPasswordResetEmail(email, token) {
-  const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+  const resetUrl = `${APP_URL}/?token=${token}`;
 
   if (!resend) {
     console.log(`[DEV] Password reset link for ${email}: ${resetUrl}`);
     return { success: true, dev: true };
   }
 
+  console.log(`Sending password reset email to ${email} from ${FROM_ADDRESS}`);
+
   const { data, error } = await resend.emails.send({
-    from: 'Ops Schedule <noreply@' + (process.env.RESEND_DOMAIN || 'resend.dev') + '>',
+    from: FROM_ADDRESS,
     to: email,
     subject: 'Reset your Ops Schedule password',
     html: `
@@ -24,10 +32,11 @@ export async function sendPasswordResetEmail(email, token) {
   });
 
   if (error) {
-    console.error('Failed to send reset email:', error);
-    throw new Error('Failed to send reset email');
+    console.error('Resend API error:', JSON.stringify(error));
+    throw new Error(`Failed to send reset email: ${error.message || JSON.stringify(error)}`);
   }
 
+  console.log('Reset email sent successfully:', JSON.stringify(data));
   return { success: true };
 }
 

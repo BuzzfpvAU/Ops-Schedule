@@ -154,7 +154,12 @@ router.post('/forgot-password', async (req, res) => {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     req.db.prepare('INSERT INTO password_reset_tokens (id, team_member_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').run(crypto.randomUUID(), user.id, tokenHash, expiresAt);
-    try { await sendPasswordResetEmail(email, token); } catch (err) { console.error('Failed to send reset email:', err); }
+    try {
+      await sendPasswordResetEmail(email, token);
+    } catch (err) {
+      console.error('Failed to send reset email:', err.message);
+      return res.status(500).json({ error: 'Failed to send reset email. Please try again later.' });
+    }
   }
   res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
 });
