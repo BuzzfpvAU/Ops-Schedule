@@ -6,7 +6,7 @@ const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
 export default function ScheduleGrid({
   teamMembers, equipment, jobs, schedule, weekDates, weekOffset,
-  onWeekChange, onRefresh, showToast, dateRangeLabel
+  onWeekChange, onRefresh, onScheduleRefresh, showToast, dateRangeLabel
 }) {
   const [dropdown, setDropdown] = useState(null);
   const [multiDayModal, setMultiDayModal] = useState(null);
@@ -203,7 +203,6 @@ export default function ScheduleGrid({
     try {
       const member = teamMembers.find(m => m.id === memberId) || equipment.find(e => e.id === memberId);
       if (assignDays > 1) {
-        // Generate date range
         const dates = [];
         const current = new Date(date);
         for (let i = 0; i < assignDays; i++) {
@@ -211,7 +210,8 @@ export default function ScheduleGrid({
           current.setDate(current.getDate() + 1);
         }
         await bulkAssignSchedule({ team_member_id: memberId, job_id: job.id, dates, status: 'tentative' });
-        await createNotification({ team_member_id: memberId, type: 'bulk_assigned', message: `Assigned to ${job.code} - ${job.name} for ${assignDays} days from ${date}`, date, job_code: job.code });
+        // Fire notification in background (don't await)
+        createNotification({ team_member_id: memberId, type: 'bulk_assigned', message: `Assigned to ${job.code} - ${job.name} for ${assignDays} days from ${date}`, date, job_code: job.code }).catch(() => {});
         showToast(`Assigned ${job.code} to ${member?.name} for ${assignDays} days`, 'success');
       } else {
         const result = await assignSchedule({ team_member_id: memberId, job_id: job.id, date });
@@ -219,13 +219,14 @@ export default function ScheduleGrid({
         const message = notifType === 'changed'
           ? `Schedule for ${date} changed to ${job.code} - ${job.name}`
           : `Assigned to ${job.code} - ${job.name} on ${date}`;
-        await createNotification({ team_member_id: memberId, type: notifType, message, date, job_code: job.code });
+        // Fire notification in background (don't await)
+        createNotification({ team_member_id: memberId, type: notifType, message, date, job_code: job.code }).catch(() => {});
         showToast(`Assigned ${job.code} to ${member?.name} on ${date}`, 'success');
       }
       setDropdown(null);
       setSearchTerm('');
       setAssignDays(1);
-      onRefresh();
+      onScheduleRefresh();
     } catch (err) {
       showToast('Failed to assign: ' + err.message, 'error');
     }
@@ -254,15 +255,15 @@ export default function ScheduleGrid({
 
     try {
       await bulkAssignSchedule({ team_member_id: memberId, job_id: jobId, dates, status: multiDayModal.status || 'tentative' });
-      await createNotification({
+      createNotification({
         team_member_id: memberId,
         type: 'bulk_assigned',
         message: `Assigned to ${job.code} - ${job.name} for ${dates.length} days (${startDate} to ${endDate})`,
         date: startDate,
         job_code: job.code
-      });
+      }).catch(() => {});
       setMultiDayModal(null);
-      onRefresh();
+      onScheduleRefresh();
       showToast(`Assigned ${job.code} to ${member.name} for ${dates.length} days`, 'success');
     } catch (err) {
       showToast('Failed to assign: ' + err.message, 'error');
@@ -273,12 +274,12 @@ export default function ScheduleGrid({
     try {
       await clearScheduleEntry(memberId, date);
       const member = teamMembers.find(m => m.id === memberId);
-      await createNotification({
+      createNotification({
         team_member_id: memberId, type: 'removed',
         message: `Assignment for ${date} removed`, date
-      });
+      }).catch(() => {});
       setDropdown(null);
-      onRefresh();
+      onScheduleRefresh();
       showToast(`Cleared ${member?.name} on ${date}`);
     } catch (err) {
       showToast('Failed to clear: ' + err.message, 'error');
@@ -326,7 +327,7 @@ export default function ScheduleGrid({
         );
       }
       setDropdown(null);
-      onRefresh();
+      onScheduleRefresh();
       showToast(`Status changed to ${STATUSES[newStatus].label}`, 'success');
     } catch (err) {
       showToast('Failed to update status: ' + err.message, 'error');
@@ -356,9 +357,9 @@ export default function ScheduleGrid({
     try {
       await assignSchedule({ team_member_id: memberId, job_id: job.id, date, status: statusKey });
       const member = teamMembers.find(m => m.id === memberId);
-      await createNotification({ team_member_id: memberId, type: 'assigned', message: `Marked as ${STATUSES[statusKey].label} on ${date}`, date, job_code: job.code });
+      createNotification({ team_member_id: memberId, type: 'assigned', message: `Marked as ${STATUSES[statusKey].label} on ${date}`, date, job_code: job.code }).catch(() => {});
       setDropdown(null);
-      onRefresh();
+      onScheduleRefresh();
       showToast(`${member?.name} marked as ${STATUSES[statusKey].label} on ${date}`, 'success');
     } catch (err) {
       showToast('Failed: ' + err.message, 'error');
@@ -385,9 +386,9 @@ export default function ScheduleGrid({
     try {
       await assignSchedule({ team_member_id: memberId, job_id: job.id, date, status: 'note' });
       const member = teamMembers.find(m => m.id === memberId);
-      await createNotification({ team_member_id: memberId, type: 'assigned', message: `Note added for ${date}: ${text.trim()}`, date, job_code: job.code });
+      createNotification({ team_member_id: memberId, type: 'assigned', message: `Note added for ${date}: ${text.trim()}`, date, job_code: job.code }).catch(() => {});
       setNoteModal(null);
-      onRefresh();
+      onScheduleRefresh();
       showToast(`Note added for ${member?.name} on ${date}`, 'success');
     } catch (err) {
       showToast('Failed: ' + err.message, 'error');

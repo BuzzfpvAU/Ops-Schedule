@@ -95,6 +95,10 @@ export default function App() {
     loadSchedule(weekOffset);
   }, [weekOffset]);
 
+  const refreshSchedule = useCallback(() => {
+    loadSchedule(weekOffset);
+  }, [loadSchedule, weekOffset]);
+
   const refreshAll = useCallback(() => {
     loadData();
     loadSchedule(weekOffset);
@@ -172,6 +176,7 @@ export default function App() {
             weekOffset={weekOffset}
             onWeekChange={setWeekOffset}
             onRefresh={refreshAll}
+            onScheduleRefresh={refreshSchedule}
             showToast={showToast}
             dateRangeLabel={dateRangeLabel}
           />
