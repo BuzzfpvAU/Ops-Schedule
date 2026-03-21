@@ -61,7 +61,7 @@ router.post('/login-options', async (req, res) => {
     const { email } = req.body;
     let allowCredentials = [];
     if (email) {
-      const user = req.db.prepare('SELECT id FROM team_members WHERE email = ? AND active = 1').get(email);
+      const user = req.db.prepare('SELECT id FROM team_members WHERE email = ? COLLATE NOCASE AND active = 1').get(email);
       if (user) {
         const creds = req.db.prepare('SELECT id FROM passkey_credentials WHERE team_member_id = ?').all(user.id);
         allowCredentials = creds.map(c => ({ id: c.id }));

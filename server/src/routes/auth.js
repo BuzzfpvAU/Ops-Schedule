@@ -59,7 +59,7 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   if (!checkRateLimit(loginAttempts, req.ip, 5, 15 * 60 * 1000)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
 
-  const user = req.db.prepare('SELECT id, name, email, password_hash, is_admin, active, must_change_password FROM team_members WHERE email = ?').get(email);
+  const user = req.db.prepare('SELECT id, name, email, password_hash, is_admin, active, must_change_password FROM team_members WHERE email = ? COLLATE NOCASE').get(email);
   if (!user || !user.password_hash) return res.status(401).json({ error: 'Invalid email or password' });
   if (!user.active) return res.status(401).json({ error: 'Account deactivated' });
 
@@ -148,7 +148,7 @@ router.post('/forgot-password', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'Email required' });
   if (!checkRateLimit(resetAttempts, email, 3, 60 * 60 * 1000)) return res.status(429).json({ error: 'Too many reset requests. Try again later.' });
 
-  const user = req.db.prepare('SELECT id FROM team_members WHERE email = ? AND active = 1').get(email);
+  const user = req.db.prepare('SELECT id FROM team_members WHERE email = ? COLLATE NOCASE AND active = 1').get(email);
   if (user) {
     const token = crypto.randomUUID();
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
