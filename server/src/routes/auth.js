@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { requireAuth, requireAdmin, signToken, setAuthCookie } from '../middleware/auth.js';
 import { sendPasswordResetEmail, isEmailConfigured } from '../utils/email.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
 const router = Router();
 const BCRYPT_ROUNDS = 12;
@@ -80,6 +83,50 @@ router.get('/me', requireAuth, (req, res) => {
 router.get('/status', (req, res) => {
   const hasCredentials = req.db.prepare('SELECT COUNT(*) as c FROM team_members WHERE email IS NOT NULL AND password_hash IS NOT NULL').get();
   res.json({ needsSetup: hasCredentials.c === 0, emailConfigured: isEmailConfigured() });
+});
+
+// Combined init endpoint: returns status + user in one call
+router.get('/init', (req, res) => {
+  const hasCredentials = req.db.prepare('SELECT COUNT(*) as c FROM team_members WHERE email IS NOT NULL AND password_hash IS NOT NULL').get();
+  const needsSetup = hasCredentials.c === 0;
+  const emailConfigured = isEmailConfigured();
+
+  if (needsSetup) {
+    return res.json({ needsSetup: true, emailConfigured, user: null });
+  }
+
+  // Try to get user from cookie
+  const token = req.cookies?.auth_token;
+  if (!token) {
+    return res.json({ needsSetup: false, emailConfigured, user: null });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    const user = req.db.prepare(
+      'SELECT id, name, email, is_admin, active, must_change_password FROM team_members WHERE id = ?'
+    ).get(payload.memberId);
+
+    if (!user || !user.active) {
+      res.clearCookie('auth_token');
+      return res.json({ needsSetup: false, emailConfigured, user: null });
+    }
+
+    res.json({
+      needsSetup: false,
+      emailConfigured,
+      user: {
+        memberId: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.is_admin === 1,
+        mustChangePassword: user.must_change_password === 1,
+      }
+    });
+  } catch {
+    res.clearCookie('auth_token');
+    res.json({ needsSetup: false, emailConfigured, user: null });
+  }
 });
 
 router.post('/change-password', requireAuth, async (req, res) => {

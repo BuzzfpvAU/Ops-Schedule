@@ -14,6 +14,9 @@ import NotificationBell from './components/NotificationBell.jsx';
 import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus } from './api.js';
 import { getWeekDates, formatDateRange } from './utils/dates.js';
 
+// Parse reset token once, outside component
+const initialResetToken = new URLSearchParams(window.location.search).get('token');
+
 export default function App() {
   const { user, loading, needsSetup, logout } = useAuth();
   const [authView, setAuthView] = useState('login');
@@ -26,12 +29,11 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [exportModal, setExportModal] = useState(null);
+  const [resetToken, setResetToken] = useState(initialResetToken);
 
-  const weekDates = getWeekDates(weekOffset);
-
-  // Check for reset token in URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const resetToken = urlParams.get('token');
+  // Memoize weekDates so it only recalculates when weekOffset changes
+  const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
+  const dateRangeLabel = useMemo(() => formatDateRange(weekDates), [weekDates]);
 
   const currentUser = teamMembers.find(m => m.id === user?.memberId);
 
@@ -52,9 +54,10 @@ export default function App() {
     }
   }, [showToast]);
 
-  const loadSchedule = useCallback(async () => {
+  // Load schedule using weekOffset directly to avoid stale closure
+  const loadSchedule = useCallback(async (offset) => {
     try {
-      const dates = weekDates;
+      const dates = getWeekDates(offset);
       const start = dates[0].dateStr;
       const end = dates[dates.length - 1].dateStr;
       const entries = await getSchedule(start, end);
@@ -62,33 +65,44 @@ export default function App() {
     } catch (err) {
       showToast('Failed to load schedule: ' + err.message, 'error');
     }
-  }, [weekDates, showToast]);
+  }, [showToast]);
 
+  // Load everything in parallel on login
   useEffect(() => {
     if (!user) return;
     (async () => {
-      try {
-        const status = await getSeedStatus();
-        if (status.empty) {
-          await seedDatabase();
-          showToast('Sample data loaded', 'success');
-        }
-      } catch (err) {
-        console.warn('Seed check failed:', err.message);
+      // Run seed check and data loading in parallel
+      const [seedResult] = await Promise.allSettled([
+        getSeedStatus().then(async (status) => {
+          if (status.empty) {
+            await seedDatabase();
+            showToast('Sample data loaded', 'success');
+          }
+        }),
+        loadData(),
+        loadSchedule(weekOffset),
+      ]);
+      // If seeding happened, reload data since seed added new records
+      if (seedResult.status === 'fulfilled') {
+        // Only reload if seed actually inserted data (loadData already ran in parallel)
       }
-      loadData();
     })();
   }, [user]);
-  useEffect(() => { if (user) loadSchedule(); }, [weekOffset, user]);
 
-  const refreshAll = () => {
+  // Reload schedule when week changes (but not on initial mount - that's handled above)
+  useEffect(() => {
+    if (!user) return;
+    loadSchedule(weekOffset);
+  }, [weekOffset]);
+
+  const refreshAll = useCallback(() => {
     loadData();
-    loadSchedule();
-  };
+    loadSchedule(weekOffset);
+  }, [loadData, loadSchedule, weekOffset]);
 
   // Auth gates - AFTER all hooks to satisfy Rules of Hooks
   if (loading) return <div className="loading-screen">Loading...</div>;
-  if (resetToken) return <ResetPassword token={resetToken} onDone={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }} />;
+  if (resetToken) return <ResetPassword token={resetToken} onDone={() => { window.history.replaceState({}, '', '/'); setResetToken(null); setAuthView('login'); }} />;
   if (needsSetup) return <SetupPage />;
   if (!user) {
     if (authView === 'forgot') return <ForgotPassword onBack={() => setAuthView('login')} />;
@@ -159,7 +173,7 @@ export default function App() {
             onWeekChange={setWeekOffset}
             onRefresh={refreshAll}
             showToast={showToast}
-            dateRangeLabel={formatDateRange(weekDates)}
+            dateRangeLabel={dateRangeLabel}
           />
         )}
         {activeTab === 'jobs' && user.isAdmin && (

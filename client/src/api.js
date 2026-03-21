@@ -263,6 +263,10 @@ export async function authStatus() {
   return api('/auth/status');
 }
 
+export async function authInit() {
+  return api('/auth/init');
+}
+
 export async function authSetup(email, password, name) {
   return api('/auth/setup', { method: 'POST', body: JSON.stringify({ email, password, name }) });
 }

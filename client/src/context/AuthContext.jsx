@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { authMe, authLogin, authLogout, authStatus } from '../api.js';
+import { authInit, authMe, authLogin, authLogout } from '../api.js';
 
 const AuthContext = createContext(null);
 
@@ -11,17 +11,13 @@ export function AuthProvider({ children }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const status = await authStatus();
-      setNeedsSetup(status.needsSetup);
-      setEmailConfigured(status.emailConfigured);
-
-      if (status.needsSetup) {
-        setLoading(false);
-        return;
+      // Single API call instead of status + me
+      const result = await authInit();
+      setNeedsSetup(result.needsSetup);
+      setEmailConfigured(result.emailConfigured);
+      if (result.user) {
+        setUser(result.user);
       }
-
-      const { user } = await authMe();
-      setUser(user);
     } catch {
       setUser(null);
     } finally {
