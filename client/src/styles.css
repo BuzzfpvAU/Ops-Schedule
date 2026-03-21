@@ -585,10 +585,14 @@ body {
 }
 
 .schedule-table {
-  width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  min-width: 1000px;
+}
+
+.schedule-table th:not(.member-col-header),
+.schedule-table td:not(.member-cell):not(.empty-state) {
+  min-width: 80px;
+  width: 80px;
 }
 
 /* Header cells */
@@ -667,6 +671,10 @@ body {
 
 .day-header.weekend .day-num {
   color: var(--text-dim);
+}
+
+.day-header.week-start {
+  border-left: 2px solid var(--accent);
 }
 
 .export-col-header {
@@ -843,6 +851,10 @@ body {
   height: 44px;
   vertical-align: middle;
   text-align: center;
+}
+
+.task-cell.week-start {
+  border-left: 2px solid var(--accent);
 }
 
 .task-cell.today {

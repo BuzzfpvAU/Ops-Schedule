@@ -1,13 +1,15 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, createNotification, updateScheduleStatus, createJob, getJobs as fetchJobs, updateTeamMember, STATUSES } from '../api.js';
 
 const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
 export default function ScheduleGrid({
-  teamMembers, equipment, jobs, schedule, weekDates, weekOffset,
-  onWeekChange, onRefresh, onScheduleRefresh, showToast, dateRangeLabel
+  teamMembers, equipment, jobs, schedule, allDates,
+  onLoadMore, onScrollToToday, onRefresh, onScheduleRefresh, showToast
 }) {
+  // Use allDates as weekDates for compatibility with existing rendering logic
+  const weekDates = allDates;
   const [dropdown, setDropdown] = useState(null);
   const [multiDayModal, setMultiDayModal] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
@@ -138,6 +140,71 @@ export default function ScheduleGrid({
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, []);
+
+  // Scroll to today's column on initial mount
+  const hasScrolledToToday = useRef(false);
+  useEffect(() => {
+    if (hasScrolledToToday.current || !gridRef.current || weekDates.length === 0) return;
+    const todayIdx = weekDates.findIndex(d => d.isToday);
+    if (todayIdx >= 0) {
+      // Wait for the table to render, then scroll
+      requestAnimationFrame(() => {
+        const el = gridRef.current;
+        if (!el) return;
+        const memberColWidth = 180;
+        const dayColWidth = el.querySelector('.day-header')?.offsetWidth || 90;
+        // Scroll so today is roughly centered
+        const scrollTarget = memberColWidth + (todayIdx * dayColWidth) - (el.clientWidth / 2) + (dayColWidth / 2);
+        el.scrollLeft = Math.max(0, scrollTarget);
+        hasScrolledToToday.current = true;
+      });
+    }
+  }, [weekDates]);
+
+  // Scroll to today when button is pressed
+  const handleScrollToToday = useCallback(() => {
+    onScrollToToday();
+    hasScrolledToToday.current = false; // Allow auto-scroll after reset
+  }, [onScrollToToday]);
+
+  // Infinite scroll: load more dates when near edges
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+
+    let ticking = false;
+    const THRESHOLD = 300; // pixels from edge to trigger load
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        if (!el) return;
+        const { scrollLeft, scrollWidth, clientWidth } = el;
+        // Near right edge → load future dates
+        if (scrollWidth - scrollLeft - clientWidth < THRESHOLD) {
+          onLoadMore('future');
+        }
+        // Near left edge → load past dates
+        if (scrollLeft < THRESHOLD) {
+          // Save scroll position so we can restore it after new columns are prepended
+          const prevScrollWidth = scrollWidth;
+          onLoadMore('past').then(() => {
+            requestAnimationFrame(() => {
+              if (gridRef.current) {
+                const newScrollWidth = gridRef.current.scrollWidth;
+                gridRef.current.scrollLeft += (newScrollWidth - prevScrollWidth);
+              }
+            });
+          });
+        }
+      });
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [onLoadMore]);
 
   // Build schedule lookup
   const scheduleMap = {};
@@ -441,21 +508,8 @@ export default function ScheduleGrid({
       {/* Controls */}
       <div className="schedule-controls">
         <div className="week-nav">
-          <button className="nav-btn" onClick={() => onWeekChange(weekOffset - 2)} title="Back 2 weeks">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3L3 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M13 3L8 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-          <button className="nav-btn" onClick={() => onWeekChange(weekOffset - 1)} title="Previous week">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-          <button className="nav-btn nav-today" onClick={() => onWeekChange(0)}>Today</button>
-          <button className="nav-btn" onClick={() => onWeekChange(weekOffset + 1)} title="Next week">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-          <button className="nav-btn" onClick={() => onWeekChange(weekOffset + 2)} title="Forward 2 weeks">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M8 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
+          <button className="nav-btn nav-today" onClick={handleScrollToToday} title="Jump to today">Today</button>
         </div>
-        <h2 className="date-range-label">{dateRangeLabel}</h2>
         <div className="schedule-filters">
           <div className="filter-group" ref={locationDropdownRef}>
             <label>States</label>
@@ -530,13 +584,16 @@ export default function ScheduleGrid({
           <thead>
             <tr>
               <th className="member-col-header">Team Member</th>
-              {weekDates.map(d => (
-                <th key={d.dateStr} className={`day-header ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`}>
-                  <span className="day-name">{d.dayName.toUpperCase()}</span>
-                  <span className="day-num">{d.dayNum}</span>
-                  <span className="day-month">{d.month.toUpperCase()}</span>
-                </th>
-              ))}
+              {weekDates.map(d => {
+                const isMonday = d.date.getDay() === 1;
+                return (
+                  <th key={d.dateStr} className={`day-header ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''} ${isMonday ? 'week-start' : ''}`}>
+                    <span className="day-name">{d.dayName.toUpperCase()}</span>
+                    <span className="day-num">{d.dayNum}</span>
+                    <span className="day-month">{d.month.toUpperCase()}</span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -598,6 +655,7 @@ export default function ScheduleGrid({
                   </td>
                   {spans.map((span) => {
                     const d = weekDates[span.startIdx];
+                    const isMonday = d.date.getDay() === 1;
                     if (span.entry) {
                       const isMulti = span.length > 1;
                       const statusKey = span.entry.status || 'tentative';
@@ -606,7 +664,7 @@ export default function ScheduleGrid({
                         <td
                           key={d.dateStr}
                           colSpan={span.length}
-                          className={`task-cell filled ${d.isToday ? 'today' : ''}`}
+                          className={`task-cell filled ${d.isToday ? 'today' : ''} ${isMonday ? 'week-start' : ''}`}
                         >
                           <div
                             className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`}
@@ -637,7 +695,7 @@ export default function ScheduleGrid({
                       return (
                         <td
                           key={d.dateStr}
-                          className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`}
+                          className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''} ${isMonday ? 'week-start' : ''}`}
                           onClick={(isAdmin || member.id === authUser?.memberId) ? (e) => handleCellClick(member.id, d.dateStr, e) : undefined}
                           style={(!isAdmin && member.id !== authUser?.memberId) ? { cursor: 'default' } : undefined}
                         >
@@ -704,12 +762,13 @@ export default function ScheduleGrid({
                           </td>
                           {spans.map((span) => {
                             const d = weekDates[span.startIdx];
+                            const isMonday = d.date.getDay() === 1;
                             if (span.entry) {
                               const isMulti = span.length > 1;
                               const statusKey = span.entry.status || 'tentative';
                               const statusInfo = STATUSES[statusKey] || STATUSES.tentative;
                               return (
-                                <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''}`}>
+                                <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''} ${isMonday ? 'week-start' : ''}`}>
                                   <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]`} onClick={(e) => {
                                   const rect = e.currentTarget.getBoundingClientRect();
                                   const relativeX = e.clientX - rect.left;
@@ -725,7 +784,7 @@ export default function ScheduleGrid({
                               );
                             } else {
                               return (
-                                <td key={d.dateStr} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`} onClick={isAdmin ? (e) => handleCellClick(item.id, d.dateStr, e) : undefined} style={!isAdmin ? { cursor: 'default' } : undefined}>
+                                <td key={d.dateStr} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''} ${isMonday ? 'week-start' : ''}`} onClick={isAdmin ? (e) => handleCellClick(item.id, d.dateStr, e) : undefined} style={!isAdmin ? { cursor: 'default' } : undefined}>
                                   {isAdmin && (
                                     <div className="empty-cell">
                                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from './context/AuthContext.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import SetupPage from './components/SetupPage.jsx';
@@ -13,7 +13,7 @@ import Toast from './components/Toast.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
 import PasskeyManager from './components/PasskeyManager.jsx';
 import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus } from './api.js';
-import { getWeekDates, formatDateRange } from './utils/dates.js';
+import { generateDateRange, getInitialDateRange, extendDateRange } from './utils/dates.js';
 
 // Parse reset token once, outside component
 const initialResetToken = new URLSearchParams(window.location.search).get('token');
@@ -27,15 +27,21 @@ export default function App() {
   const [jobs, setJobs] = useState([]);
   const [equipmentList, setEquipmentList] = useState([]);
   const [schedule, setSchedule] = useState([]);
-  const [weekOffset, setWeekOffset] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [exportModal, setExportModal] = useState(null);
   const [showPasskeys, setShowPasskeys] = useState(false);
   const [resetToken, setResetToken] = useState(initialResetToken);
 
-  // Memoize weekDates so it only recalculates when weekOffset changes
-  const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
-  const dateRangeLabel = useMemo(() => formatDateRange(weekDates), [weekDates]);
+  // Date range state for infinite scroll
+  const initialRange = useMemo(() => getInitialDateRange(), []);
+  const [dateRange, setDateRange] = useState(initialRange);
+  const loadingRef = useRef(false);
+
+  // Generate date objects from the current range
+  const allDates = useMemo(
+    () => generateDateRange(dateRange.startDate, dateRange.endDate),
+    [dateRange.startDate, dateRange.endDate]
+  );
 
   const currentUser = teamMembers.find(m => m.id === user?.memberId);
 
@@ -56,24 +62,47 @@ export default function App() {
     }
   }, [showToast]);
 
-  // Load schedule using weekOffset directly to avoid stale closure
-  const loadSchedule = useCallback(async (offset) => {
+  // Load schedule for a date range, optionally merging with existing data
+  const loadScheduleRange = useCallback(async (start, end, merge = false) => {
     try {
-      const dates = getWeekDates(offset);
-      const start = dates[0].dateStr;
-      const end = dates[dates.length - 1].dateStr;
       const entries = await getSchedule(start, end);
-      setSchedule(entries);
+      if (merge) {
+        setSchedule(prev => {
+          // Remove entries in the fetched range, then add new ones
+          const startD = new Date(start);
+          const endD = new Date(end);
+          const filtered = prev.filter(e => {
+            const d = new Date(e.date);
+            return d < startD || d > endD;
+          });
+          return [...filtered, ...entries];
+        });
+      } else {
+        setSchedule(entries);
+      }
     } catch (err) {
       showToast('Failed to load schedule: ' + err.message, 'error');
     }
   }, [showToast]);
 
+  // Load more dates when scrolling to edges
+  const loadMore = useCallback(async (direction) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const ext = extendDateRange(dateRange.startDate, dateRange.endDate, direction, 14);
+      // Fetch schedule for the new dates only, then merge
+      await loadScheduleRange(ext.startDate, ext.endDate, true);
+      setDateRange({ startDate: ext.rangeStart, endDate: ext.rangeEnd });
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [dateRange, loadScheduleRange]);
+
   // Load everything in parallel on login
   useEffect(() => {
     if (!user) return;
     (async () => {
-      // Run seed check and data loading in parallel
       const [seedResult] = await Promise.allSettled([
         getSeedStatus().then(async (status) => {
           if (status.empty) {
@@ -82,29 +111,27 @@ export default function App() {
           }
         }),
         loadData(),
-        loadSchedule(weekOffset),
+        loadScheduleRange(dateRange.startDate, dateRange.endDate),
       ]);
-      // If seeding happened, reload data since seed added new records
-      if (seedResult.status === 'fulfilled') {
-        // Only reload if seed actually inserted data (loadData already ran in parallel)
-      }
     })();
   }, [user]);
 
-  // Reload schedule when week changes (but not on initial mount - that's handled above)
-  useEffect(() => {
-    if (!user) return;
-    loadSchedule(weekOffset);
-  }, [weekOffset]);
-
+  // Refresh just the current schedule range
   const refreshSchedule = useCallback(() => {
-    loadSchedule(weekOffset);
-  }, [loadSchedule, weekOffset]);
+    loadScheduleRange(dateRange.startDate, dateRange.endDate);
+  }, [loadScheduleRange, dateRange]);
 
   const refreshAll = useCallback(() => {
     loadData();
-    loadSchedule(weekOffset);
-  }, [loadData, loadSchedule, weekOffset]);
+    loadScheduleRange(dateRange.startDate, dateRange.endDate);
+  }, [loadData, loadScheduleRange, dateRange]);
+
+  // Reset to today's range
+  const scrollToToday = useCallback(() => {
+    const newRange = getInitialDateRange();
+    setDateRange(newRange);
+    loadScheduleRange(newRange.startDate, newRange.endDate);
+  }, [loadScheduleRange]);
 
   // Auth gates - AFTER all hooks to satisfy Rules of Hooks
   if (loading) return <div className="loading-screen">Loading...</div>;
@@ -177,13 +204,12 @@ export default function App() {
             equipment={equipmentList}
             jobs={jobs}
             schedule={schedule}
-            weekDates={weekDates}
-            weekOffset={weekOffset}
-            onWeekChange={setWeekOffset}
+            allDates={allDates}
+            onLoadMore={loadMore}
+            onScrollToToday={scrollToToday}
             onRefresh={refreshAll}
             onScheduleRefresh={refreshSchedule}
             showToast={showToast}
-            dateRangeLabel={dateRangeLabel}
           />
         )}
         {activeTab === 'jobs' && user.isAdmin && (
