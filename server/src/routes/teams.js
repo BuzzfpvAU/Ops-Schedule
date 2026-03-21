@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 const BCRYPT_ROUNDS = 12;
@@ -30,8 +31,8 @@ router.get('/:id', (req, res) => {
   res.json(member);
 });
 
-// POST create team member or equipment
-router.post('/', async (req, res) => {
+// POST create team member or equipment (admin only)
+router.post('/', requireAdmin, async (req, res) => {
   try {
     const { name, role, location, timezone, color, sort_order, is_equipment, info_url, email, password, is_admin } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
@@ -63,8 +64,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT update team member
-router.put('/:id', async (req, res) => {
+// PUT update team member (admin only)
+router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin } = req.body;
     const existing = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
@@ -106,8 +107,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE (soft delete) team member
-router.delete('/:id', (req, res) => {
+// DELETE (soft delete) team member (admin only)
+router.delete('/:id', requireAdmin, (req, res) => {
   const result = req.db
     .prepare('UPDATE team_members SET active = 0, updated_at = datetime(\'now\') WHERE id = ?')
     .run(req.params.id);

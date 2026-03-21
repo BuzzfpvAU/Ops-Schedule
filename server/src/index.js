@@ -56,8 +56,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // Protected API routes (require login)
-app.use('/api/team-members', requireAuth, requireAdmin, teamRoutes);
-app.use('/api/jobs', requireAuth, requireAdmin, jobRoutes);
+app.use('/api/team-members', requireAuth, teamRoutes);
+app.use('/api/jobs', requireAuth, jobRoutes);
 app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);

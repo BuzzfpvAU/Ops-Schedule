@@ -103,13 +103,13 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [seedResult] = await Promise.allSettled([
-        getSeedStatus().then(async (status) => {
+      await Promise.allSettled([
+        user.isAdmin ? getSeedStatus().then(async (status) => {
           if (status.empty) {
             await seedDatabase();
             showToast('Sample data loaded', 'success');
           }
-        }),
+        }) : Promise.resolve(),
         loadData(),
         loadScheduleRange(dateRange.startDate, dateRange.endDate),
       ]);

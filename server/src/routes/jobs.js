@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -25,8 +26,8 @@ router.get('/code/:code', (req, res) => {
   res.json(job);
 });
 
-// POST create job
-router.post('/', (req, res) => {
+// POST create job (admin only)
+router.post('/', requireAdmin, (req, res) => {
   const { code, name, description, color, client, file_url } = req.body;
   if (!code || !name) return res.status(400).json({ error: 'Code and name are required' });
 
@@ -44,8 +45,8 @@ router.post('/', (req, res) => {
   res.status(201).json(job);
 });
 
-// PUT update job
-router.put('/:id', (req, res) => {
+// PUT update job (admin only)
+router.put('/:id', requireAdmin, (req, res) => {
   const { code, name, description, color, client, file_url } = req.body;
   const existing = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Job not found' });
@@ -74,8 +75,8 @@ router.put('/:id', (req, res) => {
   res.json(job);
 });
 
-// DELETE (soft delete) job
-router.delete('/:id', (req, res) => {
+// DELETE (soft delete) job (admin only)
+router.delete('/:id', requireAdmin, (req, res) => {
   const result = req.db
     .prepare('UPDATE jobs SET active = 0, updated_at = datetime(\'now\') WHERE id = ?')
     .run(req.params.id);
