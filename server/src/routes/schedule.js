@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
+
+const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
 // GET schedule for a date range
 router.get('/', (req, res) => {
@@ -53,6 +56,16 @@ router.put('/', (req, res) => {
   const { team_member_id, job_id, date, notes, status } = req.body;
   if (!team_member_id || !job_id || !date) {
     return res.status(400).json({ error: 'team_member_id, job_id, and date are required' });
+  }
+
+  // Permission check for non-admins
+  if (!req.user.isAdmin) {
+    if (team_member_id !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only modify your own schedule' });
+    }
+    if (!USER_ALLOWED_STATUSES.includes(status)) {
+      return res.status(403).json({ error: 'You can only add notes, TOIL, leave, or unavailable entries' });
+    }
   }
 
   const existing = req.db.prepare(
@@ -108,6 +121,10 @@ router.put('/status', (req, res) => {
     return res.status(400).json({ error: 'team_member_id, date, and status are required' });
   }
 
+  if (!req.user.isAdmin && team_member_id !== req.user.memberId) {
+    return res.status(403).json({ error: 'You can only modify your own schedule' });
+  }
+
   const result = req.db.prepare(`
     UPDATE schedule_entries
     SET status = ?, updated_at = datetime('now')
@@ -118,8 +135,8 @@ router.put('/status', (req, res) => {
   res.json({ success: true });
 });
 
-// PUT bulk assign
-router.put('/bulk', (req, res) => {
+// PUT bulk assign (admin only)
+router.put('/bulk', requireAdmin, (req, res) => {
   const { team_member_id, job_id, dates, notes, status } = req.body;
   if (!team_member_id || !job_id || !dates || !Array.isArray(dates)) {
     return res.status(400).json({ error: 'team_member_id, job_id, and dates array are required' });
@@ -169,6 +186,19 @@ router.delete('/:id', (req, res) => {
 
 // DELETE clear a member's schedule for a specific date
 router.delete('/member/:memberId/date/:date', (req, res) => {
+  // Permission check for non-admins
+  if (!req.user.isAdmin) {
+    if (req.params.memberId !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only clear your own schedule' });
+    }
+    const existing = req.db.prepare(
+      'SELECT status FROM schedule_entries WHERE team_member_id = ? AND date = ?'
+    ).get(req.params.memberId, req.params.date);
+    if (existing && !USER_ALLOWED_STATUSES.includes(existing.status)) {
+      return res.status(403).json({ error: 'You cannot remove admin-assigned entries' });
+    }
+  }
+
   const result = req.db.prepare(
     'DELETE FROM schedule_entries WHERE team_member_id = ? AND date = ?'
   ).run(req.params.memberId, req.params.date);

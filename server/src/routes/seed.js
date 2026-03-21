@@ -17,8 +17,8 @@ router.post('/', (req, res) => {
 
   // Look for seed data in multiple locations
   const seedPaths = [
-    path.join(__dirname, '..', '..', '..', 'seedData.json'),
-    path.join(__dirname, '..', '..', '..', '..', 'seedData.json'),
+    path.join(__dirname, '..', '..', '..', 'client', 'src', 'seedData.json'),
+    path.join(__dirname, '..', '..', 'seedData.json'),
   ];
 
   let seedFile = null;

@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
+const BCRYPT_ROUNDS = 12;
 
 // GET all team members (excluding equipment)
 router.get('/', (req, res) => {
@@ -29,8 +31,8 @@ router.get('/:id', (req, res) => {
 });
 
 // POST create team member or equipment
-router.post('/', (req, res) => {
-  const { name, role, location, timezone, color, sort_order, is_equipment, info_url } = req.body;
+router.post('/', async (req, res) => {
+  const { name, role, location, timezone, color, sort_order, is_equipment, info_url, email, password, is_admin } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
 
   const id = uuidv4();
@@ -39,13 +41,26 @@ router.post('/', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, name, role || '', location || '', timezone || 'Australia/Sydney', color || '#3B82F6', sort_order || 0, is_equipment || 0, info_url || '');
 
+  // Set credentials if provided
+  if (email || password || is_admin !== undefined) {
+    const updates = [];
+    const params = [];
+    if (email) { updates.push('email = ?'); params.push(email); }
+    if (password) { updates.push('password_hash = ?'); params.push(await bcrypt.hash(password, BCRYPT_ROUNDS)); }
+    if (is_admin !== undefined) { updates.push('is_admin = ?'); params.push(is_admin ? 1 : 0); }
+    if (updates.length > 0) {
+      params.push(id);
+      req.db.prepare(`UPDATE team_members SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    }
+  }
+
   const member = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(id);
   res.status(201).json(member);
 });
 
 // PUT update team member
-router.put('/:id', (req, res) => {
-  const { name, role, location, timezone, color, sort_order, info_url } = req.body;
+router.put('/:id', async (req, res) => {
+  const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin } = req.body;
   const existing = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Team member not found' });
 
@@ -63,6 +78,19 @@ router.put('/:id', (req, res) => {
     info_url ?? existing.info_url,
     req.params.id
   );
+
+  // Update credentials if provided
+  if (email !== undefined || password || is_admin !== undefined) {
+    const updates = [];
+    const params = [];
+    if (email !== undefined) { updates.push('email = ?'); params.push(email || null); }
+    if (password) { updates.push('password_hash = ?'); params.push(await bcrypt.hash(password, BCRYPT_ROUNDS)); }
+    if (is_admin !== undefined) { updates.push('is_admin = ?'); params.push(is_admin ? 1 : 0); }
+    if (updates.length > 0) {
+      params.push(req.params.id);
+      req.db.prepare(`UPDATE team_members SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    }
+  }
 
   const member = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
   res.json(member);
