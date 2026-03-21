@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from './context/AuthContext.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import SetupPage from './components/SetupPage.jsx';
@@ -32,16 +32,6 @@ export default function App() {
   // Check for reset token in URL
   const urlParams = new URLSearchParams(window.location.search);
   const resetToken = urlParams.get('token');
-
-  // Auth gates
-  if (loading) return <div className="loading-screen">Loading...</div>;
-  if (resetToken) return <ResetPassword token={resetToken} onDone={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }} />;
-  if (needsSetup) return <SetupPage />;
-  if (!user) {
-    if (authView === 'forgot') return <ForgotPassword onBack={() => setAuthView('login')} />;
-    return <LoginPage onForgotPassword={() => setAuthView('forgot')} />;
-  }
-  if (user.mustChangePassword) return <ChangePassword forced onDone={() => window.location.reload()} />;
 
   const currentUser = teamMembers.find(m => m.id === user?.memberId);
 
@@ -95,6 +85,16 @@ export default function App() {
     loadData();
     loadSchedule();
   };
+
+  // Auth gates - AFTER all hooks to satisfy Rules of Hooks
+  if (loading) return <div className="loading-screen">Loading...</div>;
+  if (resetToken) return <ResetPassword token={resetToken} onDone={() => { window.history.replaceState({}, '', '/'); setAuthView('login'); }} />;
+  if (needsSetup) return <SetupPage />;
+  if (!user) {
+    if (authView === 'forgot') return <ForgotPassword onBack={() => setAuthView('login')} />;
+    return <LoginPage onForgotPassword={() => setAuthView('forgot')} />;
+  }
+  if (user.mustChangePassword) return <ChangePassword forced onDone={() => window.location.reload()} />;
 
   return (
     <div className="app">
