@@ -4,11 +4,11 @@
   "description": "Team operations schedule planner",
   "type": "module",
   "private": true,
-  "main": "server/src/index.js",
+  "main": "index.js",
   "scripts": {
-    "preinstall": "cd client && npm install && cd ../server && npm install",
+    "postinstall": "cd client && npm install && cd ../server && npm install",
     "build": "cd client && npm run build",
-    "start": "cd server && node src/index.js",
+    "start": "node index.js",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "dev": "npm run dev:server & npm run dev:client"
@@ -17,7 +17,14 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "express": "^4.21.1"
-  },
-  "devDependencies": {}
+    "@simplewebauthn/server": "^13.3.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^11.7.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.3",
+    "resend": "^6.9.4",
+    "uuid": "^10.0.0"
+  }
 }
