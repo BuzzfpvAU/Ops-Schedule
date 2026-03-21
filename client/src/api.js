@@ -108,6 +108,13 @@ export async function updateScheduleStatus(memberId, date, status) {
   });
 }
 
+export async function updateScheduleNotes(memberId, date, notes) {
+  return api('/schedule/notes', {
+    method: 'PUT',
+    body: JSON.stringify({ team_member_id: memberId, date, notes }),
+  });
+}
+
 export async function deleteScheduleEntry(id) {
   return api(`/schedule/${id}`, { method: 'DELETE' });
 }

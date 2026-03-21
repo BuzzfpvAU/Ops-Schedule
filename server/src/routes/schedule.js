@@ -17,7 +17,7 @@ router.get('/', (req, res) => {
     SELECT
       se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
       tm.name as member_name, tm.color as member_color, tm.timezone,
-      j.code as job_code, j.name as job_name, j.color as job_color, j.file_url as job_file_url
+      j.code as job_code, j.name as job_name, j.color as job_color, j.file_url as job_file_url, j.description as job_description
     FROM schedule_entries se
     JOIN team_members tm ON se.team_member_id = tm.id
     JOIN jobs j ON se.job_id = j.id
@@ -34,7 +34,7 @@ router.get('/member/:memberId', (req, res) => {
   let query = `
     SELECT
       se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
-      j.code as job_code, j.name as job_name, j.color as job_color, j.file_url as job_file_url
+      j.code as job_code, j.name as job_name, j.color as job_color, j.file_url as job_file_url, j.description as job_description
     FROM schedule_entries se
     JOIN jobs j ON se.job_id = j.id
     WHERE se.team_member_id = ?
@@ -130,6 +130,27 @@ router.put('/status', (req, res) => {
     SET status = ?, updated_at = datetime('now')
     WHERE team_member_id = ? AND date = ?
   `).run(status, team_member_id, date);
+
+  if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
+  res.json({ success: true });
+});
+
+// PUT update notes only
+router.put('/notes', (req, res) => {
+  const { team_member_id, date, notes } = req.body;
+  if (!team_member_id || !date) {
+    return res.status(400).json({ error: 'team_member_id and date are required' });
+  }
+
+  if (!req.user.isAdmin && team_member_id !== req.user.memberId) {
+    return res.status(403).json({ error: 'You can only modify your own schedule' });
+  }
+
+  const result = req.db.prepare(`
+    UPDATE schedule_entries
+    SET notes = ?, updated_at = datetime('now')
+    WHERE team_member_id = ? AND date = ?
+  `).run(notes || '', team_member_id, date);
 
   if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
   res.json({ success: true });
