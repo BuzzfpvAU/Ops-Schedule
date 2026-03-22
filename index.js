@@ -55,12 +55,25 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// TEMPORARY: Download database file (remove after use)
-app.get('/api/download-db', (req, res) => {
-  if (req.query.secret !== 'migrate-excel-2026-xK9m') return res.status(403).json({ error: 'Invalid secret' });
-  const dbPath = db.pragma('database_list')[0]?.file;
-  if (!dbPath) return res.status(500).json({ error: 'Cannot find database path' });
-  res.download(dbPath, 'ops-schedule.db');
+// TEMPORARY: Upload replacement database (remove after use)
+app.post('/api/upload-db', express.json({ limit: '5mb' }), (req, res) => {
+  if (req.body.secret !== 'migrate-excel-2026-xK9m') return res.status(403).json({ error: 'Invalid secret' });
+  try {
+    const dbPath = db.pragma('database_list')[0]?.file;
+    if (!dbPath) return res.status(500).json({ error: 'Cannot find database path' });
+    const buf = Buffer.from(req.body.data, 'base64');
+    db.close();
+    const fs = require('fs');
+    // Remove WAL files
+    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
+    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
+    fs.writeFileSync(dbPath, buf);
+    res.json({ success: true, size: buf.length });
+    // Exit so Hostinger restarts the process with new DB
+    setTimeout(() => process.exit(0), 500);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // TEMPORARY: One-time data migration endpoint (remove after use)
