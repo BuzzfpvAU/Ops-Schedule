@@ -27,10 +27,10 @@ ALTER TABLE team_members ADD COLUMN sds_url TEXT DEFAULT '';
 **File:** `server/src/routes/teams.js`
 
 ### POST /team-members (create)
-Accept 5 new fields from request body: `serial_number`, `dimensions`, `weight`, `serviceable`, `sds_url`. Insert into corresponding columns.
+Accept 5 new fields from request body: `serial_number`, `dimensions`, `weight`, `serviceable`, `sds_url`. The existing INSERT statement must be expanded from 9 columns to 14 columns to include all new fields. The `serviceable` field arrives as a boolean from the client checkbox and must be coerced to integer: `serviceable: body.serviceable ? 1 : 0`.
 
 ### PUT /team-members/:id (update)
-Add same 5 fields to the UPDATE SET clause.
+Add same 5 fields to the UPDATE SET clause. Each new field must use the existing fallback-to-current pattern: `value ?? existing.value` so that omitted fields are not reset to defaults. The `serviceable` field must also be coerced: `body.serviceable !== undefined ? (body.serviceable ? 1 : 0) : existing.serviceable`.
 
 ### GET endpoints
 No changes — `SELECT *` returns all columns automatically.
@@ -62,7 +62,7 @@ Both URL fields have a clickable external link icon next to the input that opens
 
 ### Schedule Grid (ScheduleGrid.jsx)
 
-- Unserviceable equipment displays a warning icon next to the equipment name in schedule rows
+- Unserviceable equipment displays a warning icon in the left-side member name column, next to the equipment name
 - No behavioural change — unserviceable equipment can still be assigned to jobs
 
 ## Files Modified
