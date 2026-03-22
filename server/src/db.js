@@ -108,6 +108,23 @@ export function initDb() {
     db.exec(`ALTER TABLE team_members ADD COLUMN is_viewer INTEGER DEFAULT 0`);
   }
 
+  // Migrate: add equipment-specific columns
+  if (!columns.includes('serial_number')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN serial_number TEXT DEFAULT ''`);
+  }
+  if (!columns.includes('dimensions')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN dimensions TEXT DEFAULT ''`);
+  }
+  if (!columns.includes('weight')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN weight TEXT DEFAULT ''`);
+  }
+  if (!columns.includes('serviceable')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN serviceable INTEGER DEFAULT 1`);
+  }
+  if (!columns.includes('sds_url')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN sds_url TEXT DEFAULT ''`);
+  }
+
   // New tables for auth
   db.exec(`
     CREATE TABLE IF NOT EXISTS passkey_credentials (

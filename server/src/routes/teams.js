@@ -34,14 +34,14 @@ router.get('/:id', (req, res) => {
 // POST create team member or equipment (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name, role, location, timezone, color, sort_order, is_equipment, info_url, email, password, is_admin } = req.body;
+    const { name, role, location, timezone, color, sort_order, is_equipment, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
     const id = uuidv4();
     req.db.prepare(`
-      INSERT INTO team_members (id, name, role, location, timezone, color, sort_order, is_equipment, info_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, role || '', location || '', timezone || 'Australia/Sydney', color || '#3B82F6', sort_order || 0, is_equipment || 0, info_url || '');
+      INSERT INTO team_members (id, name, role, location, timezone, color, sort_order, is_equipment, info_url, serial_number, dimensions, weight, serviceable, sds_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, role || '', location || '', timezone || 'Australia/Sydney', color || '#3B82F6', sort_order || 0, is_equipment || 0, info_url || '', serial_number || '', dimensions || '', weight || '', serviceable !== undefined ? (serviceable ? 1 : 0) : 1, sds_url || '');
 
     // Set credentials if provided
     if (email || password || is_admin !== undefined) {
@@ -67,13 +67,15 @@ router.post('/', requireAdmin, async (req, res) => {
 // PUT update team member (admin only)
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
-    const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin } = req.body;
+    const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url } = req.body;
     const existing = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Team member not found' });
 
     req.db.prepare(`
       UPDATE team_members
-      SET name = ?, role = ?, location = ?, timezone = ?, color = ?, sort_order = ?, info_url = ?, updated_at = datetime('now', '+10 hours')
+      SET name = ?, role = ?, location = ?, timezone = ?, color = ?, sort_order = ?, info_url = ?,
+          serial_number = ?, dimensions = ?, weight = ?, serviceable = ?, sds_url = ?,
+          updated_at = datetime('now', '+10 hours')
       WHERE id = ?
     `).run(
       name || existing.name,
@@ -83,6 +85,11 @@ router.put('/:id', requireAdmin, async (req, res) => {
       color || existing.color,
       sort_order ?? existing.sort_order,
       info_url ?? existing.info_url,
+      serial_number ?? existing.serial_number ?? '',
+      dimensions ?? existing.dimensions ?? '',
+      weight ?? existing.weight ?? '',
+      serviceable !== undefined ? (serviceable ? 1 : 0) : (existing.serviceable ?? 1),
+      sds_url ?? existing.sds_url ?? '',
       req.params.id
     );
 

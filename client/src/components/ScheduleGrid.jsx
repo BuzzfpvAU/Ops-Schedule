@@ -764,6 +764,9 @@ export default function ScheduleGrid({
                               <div className="member-info">
                                 <span className="name" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                   {item.name}
+                                  {item.serviceable === 0 && (
+                                    <span title="Unserviceable" style={{ color: '#f59e0b', fontSize: 13 }}>&#9888;</span>
+                                  )}
                                   {item.info_url && (
                                     <a
                                       href={item.info_url}
@@ -1192,7 +1195,7 @@ export default function ScheduleGrid({
               </div>
               {editMember.is_equipment === 1 && (
                 <div className="form-group">
-                  <label>Info / Documentation Link</label>
+                  <label>Tagz.au Link</label>
                   <input type="url" value={editForm.info_url || ''} onChange={(e) => setEditForm({ ...editForm, info_url: e.target.value })} placeholder="https://..." />
                 </div>
               )}
