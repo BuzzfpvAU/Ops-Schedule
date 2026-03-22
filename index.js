@@ -55,6 +55,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// TEMPORARY: Download database file (remove after use)
+app.get('/api/download-db', (req, res) => {
+  if (req.query.secret !== 'migrate-excel-2026-xK9m') return res.status(403).json({ error: 'Invalid secret' });
+  const dbPath = db.pragma('database_list')[0]?.file;
+  if (!dbPath) return res.status(500).json({ error: 'Cannot find database path' });
+  res.download(dbPath, 'ops-schedule.db');
+});
+
 // TEMPORARY: One-time data migration endpoint (remove after use)
 app.post('/api/migrate-data', (req, res) => {
   const { secret, jobs, entries } = req.body;
