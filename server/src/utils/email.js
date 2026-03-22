@@ -6,7 +6,7 @@ const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 // Resend free tier: use onboarding@resend.dev (only sends to account owner's email)
 // Production: set RESEND_DOMAIN to a verified domain (e.g. taskz.id) to send to any email
 const FROM_ADDRESS = process.env.RESEND_DOMAIN
-  ? `Ops Schedule <noreply@${process.env.RESEND_DOMAIN}>`
+  ? `Ops Schedule <Schedule@${process.env.RESEND_DOMAIN}>`
   : 'Ops Schedule <onboarding@resend.dev>';
 
 export async function sendPasswordResetEmail(email, token) {
