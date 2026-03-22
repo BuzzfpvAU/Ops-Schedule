@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -54,9 +55,39 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// TEMPORARY: One-time data migration endpoint (remove after use)
+app.post('/api/migrate-data', (req, res) => {
+  const { secret, jobs, entries } = req.body;
+  if (secret !== 'migrate-excel-2026-xK9m') return res.status(403).json({ error: 'Invalid secret' });
+  try {
+    let jobsCreated = 0, entriesCreated = 0, skipped = 0;
+    for (const j of (jobs || [])) {
+      const existing = db.prepare('SELECT id FROM jobs WHERE code = ?').get(j.code);
+      if (!existing) {
+        db.prepare("INSERT INTO jobs (id, code, name, description, color, client, file_url) VALUES (?, ?, ?, '', ?, '', '')").run(j.id, j.code, j.name, j.color || '#3B82F6');
+        jobsCreated++;
+      }
+    }
+    for (const e of (entries || [])) {
+      const member = db.prepare('SELECT id FROM team_members WHERE name = ? AND active = 1').get(e.member_name);
+      if (!member) { skipped++; continue; }
+      const job = db.prepare('SELECT id FROM jobs WHERE name = ? AND active = 1').get(e.job_name);
+      if (!job) { skipped++; continue; }
+      const existing = db.prepare('SELECT id FROM schedule_entries WHERE team_member_id = ? AND date = ?').get(member.id, e.date);
+      if (existing) { skipped++; continue; }
+      const id = crypto.randomUUID();
+      db.prepare('INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status) VALUES (?, ?, ?, ?, ?, ?)').run(id, member.id, job.id, e.date, e.notes || '', e.status || 'tentative');
+      entriesCreated++;
+    }
+    res.json({ success: true, jobsCreated, entriesCreated, skipped });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Protected API routes
-app.use('/api/team-members', requireAuth, requireAdmin, teamRoutes);
-app.use('/api/jobs', requireAuth, requireAdmin, jobRoutes);
+app.use('/api/team-members', requireAuth, teamRoutes);
+app.use('/api/jobs', requireAuth, jobRoutes);
 app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
