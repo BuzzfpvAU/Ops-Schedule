@@ -34,7 +34,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 // Initialize database
@@ -56,7 +56,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // TEMPORARY: Upload replacement database (remove after use)
-app.post('/api/upload-db', express.json({ limit: '5mb' }), (req, res) => {
+app.post('/api/upload-db', express.json({ limit: '10mb' }), (req, res) => {
   if (req.body.secret !== 'migrate-excel-2026-xK9m') return res.status(403).json({ error: 'Invalid secret' });
   try {
     const dbPath = db.pragma('database_list')[0]?.file;
