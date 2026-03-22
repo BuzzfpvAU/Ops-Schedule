@@ -606,9 +606,18 @@ export default function ScheduleGrid({
             {(() => {
               const rows = [];
 
+              // Find logged-in user's location for priority sorting
+              const currentMember = filteredMembers.find(m => m.id === authUser?.memberId);
+              const userLocation = currentMember?.location || null;
+
               // Build ordered, deduplicated list of locations from filtered members
               const orderedLocations = [];
               const seenLocations = new Set();
+              // Put user's location first if they have one
+              if (userLocation && !authUser?.isViewer) {
+                seenLocations.add(userLocation);
+                orderedLocations.push(userLocation);
+              }
               for (const member of filteredMembers) {
                 const loc = member.location || 'Unassigned';
                 if (!seenLocations.has(loc)) {
@@ -617,12 +626,16 @@ export default function ScheduleGrid({
                 }
               }
 
-              // Group members by location
+              // Group members by location, with logged-in user first in their group
               const membersByLocation = {};
               for (const member of filteredMembers) {
                 const loc = member.location || 'Unassigned';
                 if (!membersByLocation[loc]) membersByLocation[loc] = [];
-                membersByLocation[loc].push(member);
+                if (member.id === authUser?.memberId) {
+                  membersByLocation[loc].unshift(member);
+                } else {
+                  membersByLocation[loc].push(member);
+                }
               }
 
               orderedLocations.forEach((location, groupIndex) => {
