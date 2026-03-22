@@ -1,4 +1,3 @@
-import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -34,7 +33,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json());
 app.use(cookieParser());
 
 // Initialize database
@@ -53,21 +52,6 @@ app.use('/api/auth/passkey', passkeyRoutes);
 // Health check (no auth)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' }) });
-});
-
-// TEMPORARY: Upload DB (remove after use)
-app.post('/api/upload-db', (req, res) => {
-  if (req.body.secret !== 'migrate-excel-2026-xK9m') return res.status(403).json({ error: 'Invalid secret' });
-  try {
-    const dbPath = db.pragma('database_list')[0]?.file;
-    const buf = Buffer.from(req.body.data, 'base64');
-    db.close();
-    try { fs.unlinkSync(dbPath + '-wal'); } catch {}
-    try { fs.unlinkSync(dbPath + '-shm'); } catch {}
-    fs.writeFileSync(dbPath, buf);
-    res.json({ success: true, size: buf.length });
-    setTimeout(() => process.exit(0), 500);
-  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Protected API routes
