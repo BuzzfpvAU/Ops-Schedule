@@ -141,31 +141,37 @@ export default function ScheduleGrid({
     };
   }, []);
 
+  // Scroll the grid so today's column is centered
+  const scrollToTodayColumn = useCallback(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const todayHeader = el.querySelector('.day-header.today');
+    if (!todayHeader) return;
+    const todayLeft = todayHeader.offsetLeft;
+    const dayColWidth = todayHeader.offsetWidth;
+    const scrollTarget = todayLeft - (el.clientWidth / 2) + (dayColWidth / 2);
+    el.scrollLeft = Math.max(0, scrollTarget);
+  }, []);
+
   // Scroll to today's column on initial mount
   const hasScrolledToToday = useRef(false);
   useEffect(() => {
     if (hasScrolledToToday.current || !gridRef.current || weekDates.length === 0) return;
     const todayIdx = weekDates.findIndex(d => d.isToday);
     if (todayIdx >= 0) {
-      // Wait for the table to render, then scroll
-      requestAnimationFrame(() => {
-        const el = gridRef.current;
-        if (!el) return;
-        const memberColWidth = 180;
-        const dayColWidth = el.querySelector('.day-header')?.offsetWidth || 90;
-        // Scroll so today is roughly centered
-        const scrollTarget = memberColWidth + (todayIdx * dayColWidth) - (el.clientWidth / 2) + (dayColWidth / 2);
-        el.scrollLeft = Math.max(0, scrollTarget);
+      setTimeout(() => {
+        scrollToTodayColumn();
         hasScrolledToToday.current = true;
-      });
+      }, 50);
     }
-  }, [weekDates]);
+  }, [weekDates, schedule, scrollToTodayColumn]);
 
   // Scroll to today when button is pressed
   const handleScrollToToday = useCallback(() => {
     onScrollToToday();
-    hasScrolledToToday.current = false; // Allow auto-scroll after reset
-  }, [onScrollToToday]);
+    // Scroll after a short delay to allow any date range change to render
+    setTimeout(() => scrollToTodayColumn(), 100);
+  }, [onScrollToToday, scrollToTodayColumn]);
 
   // Infinite scroll: load more dates when near edges
   useEffect(() => {
