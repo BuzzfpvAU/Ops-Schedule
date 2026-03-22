@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createTeamMember, updateTeamMember, deleteTeamMember, createEquipment, authAdminResetPassword } from '../api.js';
+import { createTeamMember, updateTeamMember, deleteTeamMember, createEquipment, authAdminResetPassword, shareViewerAccess } from '../api.js';
 
 const TIMEZONES = [
   { value: 'Australia/Sydney', label: 'AEST - Sydney/Melbourne/Brisbane' },
@@ -17,6 +17,9 @@ const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '
 
 export default function TeamManager({ members, equipment: equipmentItems = [], onRefresh, showToast }) {
   const [showModal, setShowModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareSending, setShareSending] = useState(false);
   const [editing, setEditing] = useState(null);
   const [modalType, setModalType] = useState('member'); // 'member' or 'equipment'
   const [form, setForm] = useState({
@@ -83,7 +86,10 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
       <div className="card">
         <div className="card-header">
           <h3>Team Members</h3>
-          <button className="btn btn-primary" onClick={openCreate}>+ Add Member</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={() => { setShareEmail(''); setShowShareModal(true); }}>Share View Access</button>
+            <button className="btn btn-primary" onClick={openCreate}>+ Add Member</button>
+          </div>
         </div>
 
         {members.length === 0 && (
@@ -121,6 +127,49 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
       </div>
 
       {/* Equipment is now managed on the Equipment tab */}
+
+      {showShareModal && (
+        <div className="modal-overlay" onClick={() => setShowShareModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+            <h2>Share View Access</h2>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>
+              Send view-only login credentials to an email address. They will be able to see the schedule but cannot make changes.
+            </p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!shareEmail) return;
+              setShareSending(true);
+              try {
+                await shareViewerAccess(shareEmail);
+                showToast(`View access sent to ${shareEmail}`, 'success');
+                setShowShareModal(false);
+              } catch (err) {
+                showToast(err.message, 'error');
+              } finally {
+                setShareSending(false);
+              }
+            }}>
+              <div className="form-group">
+                <label>Recipient Email</label>
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                  placeholder="someone@example.com"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn" onClick={() => setShowShareModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={shareSending}>
+                  {shareSending ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>

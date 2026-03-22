@@ -148,7 +148,7 @@ export default function App() {
       <header className="header">
         <h1>Ops Schedule</h1>
         <div className="header-actions">
-          {currentUser && (
+          {currentUser && !user.isViewer && (
             <button
               className="header-export-btn"
               title="Download my calendar"
@@ -170,15 +170,17 @@ export default function App() {
               </svg>
             </button>
           )}
-          {currentUser && <NotificationBell memberId={currentUser.id} />}
+          {currentUser && !user.isViewer && <NotificationBell memberId={currentUser.id} />}
           <div className="user-info">
-            <span className="user-name">{user.name}</span>
-            <span className={`role-badge ${user.isAdmin ? 'admin' : 'user'}`}>
-              {user.isAdmin ? 'Admin' : 'User'}
+            <span className="user-name">{user.isViewer ? 'Viewer' : user.name}</span>
+            <span className={`role-badge ${user.isAdmin ? 'admin' : user.isViewer ? 'viewer' : 'user'}`}>
+              {user.isAdmin ? 'Admin' : user.isViewer ? 'Viewer' : 'User'}
             </span>
-            <button className="passkey-btn" onClick={() => setShowPasskeys(true)} title="Manage passkeys">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-            </button>
+            {!user.isViewer && (
+              <button className="passkey-btn" onClick={() => setShowPasskeys(true)} title="Manage passkeys">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+              </button>
+            )}
             <button className="logout-btn" onClick={logout} title="Sign out">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
@@ -188,7 +190,7 @@ export default function App() {
 
       <nav className="nav-tabs">
         <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>Schedule</button>
-        {user.isAdmin && (
+        {user.isAdmin && !user.isViewer && (
           <>
             <button className={`nav-tab ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>Jobs / Projects</button>
             <button className={`nav-tab ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>Team</button>

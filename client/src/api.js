@@ -294,6 +294,10 @@ export async function authAdminResetPassword(memberId, tempPassword) {
   return api('/auth/admin-reset-password', { method: 'POST', body: JSON.stringify({ memberId, tempPassword }) });
 }
 
+export async function shareViewerAccess(recipientEmail) {
+  return api('/auth/share-viewer-access', { method: 'POST', body: JSON.stringify({ recipientEmail }) });
+}
+
 // Passkey
 export async function passkeyRegisterOptions() {
   return api('/auth/passkey/register-options', { method: 'POST' });

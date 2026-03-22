@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { requireAuth, requireAdmin, signToken, setAuthCookie } from '../middleware/auth.js';
-import { sendPasswordResetEmail, isEmailConfigured } from '../utils/email.js';
+import { sendPasswordResetEmail, sendViewerAccessEmail, isEmailConfigured } from '../utils/email.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
@@ -59,7 +59,7 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   if (!checkRateLimit(loginAttempts, req.ip, 5, 15 * 60 * 1000)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
 
-  const user = req.db.prepare('SELECT id, name, email, password_hash, is_admin, active, must_change_password FROM team_members WHERE email = ? COLLATE NOCASE').get(email);
+  const user = req.db.prepare('SELECT id, name, email, password_hash, is_admin, is_viewer, active, must_change_password FROM team_members WHERE email = ? COLLATE NOCASE').get(email);
   if (!user || !user.password_hash) return res.status(401).json({ error: 'Invalid email or password' });
   if (!user.active) return res.status(401).json({ error: 'Account deactivated' });
 
@@ -68,7 +68,7 @@ router.post('/login', async (req, res) => {
 
   const token = signToken(user.id, user.is_admin === 1);
   setAuthCookie(res, token);
-  res.json({ success: true, user: { memberId: user.id, name: user.name, email: user.email, isAdmin: user.is_admin === 1, mustChangePassword: user.must_change_password === 1 } });
+  res.json({ success: true, user: { memberId: user.id, name: user.name, email: user.email, isAdmin: user.is_admin === 1, isViewer: user.is_viewer === 1, mustChangePassword: user.must_change_password === 1 } });
 });
 
 router.post('/logout', (req, res) => {
@@ -104,7 +104,7 @@ router.get('/init', (req, res) => {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = req.db.prepare(
-      'SELECT id, name, email, is_admin, active, must_change_password FROM team_members WHERE id = ?'
+      'SELECT id, name, email, is_admin, is_viewer, active, must_change_password FROM team_members WHERE id = ?'
     ).get(payload.memberId);
 
     if (!user || !user.active) {
@@ -120,6 +120,7 @@ router.get('/init', (req, res) => {
         name: user.name,
         email: user.email,
         isAdmin: user.is_admin === 1,
+        isViewer: user.is_viewer === 1,
         mustChangePassword: user.must_change_password === 1,
       }
     });
@@ -130,6 +131,7 @@ router.get('/init', (req, res) => {
 });
 
 router.post('/change-password', requireAuth, async (req, res) => {
+  if (req.user.isViewer) return res.status(403).json({ error: 'Viewer account cannot change password' });
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -148,8 +150,8 @@ router.post('/forgot-password', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'Email required' });
   if (!checkRateLimit(resetAttempts, email, 3, 60 * 60 * 1000)) return res.status(429).json({ error: 'Too many reset requests. Try again later.' });
 
-  const user = req.db.prepare('SELECT id FROM team_members WHERE email = ? COLLATE NOCASE AND active = 1').get(email);
-  if (user) {
+  const user = req.db.prepare('SELECT id, is_viewer FROM team_members WHERE email = ? COLLATE NOCASE AND active = 1').get(email);
+  if (user && !user.is_viewer) {
     const token = crypto.randomUUID();
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     // Use SQLite-compatible datetime format (no T separator, no Z suffix)
@@ -202,6 +204,19 @@ router.post('/admin-reset-password', requireAuth, requireAdmin, async (req, res)
   const passwordHash = await bcrypt.hash(tempPassword, BCRYPT_ROUNDS);
   req.db.prepare('UPDATE team_members SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, memberId);
   res.json({ success: true });
+});
+
+router.post('/share-viewer-access', requireAuth, requireAdmin, async (req, res) => {
+  const { recipientEmail } = req.body;
+  if (!recipientEmail) return res.status(400).json({ error: 'Recipient email required' });
+
+  try {
+    await sendViewerAccessEmail(recipientEmail);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to send viewer access email:', err.message);
+    res.status(500).json({ error: 'Failed to send email. Please try again later.' });
+  }
 });
 
 export default router;

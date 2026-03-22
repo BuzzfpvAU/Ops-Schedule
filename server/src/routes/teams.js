@@ -9,7 +9,7 @@ const BCRYPT_ROUNDS = 12;
 // GET all team members (excluding equipment)
 router.get('/', (req, res) => {
   const members = req.db
-    .prepare('SELECT * FROM team_members WHERE active = 1 AND is_equipment = 0 ORDER BY sort_order, name')
+    .prepare('SELECT * FROM team_members WHERE active = 1 AND is_equipment = 0 AND (is_viewer = 0 OR is_viewer IS NULL) ORDER BY sort_order, name')
     .all();
   res.json(members);
 });

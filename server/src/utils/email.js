@@ -40,6 +40,39 @@ export async function sendPasswordResetEmail(email, token) {
   return { success: true };
 }
 
+export async function sendViewerAccessEmail(recipientEmail) {
+  const loginUrl = APP_URL;
+
+  if (!resend) {
+    console.log(`[DEV] Viewer access email for ${recipientEmail}: Login at ${loginUrl} with view@auav.com.au / rh2FpFcU34xvDs`);
+    return { success: true, dev: true };
+  }
+
+  console.log(`Sending viewer access email to ${recipientEmail} from ${FROM_ADDRESS}`);
+
+  const { data, error } = await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: recipientEmail,
+    subject: 'Ops Schedule — View Access',
+    html: `
+      <h2>Ops Schedule — View Access</h2>
+      <p>You've been given view-only access to the Ops Schedule.</p>
+      <p><strong>Login URL:</strong> <a href="${loginUrl}">${loginUrl}</a></p>
+      <p><strong>Email:</strong> view@auav.com.au</p>
+      <p><strong>Password:</strong> rh2FpFcU34xvDs</p>
+      <p><a href="${loginUrl}" style="display:inline-block;padding:10px 20px;background:#4A6CF7;color:#fff;text-decoration:none;border-radius:6px;">Open Ops Schedule</a></p>
+    `,
+  });
+
+  if (error) {
+    console.error('Resend API error:', JSON.stringify(error));
+    throw new Error(`Failed to send viewer access email: ${error.message || JSON.stringify(error)}`);
+  }
+
+  console.log('Viewer access email sent successfully:', JSON.stringify(data));
+  return { success: true };
+}
+
 export function isEmailConfigured() {
   return !!resend;
 }

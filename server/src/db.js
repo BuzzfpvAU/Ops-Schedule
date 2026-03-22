@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -102,6 +104,9 @@ export function initDb() {
   if (!columns.includes('must_change_password')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN must_change_password INTEGER DEFAULT 0`);
   }
+  if (!columns.includes('is_viewer')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN is_viewer INTEGER DEFAULT 0`);
+  }
 
   // New tables for auth
   db.exec(`
@@ -123,6 +128,16 @@ export function initDb() {
       FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
     );
   `);
+
+  // Create shared viewer account if it doesn't exist
+  const viewerExists = db.prepare("SELECT id FROM team_members WHERE email = 'view@auav.com.au'").get();
+  if (!viewerExists) {
+    const viewerHash = bcrypt.hashSync('rh2FpFcU34xvDs', 12);
+    db.prepare(
+      "INSERT INTO team_members (id, name, email, password_hash, is_viewer, is_admin, active) VALUES (?, 'Viewer', 'view@auav.com.au', ?, 1, 0, 1)"
+    ).run(crypto.randomUUID(), viewerHash);
+    console.log('Created shared viewer account: view@auav.com.au');
+  }
 
   return db;
 }
