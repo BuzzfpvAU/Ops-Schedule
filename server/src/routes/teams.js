@@ -73,7 +73,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
 
     req.db.prepare(`
       UPDATE team_members
-      SET name = ?, role = ?, location = ?, timezone = ?, color = ?, sort_order = ?, info_url = ?, updated_at = datetime('now')
+      SET name = ?, role = ?, location = ?, timezone = ?, color = ?, sort_order = ?, info_url = ?, updated_at = datetime('now', '+10 hours')
       WHERE id = ?
     `).run(
       name || existing.name,
@@ -110,7 +110,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
 // DELETE (soft delete) team member (admin only)
 router.delete('/:id', requireAdmin, (req, res) => {
   const result = req.db
-    .prepare('UPDATE team_members SET active = 0, updated_at = datetime(\'now\') WHERE id = ?')
+    .prepare('UPDATE team_members SET active = 0, updated_at = datetime(\'now\', \'+10 hours\') WHERE id = ?')
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Team member not found' });
   res.json({ success: true });

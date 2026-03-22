@@ -59,7 +59,7 @@ router.put('/:id', requireAdmin, (req, res) => {
 
   req.db.prepare(`
     UPDATE jobs
-    SET code = ?, name = ?, description = ?, color = ?, client = ?, file_url = ?, updated_at = datetime('now')
+    SET code = ?, name = ?, description = ?, color = ?, client = ?, file_url = ?, updated_at = datetime('now', '+10 hours')
     WHERE id = ?
   `).run(
     code || existing.code,
@@ -78,7 +78,7 @@ router.put('/:id', requireAdmin, (req, res) => {
 // DELETE (soft delete) job (admin only)
 router.delete('/:id', requireAdmin, (req, res) => {
   const result = req.db
-    .prepare('UPDATE jobs SET active = 0, updated_at = datetime(\'now\') WHERE id = ?')
+    .prepare('UPDATE jobs SET active = 0, updated_at = datetime(\'now\', \'+10 hours\') WHERE id = ?')
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Job not found' });
   res.json({ success: true });

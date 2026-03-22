@@ -51,7 +51,7 @@ app.use('/api/auth/passkey', passkeyRoutes);
 
 // Health check (no auth)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' }) });
 });
 
 // Protected API routes

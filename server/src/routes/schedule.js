@@ -78,7 +78,7 @@ router.put('/', (req, res) => {
   if (existing) {
     req.db.prepare(`
       UPDATE schedule_entries
-      SET job_id = ?, notes = ?, status = ?, updated_at = datetime('now')
+      SET job_id = ?, notes = ?, status = ?, updated_at = datetime('now', '+10 hours')
       WHERE id = ?
     `).run(job_id, notes || '', status || existing.status || 'tentative', existing.id);
     id = existing.id;
@@ -127,7 +127,7 @@ router.put('/status', (req, res) => {
 
   const result = req.db.prepare(`
     UPDATE schedule_entries
-    SET status = ?, updated_at = datetime('now')
+    SET status = ?, updated_at = datetime('now', '+10 hours')
     WHERE team_member_id = ? AND date = ?
   `).run(status, team_member_id, date);
 
@@ -148,7 +148,7 @@ router.put('/notes', (req, res) => {
 
   const result = req.db.prepare(`
     UPDATE schedule_entries
-    SET notes = ?, updated_at = datetime('now')
+    SET notes = ?, updated_at = datetime('now', '+10 hours')
     WHERE team_member_id = ? AND date = ?
   `).run(notes || '', team_member_id, date);
 
@@ -167,7 +167,7 @@ router.put('/bulk', requireAdmin, (req, res) => {
     INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(team_member_id, date)
-    DO UPDATE SET job_id = excluded.job_id, notes = excluded.notes, status = excluded.status, updated_at = datetime('now')
+    DO UPDATE SET job_id = excluded.job_id, notes = excluded.notes, status = excluded.status, updated_at = datetime('now', '+10 hours')
   `);
 
   const insertMany = req.db.transaction((dates) => {

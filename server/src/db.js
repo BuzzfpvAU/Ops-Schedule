@@ -36,8 +36,8 @@ export function initDb() {
       is_equipment INTEGER DEFAULT 0,
       info_url TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+10 hours'))
     );
 
     CREATE TABLE IF NOT EXISTS jobs (
@@ -49,8 +49,8 @@ export function initDb() {
       client TEXT DEFAULT '',
       file_url TEXT DEFAULT '',
       active INTEGER DEFAULT 1,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+10 hours'))
     );
 
     CREATE TABLE IF NOT EXISTS schedule_entries (
@@ -60,8 +60,8 @@ export function initDb() {
       date TEXT NOT NULL,
       notes TEXT DEFAULT '',
       status TEXT DEFAULT 'tentative',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+10 hours')),
       FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE,
       FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
       UNIQUE(team_member_id, date)
@@ -80,7 +80,7 @@ export function initDb() {
       date TEXT,
       job_code TEXT,
       read INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
       FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
     );
 
@@ -110,7 +110,7 @@ export function initDb() {
       team_member_id TEXT NOT NULL,
       public_key TEXT NOT NULL,
       counter INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
       FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
     );
 

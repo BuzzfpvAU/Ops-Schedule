@@ -153,7 +153,7 @@ router.post('/forgot-password', async (req, res) => {
     const token = crypto.randomUUID();
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     // Use SQLite-compatible datetime format (no T separator, no Z suffix)
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000 + 10 * 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
     req.db.prepare('INSERT INTO password_reset_tokens (id, team_member_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').run(crypto.randomUUID(), user.id, tokenHash, expiresAt);
     try {
       await sendPasswordResetEmail(email, token);
@@ -178,7 +178,7 @@ router.post('/reset-password', async (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired reset token' });
   }
   // Check expiry manually for better logging
-  const now = new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+  const now = new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
   const expired = resetToken.expires_at < now;
   if (expired) {
     console.error(`Reset token expired. Expires: ${resetToken.expires_at}, Now: ${now}`);
