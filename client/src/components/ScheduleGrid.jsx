@@ -141,16 +141,15 @@ export default function ScheduleGrid({
     };
   }, []);
 
-  // Scroll the grid so today's column is centered
+  // Scroll the grid so today's column is at the left edge (after sticky member column)
   const scrollToTodayColumn = useCallback(() => {
     const el = gridRef.current;
     if (!el) return;
     const todayHeader = el.querySelector('.day-header.today');
     if (!todayHeader) return;
-    const todayLeft = todayHeader.offsetLeft;
-    const dayColWidth = todayHeader.offsetWidth;
-    const scrollTarget = todayLeft - (el.clientWidth / 2) + (dayColWidth / 2);
-    el.scrollLeft = Math.max(0, scrollTarget);
+    const memberCol = el.querySelector('.member-col-header');
+    const memberColWidth = memberCol ? memberCol.offsetWidth : 0;
+    el.scrollLeft = Math.max(0, todayHeader.offsetLeft - memberColWidth);
   }, []);
 
   // Scroll to today's column on initial mount
