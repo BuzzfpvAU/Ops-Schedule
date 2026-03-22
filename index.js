@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -63,8 +64,6 @@ app.post('/api/upload-db', express.json({ limit: '10mb' }), (req, res) => {
     if (!dbPath) return res.status(500).json({ error: 'Cannot find database path' });
     const buf = Buffer.from(req.body.data, 'base64');
     db.close();
-    const fs = require('fs');
-    // Remove WAL files
     try { fs.unlinkSync(dbPath + '-wal'); } catch {}
     try { fs.unlinkSync(dbPath + '-shm'); } catch {}
     fs.writeFileSync(dbPath, buf);
