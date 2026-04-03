@@ -593,7 +593,14 @@ With:
 ```javascript
           // Check if ANY day in this span has multiple entries (collision)
           let hasCollision = false;
-          const firstDayEntries = entries || [entry];
+          const allSpanEntries = [];
+          for (let ci = i; ci < end; ci++) {
+            const dayEntries = scheduleMap[`${member.id}-${weekDates[ci].dateStr}`];
+            if (dayEntries) allSpanEntries.push(...dayEntries);
+          }
+          // Deduplicate by ID (same entry won't appear twice, but safety check)
+          const seen = new Set();
+          const uniqueEntries = allSpanEntries.filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
           for (let ci = i; ci < end; ci++) {
             const dayEntries = scheduleMap[`${member.id}-${weekDates[ci].dateStr}`];
             if (dayEntries && dayEntries.length > 1) {
@@ -601,7 +608,7 @@ With:
               break;
             }
           }
-          spans.push({ startIdx: i, length: end - i, entry, entries: firstDayEntries, hasCollision });
+          spans.push({ startIdx: i, length: end - i, entry, entries: uniqueEntries, hasCollision });
 ```
 
 - [ ] **Step 3: Update dropdown lookup (line 847)**
@@ -711,6 +718,9 @@ Replace the existing filled cell `<td>` block (lines 687-715) with:
                                 '--task-text': getTextColor(statusInfo.color),
                               }}
                               title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`}
+                              onMouseDown={isAdmin ? (ev) => handleTaskBarMouseDown(ev, span, member.id) : undefined}
+                              onDragStart={handleDragStart}
+                              onDragEnd={handleDragEnd}
                               onClick={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 const relativeX = e.clientX - rect.left;
@@ -971,10 +981,7 @@ Add this handler function (after the drag state declarations):
     // If dropped on same position, no-op
     if (memberId === source.memberId && dateStr === source.startDate) return;
 
-    // Optimistic UI: immediately move entries in local schedule state
-    // We do this by triggering a refresh after the API call, but showing
-    // a loading state via the "moved" toast immediately
-    showToast('Moving assignment...', 'info');
+    // Show immediate feedback while API call is in progress
     try {
       await moveScheduleEntries(source.entryIds, memberId, dateStr);
       showToast('Assignment moved', 'success');
