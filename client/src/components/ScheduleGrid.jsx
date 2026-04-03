@@ -595,6 +595,60 @@ export default function ScheduleGrid({
     }, DRAG_HOLD_MS);
   }, [isAdmin, weekDates, scheduleMap]);
 
+  // Drag a single entry out of a collision cell
+  const handleCollisionBarMouseDown = useCallback((e, entry, span, memberId) => {
+    if (!isAdmin) return;
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const barEl = e.currentTarget;
+
+    // Find all entries for this specific job across the span's dates
+    const entryIds = [];
+    const entryDates = [];
+    for (let i = 0; i < span.length; i++) {
+      const dateStr = weekDates[span.startIdx + i].dateStr;
+      const dayEntries = scheduleMap[`${memberId}-${dateStr}`];
+      if (dayEntries) {
+        const match = dayEntries.find(de => de.job_id === entry.job_id);
+        if (match) {
+          entryIds.push(match.id);
+          entryDates.push(dateStr);
+        }
+      }
+    }
+    if (entryIds.length === 0) return;
+
+    const cleanup = () => {
+      clearTimeout(dragHoldTimer.current);
+      document.removeEventListener('mousemove', onMoveBeforeHold);
+      document.removeEventListener('mouseup', onMouseUpBeforeHold);
+    };
+
+    const onMoveBeforeHold = (ev) => {
+      const dx = Math.abs(ev.clientX - startX);
+      const dy = Math.abs(ev.clientY - startY);
+      if (dx > DRAG_MOVE_THRESHOLD || dy > DRAG_MOVE_THRESHOLD) {
+        cleanup();
+      }
+    };
+    const onMouseUpBeforeHold = () => {
+      cleanup();
+    };
+
+    document.addEventListener('mousemove', onMoveBeforeHold);
+    document.addEventListener('mouseup', onMouseUpBeforeHold);
+
+    dragHoldTimer.current = setTimeout(() => {
+      cleanup();
+      dragSourceRef.current = { entryIds, memberId, startDate: entryDates[0], spanLength: entryDates.length, grabOffset: 0 };
+      setIsDragActive(true);
+      barEl.setAttribute('draggable', 'true');
+      barEl.classList.add('dragging');
+    }, DRAG_HOLD_MS);
+  }, [isAdmin, weekDates, scheduleMap]);
+
   const handleDragStart = useCallback((e) => {
     if (!dragSourceRef.current) {
       e.preventDefault();
@@ -1061,7 +1115,11 @@ export default function ScheduleGrid({
                               {span.entries.slice(0, 3).map((ent) => {
                                 const si = STATUSES[ent.status || 'tentative'] || STATUSES.tentative;
                                 return (
-                                  <div key={ent.id} className="collision-bar" style={{ '--task-color': si.color, '--task-text': getTextColor(si.color) }}>
+                                  <div key={ent.id} className="collision-bar" style={{ '--task-color': si.color, '--task-text': getTextColor(si.color) }}
+                                    onMouseDown={isAdmin ? (ev) => handleCollisionBarMouseDown(ev, ent, span, member.id) : undefined}
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
+                                  >
                                     <span className="task-label">{ent.job_code || ent.job_name}</span>
                                   </div>
                                 );
@@ -1201,7 +1259,11 @@ export default function ScheduleGrid({
                                       {span.entries.slice(0, 3).map((ent) => {
                                         const si = STATUSES[ent.status || 'tentative'] || STATUSES.tentative;
                                         return (
-                                          <div key={ent.id} className="collision-bar" style={{ '--task-color': si.color, '--task-text': getTextColor(si.color) }}>
+                                          <div key={ent.id} className="collision-bar" style={{ '--task-color': si.color, '--task-text': getTextColor(si.color) }}
+                                            onMouseDown={isAdmin ? (ev) => handleCollisionBarMouseDown(ev, ent, span, item.id) : undefined}
+                                            onDragStart={handleDragStart}
+                                            onDragEnd={handleDragEnd}
+                                          >
                                             <span className="task-label">{ent.job_code || ent.job_name}</span>
                                           </div>
                                         );

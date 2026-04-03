@@ -1092,6 +1092,11 @@ body {
   display: flex;
   align-items: center;
   min-height: 14px;
+  cursor: grab;
+}
+
+.collision-bar.dragging {
+  opacity: 0.4;
 }
 
 .collision-more {
