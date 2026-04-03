@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, createNotification, updateScheduleStatus, updateScheduleNotes, createJob, getJobs as fetchJobs, updateTeamMember, STATUSES } from '../api.js';
+import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, createNotification, updateScheduleStatus, updateScheduleNotes, createJob, getJobs as fetchJobs, updateTeamMember, moveScheduleEntries, STATUSES } from '../api.js';
 
 const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 

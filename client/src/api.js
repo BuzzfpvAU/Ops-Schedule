@@ -101,17 +101,31 @@ export async function bulkAssignSchedule(data) {
   });
 }
 
-export async function updateScheduleStatus(memberId, date, status) {
+export async function updateScheduleStatus(entryIdOrMemberId, dateOrStatus, statusOrUndefined) {
+  // Support both: (entryId, status) and (memberId, date, status) for backward compat
+  if (statusOrUndefined !== undefined) {
+    return api('/schedule/status', {
+      method: 'PUT',
+      body: JSON.stringify({ team_member_id: entryIdOrMemberId, date: dateOrStatus, status: statusOrUndefined }),
+    });
+  }
   return api('/schedule/status', {
     method: 'PUT',
-    body: JSON.stringify({ team_member_id: memberId, date, status }),
+    body: JSON.stringify({ entry_id: entryIdOrMemberId, status: dateOrStatus }),
   });
 }
 
-export async function updateScheduleNotes(memberId, date, notes) {
+export async function updateScheduleNotes(entryIdOrMemberId, dateOrNotes, notesOrUndefined) {
+  // Support both: (entryId, notes) and (memberId, date, notes) for backward compat
+  if (notesOrUndefined !== undefined) {
+    return api('/schedule/notes', {
+      method: 'PUT',
+      body: JSON.stringify({ team_member_id: entryIdOrMemberId, date: dateOrNotes, notes: notesOrUndefined }),
+    });
+  }
   return api('/schedule/notes', {
     method: 'PUT',
-    body: JSON.stringify({ team_member_id: memberId, date, notes }),
+    body: JSON.stringify({ entry_id: entryIdOrMemberId, notes: dateOrNotes }),
   });
 }
 
@@ -121,6 +135,17 @@ export async function deleteScheduleEntry(id) {
 
 export async function clearScheduleEntry(memberId, date) {
   return api(`/schedule/member/${memberId}/date/${date}`, { method: 'DELETE' });
+}
+
+export async function moveScheduleEntries(entryIds, targetMemberId, targetStartDate) {
+  return api('/schedule/move', {
+    method: 'POST',
+    body: JSON.stringify({
+      entry_ids: entryIds,
+      target_member_id: targetMemberId,
+      target_start_date: targetStartDate,
+    }),
+  });
 }
 
 // ── Export (client-side iCal generation from server data) ──
