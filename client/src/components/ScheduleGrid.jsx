@@ -27,6 +27,17 @@ export default function ScheduleGrid({
   const gridRef = useRef(null);
   const dragState = useRef({ isDragging: false, startX: 0, scrollLeft: 0 });
 
+  // Drag-and-drop constants (tunable)
+  const DRAG_HOLD_MS = 300;
+  const DRAG_MOVE_THRESHOLD = 5;
+
+  // Drag-and-drop state
+  const dragHoldTimer = useRef(null);
+  const dragSourceRef = useRef(null); // { entryIds, memberId, startDate, spanLength }
+  const [dragOverCell, setDragOverCell] = useState(null); // { memberId, dateStr }
+  const [isDragActive, setIsDragActive] = useState(false);
+  const autoScrollRef = useRef(null);
+
   // Get unique locations for filtering
   const locations = useMemo(() => {
     const locs = [...new Set(teamMembers.map(m => m.location).filter(Boolean))];
@@ -521,6 +532,156 @@ export default function ScheduleGrid({
     return lum > 0.6 ? '#1a1a2e' : '#ffffff';
   };
 
+  // ── Drag-and-Drop Handlers ──────────────────────────────────────────
+
+  // Press-and-hold to activate drag on task bars
+  const handleTaskBarMouseDown = useCallback((e, span, memberId) => {
+    if (!isAdmin) return;
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const taskBarEl = e.currentTarget;
+
+    const entryIds = [];
+    for (let i = 0; i < span.length; i++) {
+      const dateStr = weekDates[span.startIdx + i].dateStr;
+      const entries = scheduleMap[`${memberId}-${dateStr}`];
+      if (entries && entries.length > 0) {
+        entryIds.push(entries[0].id);
+      }
+    }
+    const startDateStr = weekDates[span.startIdx].dateStr;
+
+    const cleanup = () => {
+      clearTimeout(dragHoldTimer.current);
+      document.removeEventListener('mousemove', onMoveBeforeHold);
+      document.removeEventListener('mouseup', onMouseUpBeforeHold);
+    };
+
+    const onMoveBeforeHold = (ev) => {
+      const dx = Math.abs(ev.clientX - startX);
+      const dy = Math.abs(ev.clientY - startY);
+      if (dx > DRAG_MOVE_THRESHOLD || dy > DRAG_MOVE_THRESHOLD) {
+        cleanup();
+      }
+    };
+    const onMouseUpBeforeHold = () => {
+      cleanup();
+    };
+
+    document.addEventListener('mousemove', onMoveBeforeHold);
+    document.addEventListener('mouseup', onMouseUpBeforeHold);
+
+    dragHoldTimer.current = setTimeout(() => {
+      cleanup();
+      dragSourceRef.current = { entryIds, memberId, startDate: startDateStr, spanLength: span.length };
+      setIsDragActive(true);
+      taskBarEl.setAttribute('draggable', 'true');
+      taskBarEl.classList.add('dragging');
+    }, DRAG_HOLD_MS);
+  }, [isAdmin, weekDates, scheduleMap]);
+
+  const handleDragStart = useCallback((e) => {
+    if (!dragSourceRef.current) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify(dragSourceRef.current));
+  }, []);
+
+  const handleDragEnd = useCallback((e) => {
+    e.currentTarget.setAttribute('draggable', 'false');
+    e.currentTarget.classList.remove('dragging');
+    setIsDragActive(false);
+    setDragOverCell(null);
+    dragSourceRef.current = null;
+    clearInterval(autoScrollRef.current);
+  }, []);
+
+  const handleCellDragOver = useCallback((e, memberId, dateStr) => {
+    if (!dragSourceRef.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCell({ memberId, dateStr });
+  }, []);
+
+  const handleCellDragLeave = useCallback(() => {
+    setDragOverCell(null);
+  }, []);
+
+  const handleCellDrop = useCallback(async (e, memberId, dateStr) => {
+    e.preventDefault();
+    setDragOverCell(null);
+    setIsDragActive(false);
+
+    const source = dragSourceRef.current;
+    if (!source) return;
+    dragSourceRef.current = null;
+    clearInterval(autoScrollRef.current);
+
+    const targetStartIdx = weekDates.findIndex(d => d.dateStr === dateStr);
+    if (targetStartIdx < 0) return;
+    const targetEndIdx = targetStartIdx + source.spanLength - 1;
+    if (targetEndIdx >= weekDates.length) {
+      showToast('Cannot move: target extends beyond loaded dates', 'error');
+      return;
+    }
+
+    if (memberId === source.memberId && dateStr === source.startDate) return;
+
+    try {
+      await moveScheduleEntries(source.entryIds, memberId, dateStr);
+      showToast('Assignment moved', 'success');
+      onScheduleRefresh();
+    } catch (err) {
+      showToast('Failed to move: ' + err.message, 'error');
+      onScheduleRefresh();
+    }
+  }, [weekDates, showToast, onScheduleRefresh]);
+
+  // Auto-scroll grid edges during drag
+  const handleGridDragOver = useCallback((e) => {
+    if (!dragSourceRef.current || !gridRef.current) return;
+    e.preventDefault();
+    const el = gridRef.current;
+    const rect = el.getBoundingClientRect();
+    const edgeZone = 60;
+
+    clearInterval(autoScrollRef.current);
+    if (e.clientX < rect.left + edgeZone) {
+      autoScrollRef.current = setInterval(() => { el.scrollLeft -= 8; }, 16);
+    } else if (e.clientX > rect.right - edgeZone) {
+      autoScrollRef.current = setInterval(() => { el.scrollLeft += 8; }, 16);
+    }
+  }, []);
+
+  // Escape key cancels active drag
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape' && isDragActive) {
+        setIsDragActive(false);
+        setDragOverCell(null);
+        dragSourceRef.current = null;
+        clearInterval(autoScrollRef.current);
+        const dragging = document.querySelector('.task-bar.dragging');
+        if (dragging) {
+          dragging.setAttribute('draggable', 'false');
+          dragging.classList.remove('dragging');
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isDragActive]);
+
+  useEffect(() => {
+    return () => clearInterval(autoScrollRef.current);
+  }, []);
+
+  // ── End Drag-and-Drop ─────────────────────────────────────────────
+
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
   const isRealJob = (j) => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code);
   const filteredJobs = jobs.filter(j =>
@@ -605,7 +766,7 @@ export default function ScheduleGrid({
       </div>
 
       {/* Grid */}
-      <div className="schedule-grid" ref={gridRef}>
+      <div className="schedule-grid" ref={gridRef} onDragOver={isDragActive ? handleGridDragOver : undefined}>
         <table className="schedule-table">
           <thead>
             <tr>
@@ -706,7 +867,10 @@ export default function ScheduleGrid({
                         <td
                           key={d.dateStr}
                           colSpan={span.length}
-                          className={`task-cell filled ${d.isToday ? 'today' : ''} ${span.hasCollision ? 'collision' : ''}`}
+                          className={`task-cell filled ${d.isToday ? 'today' : ''} ${span.hasCollision ? 'collision' : ''} ${dragOverCell && dragOverCell.memberId === member.id && dragOverCell.dateStr === d.dateStr ? (scheduleMap[`${member.id}-${d.dateStr}`]?.length > 0 ? 'drag-over-collision' : 'drag-over') : ''}`}
+                          onDragOver={isDragActive ? (e) => handleCellDragOver(e, member.id, d.dateStr) : undefined}
+                          onDragLeave={isDragActive ? handleCellDragLeave : undefined}
+                          onDrop={isDragActive ? (e) => handleCellDrop(e, member.id, d.dateStr) : undefined}
                         >
                           {span.hasCollision ? (
                             <div className="collision-stack" onClick={(e) => {
@@ -735,6 +899,9 @@ export default function ScheduleGrid({
                                 '--task-text': getTextColor(statusInfo.color),
                               }}
                               title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`}
+                              onMouseDown={isAdmin ? (ev) => handleTaskBarMouseDown(ev, span, member.id) : undefined}
+                              onDragStart={handleDragStart}
+                              onDragEnd={handleDragEnd}
                               onClick={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 const relativeX = e.clientX - rect.left;
@@ -758,9 +925,12 @@ export default function ScheduleGrid({
                       return (
                         <td
                           key={d.dateStr}
-                          className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`}
+                          className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''} ${dragOverCell && dragOverCell.memberId === member.id && dragOverCell.dateStr === d.dateStr ? 'drag-over' : ''}`}
                           onClick={(isAdmin || member.id === authUser?.memberId) ? (e) => handleCellClick(member.id, d.dateStr, e) : undefined}
                           style={(!isAdmin && member.id !== authUser?.memberId) ? { cursor: 'default' } : undefined}
+                          onDragOver={isDragActive ? (e) => handleCellDragOver(e, member.id, d.dateStr) : undefined}
+                          onDragLeave={isDragActive ? handleCellDragLeave : undefined}
+                          onDrop={isDragActive ? (e) => handleCellDrop(e, member.id, d.dateStr) : undefined}
                         >
                           {(isAdmin || member.id === authUser?.memberId) && (
                             <div className="empty-cell">
@@ -836,7 +1006,10 @@ export default function ScheduleGrid({
                               const statusKey = span.entry.status || 'tentative';
                               const statusInfo = STATUSES[statusKey] || STATUSES.tentative;
                               return (
-                                <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''} ${span.hasCollision ? 'collision' : ''}`}>
+                                <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''} ${span.hasCollision ? 'collision' : ''} ${dragOverCell && dragOverCell.memberId === item.id && dragOverCell.dateStr === d.dateStr ? 'drag-over-collision' : ''}`}
+                                  onDragOver={isDragActive ? (e) => handleCellDragOver(e, item.id, d.dateStr) : undefined}
+                                  onDragLeave={isDragActive ? handleCellDragLeave : undefined}
+                                  onDrop={isDragActive ? (e) => handleCellDrop(e, item.id, d.dateStr) : undefined}>
                                   {span.hasCollision ? (
                                     <div className="collision-stack" onClick={(e) => {
                                       const rect = e.currentTarget.getBoundingClientRect();
@@ -857,7 +1030,11 @@ export default function ScheduleGrid({
                                       {span.entries.length > 3 && <div className="collision-more">+{span.entries.length - 3}</div>}
                                     </div>
                                   ) : (
-                                    <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`} onClick={(e) => {
+                                    <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`}
+                                      onMouseDown={isAdmin ? (ev) => handleTaskBarMouseDown(ev, span, item.id) : undefined}
+                                      onDragStart={handleDragStart}
+                                      onDragEnd={handleDragEnd}
+                                      onClick={(e) => {
                                       const rect = e.currentTarget.getBoundingClientRect();
                                       const relativeX = e.clientX - rect.left;
                                       const dayWidth = rect.width / span.length;
@@ -873,7 +1050,10 @@ export default function ScheduleGrid({
                               );
                             } else {
                               return (
-                                <td key={d.dateStr} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`} onClick={isAdmin ? (e) => handleCellClick(item.id, d.dateStr, e) : undefined} style={!isAdmin ? { cursor: 'default' } : undefined}>
+                                <td key={d.dateStr} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''} ${dragOverCell && dragOverCell.memberId === item.id && dragOverCell.dateStr === d.dateStr ? 'drag-over' : ''}`} onClick={isAdmin ? (e) => handleCellClick(item.id, d.dateStr, e) : undefined} style={!isAdmin ? { cursor: 'default' } : undefined}
+                                  onDragOver={isDragActive ? (e) => handleCellDragOver(e, item.id, d.dateStr) : undefined}
+                                  onDragLeave={isDragActive ? handleCellDragLeave : undefined}
+                                  onDrop={isDragActive ? (e) => handleCellDrop(e, item.id, d.dateStr) : undefined}>
                                   {isAdmin && (
                                     <div className="empty-cell">
                                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 3v8M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
