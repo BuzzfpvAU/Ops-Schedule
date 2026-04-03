@@ -251,26 +251,25 @@ export default function ScheduleGrid({
         const entries = scheduleMap[`${member.id}-${weekDates[i].dateStr}`];
         const entry = entries ? entries[0] : null;
         if (entry) {
-          // Find how many consecutive days have the same job AND status
+          const startIsCollision = entries.length > 1;
+          // Find consecutive days with same job, status, AND same collision state
           let end = i + 1;
           while (end < weekDates.length) {
             const nextEntries = scheduleMap[`${member.id}-${weekDates[end].dateStr}`];
             const nextEntry = nextEntries ? nextEntries[0] : null;
-            if (nextEntry && nextEntry.job_id === entry.job_id && (nextEntry.status || 'tentative') === (entry.status || 'tentative')) {
+            if (nextEntry && nextEntry.job_id === entry.job_id
+              && (nextEntry.status || 'tentative') === (entry.status || 'tentative')
+              && (nextEntries.length > 1) === startIsCollision) {
               end++;
             } else {
               break;
             }
           }
-          // Check if ANY day in this span has multiple entries (collision)
-          let hasCollision = false;
+          const hasCollision = startIsCollision;
           const allSpanEntries = [];
           for (let ci = i; ci < end; ci++) {
             const dayEntries = scheduleMap[`${member.id}-${weekDates[ci].dateStr}`];
-            if (dayEntries) {
-              allSpanEntries.push(...dayEntries);
-              if (dayEntries.length > 1) hasCollision = true;
-            }
+            if (dayEntries) allSpanEntries.push(...dayEntries);
           }
           const seen = new Set();
           const uniqueEntries = allSpanEntries.filter(e => { if (seen.has(e.job_id)) return false; seen.add(e.job_id); return true; });
