@@ -65,8 +65,7 @@ export function initDb() {
       created_at TEXT DEFAULT (datetime('now', '+10 hours')),
       updated_at TEXT DEFAULT (datetime('now', '+10 hours')),
       FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE,
-      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-      UNIQUE(team_member_id, date)
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_schedule_date ON schedule_entries(date);
@@ -88,6 +87,38 @@ export function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_notifications_member ON notifications(team_member_id, read);
   `);
+
+  // Migrate: remove UNIQUE(team_member_id, date) to allow multiple entries per cell
+  const hasUniqueConstraint = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='schedule_entries'"
+  ).get();
+  if (hasUniqueConstraint && hasUniqueConstraint.sql.includes('UNIQUE(team_member_id, date)')) {
+    console.log('Migrating: removing UNIQUE(team_member_id, date) constraint...');
+    db.transaction(() => {
+    db.exec(`
+      CREATE TABLE schedule_entries_new (
+        id TEXT PRIMARY KEY,
+        team_member_id TEXT NOT NULL,
+        job_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        status TEXT DEFAULT 'tentative',
+        created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+        updated_at TEXT DEFAULT (datetime('now', '+10 hours')),
+        FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE,
+        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+      );
+      INSERT INTO schedule_entries_new SELECT * FROM schedule_entries;
+      DROP TABLE schedule_entries;
+      ALTER TABLE schedule_entries_new RENAME TO schedule_entries;
+      CREATE INDEX idx_schedule_date ON schedule_entries(date);
+      CREATE INDEX idx_schedule_member ON schedule_entries(team_member_id);
+      CREATE INDEX idx_schedule_job ON schedule_entries(job_id);
+      CREATE INDEX idx_schedule_member_date ON schedule_entries(team_member_id, date);
+    `);
+    })();
+    console.log('Migration complete: UNIQUE constraint removed');
+  }
 
   // Migrate: add auth columns to team_members
   const columns = db.pragma('table_info(team_members)').map(c => c.name);
