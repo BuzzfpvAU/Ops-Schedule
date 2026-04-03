@@ -189,8 +189,104 @@ router.put('/bulk', requireAdmin, (req, res) => {
   });
 });
 
+// POST move schedule entries atomically (admin only)
+router.post('/move', requireAdmin, (req, res) => {
+  const { entry_ids, target_member_id, target_start_date } = req.body;
+  if (!entry_ids || !Array.isArray(entry_ids) || entry_ids.length === 0) {
+    return res.status(400).json({ error: 'entry_ids array is required' });
+  }
+  if (!target_member_id || !target_start_date) {
+    return res.status(400).json({ error: 'target_member_id and target_start_date are required' });
+  }
+
+  // Validate target member exists
+  const targetMember = req.db.prepare('SELECT id FROM team_members WHERE id = ?').get(target_member_id);
+  if (!targetMember) {
+    return res.status(400).json({ error: 'Target member not found' });
+  }
+
+  // Look up all source entries
+  const placeholders = entry_ids.map(() => '?').join(',');
+  const sourceEntries = req.db.prepare(
+    `SELECT * FROM schedule_entries WHERE id IN (${placeholders}) ORDER BY date ASC`
+  ).all(...entry_ids);
+
+  if (sourceEntries.length !== entry_ids.length) {
+    const found = new Set(sourceEntries.map(e => e.id));
+    const missing = entry_ids.filter(id => !found.has(id));
+    return res.status(400).json({ error: `Entries not found: ${missing.join(', ')}` });
+  }
+
+  // Calculate date offset from first source entry to target start date
+  const firstSourceDate = new Date(sourceEntries[0].date);
+  const targetDate = new Date(target_start_date);
+  const dayOffset = Math.round((targetDate - firstSourceDate) / 86400000);
+
+  // Perform move in a single transaction
+  const moveTransaction = req.db.transaction(() => {
+    const newEntries = [];
+    const insertStmt = req.db.prepare(`
+      INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const deleteStmt = req.db.prepare('DELETE FROM schedule_entries WHERE id = ?');
+
+    for (const entry of sourceEntries) {
+      const oldDate = new Date(entry.date);
+      const newDate = new Date(oldDate);
+      newDate.setDate(newDate.getDate() + dayOffset);
+      const newDateStr = newDate.toISOString().slice(0, 10);
+      const newId = uuidv4();
+
+      insertStmt.run(newId, target_member_id, entry.job_id, newDateStr, entry.notes || '', entry.status || 'tentative');
+      deleteStmt.run(entry.id);
+
+      newEntries.push({
+        id: newId,
+        team_member_id: target_member_id,
+        job_id: entry.job_id,
+        date: newDateStr,
+        notes: entry.notes,
+        status: entry.status
+      });
+    }
+    return newEntries;
+  });
+
+  try {
+    const newEntries = moveTransaction();
+
+    const newPlaceholders = newEntries.map(() => '?').join(',');
+    const fullEntries = req.db.prepare(`
+      SELECT
+        se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
+        tm.name as member_name, tm.color as member_color, tm.timezone,
+        j.code as job_code, j.name as job_name, j.color as job_color,
+        j.file_url as job_file_url, j.description as job_description
+      FROM schedule_entries se
+      JOIN team_members tm ON se.team_member_id = tm.id
+      JOIN jobs j ON se.job_id = j.id
+      WHERE se.id IN (${newPlaceholders})
+      ORDER BY se.date ASC
+    `).all(...newEntries.map(e => e.id));
+
+    res.json({
+      success: true,
+      entries: fullEntries,
+      _notification: {
+        type: 'moved',
+        team_member_id: target_member_id,
+        dates: fullEntries.map(e => e.date)
+      }
+    });
+  } catch (err) {
+    console.error('Move transaction failed:', err);
+    res.status(500).json({ error: 'Move failed: ' + err.message });
+  }
+});
+
 // DELETE remove a schedule entry
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireAdmin, (req, res) => {
   const existing = req.db.prepare('SELECT * FROM schedule_entries WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Schedule entry not found' });
 
