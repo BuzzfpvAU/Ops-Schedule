@@ -53,7 +53,7 @@ router.get('/member/:memberId', (req, res) => {
 
 // PUT assign/update a schedule entry (upsert)
 router.put('/', (req, res) => {
-  const { team_member_id, job_id, date, notes, status } = req.body;
+  const { team_member_id, job_id, date, notes, status, entry_id } = req.body;
   if (!team_member_id || !job_id || !date) {
     return res.status(400).json({ error: 'team_member_id, job_id, and date are required' });
   }
@@ -68,26 +68,48 @@ router.put('/', (req, res) => {
     }
   }
 
-  const existing = req.db.prepare(
-    'SELECT * FROM schedule_entries WHERE team_member_id = ? AND date = ?'
-  ).get(team_member_id, date);
-
-  const previousJobId = existing ? existing.job_id : null;
   let id;
+  let isNew = true;
+  let previousJobId = null;
 
-  if (existing) {
+  if (entry_id) {
+    // Update specific entry by ID
+    const existing = req.db.prepare('SELECT * FROM schedule_entries WHERE id = ?').get(entry_id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Schedule entry not found' });
+    }
+    previousJobId = existing.job_id;
     req.db.prepare(`
       UPDATE schedule_entries
       SET job_id = ?, notes = ?, status = ?, updated_at = datetime('now', '+10 hours')
       WHERE id = ?
-    `).run(job_id, notes || '', status || existing.status || 'tentative', existing.id);
-    id = existing.id;
+    `).run(job_id, notes || '', status || existing.status || 'tentative', entry_id);
+    id = entry_id;
+    isNew = false;
   } else {
-    id = uuidv4();
-    req.db.prepare(`
-      INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, team_member_id, job_id, date, notes || '', status || 'tentative');
+    // Check for existing entries by member+date
+    const existing = req.db.prepare(
+      'SELECT * FROM schedule_entries WHERE team_member_id = ? AND date = ?'
+    ).all(team_member_id, date);
+
+    if (existing.length === 1) {
+      // Exactly one: update it (preserves non-admin upsert behavior)
+      previousJobId = existing[0].job_id;
+      req.db.prepare(`
+        UPDATE schedule_entries
+        SET job_id = ?, notes = ?, status = ?, updated_at = datetime('now', '+10 hours')
+        WHERE id = ?
+      `).run(job_id, notes || '', status || existing[0].status || 'tentative', existing[0].id);
+      id = existing[0].id;
+      isNew = false;
+    } else {
+      // Zero or multiple: insert new
+      id = uuidv4();
+      req.db.prepare(`
+        INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(id, team_member_id, job_id, date, notes || '', status || 'tentative');
+    }
   }
 
   const entry = req.db.prepare(`
@@ -101,7 +123,6 @@ router.put('/', (req, res) => {
     WHERE se.id = ?
   `).get(id);
 
-  const isNew = !existing;
   const isChanged = !isNew && previousJobId !== job_id;
 
   res.json({
@@ -114,46 +135,71 @@ router.put('/', (req, res) => {
   });
 });
 
-// PUT update status only
+// PUT update status only (by entry_id or member+date)
 router.put('/status', (req, res) => {
-  const { team_member_id, date, status } = req.body;
-  if (!team_member_id || !date || !status) {
-    return res.status(400).json({ error: 'team_member_id, date, and status are required' });
+  const { entry_id, team_member_id, date, status } = req.body;
+  if (!status) {
+    return res.status(400).json({ error: 'status is required' });
   }
 
-  if (!req.user.isAdmin && team_member_id !== req.user.memberId) {
-    return res.status(403).json({ error: 'You can only modify your own schedule' });
+  if (entry_id) {
+    const existing = req.db.prepare('SELECT * FROM schedule_entries WHERE id = ?').get(entry_id);
+    if (!existing) return res.status(404).json({ error: 'Schedule entry not found' });
+
+    if (!req.user.isAdmin && existing.team_member_id !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only modify your own schedule' });
+    }
+
+    req.db.prepare(`
+      UPDATE schedule_entries SET status = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?
+    `).run(status, entry_id);
+    res.json({ success: true });
+  } else if (team_member_id && date) {
+    if (!req.user.isAdmin && team_member_id !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only modify your own schedule' });
+    }
+
+    const result = req.db.prepare(`
+      UPDATE schedule_entries SET status = ?, updated_at = datetime('now', '+10 hours')
+      WHERE team_member_id = ? AND date = ?
+    `).run(status, team_member_id, date);
+    if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
+    res.json({ success: true });
+  } else {
+    return res.status(400).json({ error: 'entry_id or (team_member_id + date) required' });
   }
-
-  const result = req.db.prepare(`
-    UPDATE schedule_entries
-    SET status = ?, updated_at = datetime('now', '+10 hours')
-    WHERE team_member_id = ? AND date = ?
-  `).run(status, team_member_id, date);
-
-  if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
-  res.json({ success: true });
 });
 
-// PUT update notes only
+// PUT update notes only (by entry_id or member+date)
 router.put('/notes', (req, res) => {
-  const { team_member_id, date, notes } = req.body;
-  if (!team_member_id || !date) {
-    return res.status(400).json({ error: 'team_member_id and date are required' });
+  const { entry_id, team_member_id, date, notes } = req.body;
+
+  if (entry_id) {
+    const existing = req.db.prepare('SELECT * FROM schedule_entries WHERE id = ?').get(entry_id);
+    if (!existing) return res.status(404).json({ error: 'Schedule entry not found' });
+
+    if (!req.user.isAdmin && existing.team_member_id !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only modify your own schedule' });
+    }
+
+    req.db.prepare(`
+      UPDATE schedule_entries SET notes = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?
+    `).run(notes || '', entry_id);
+    res.json({ success: true });
+  } else if (team_member_id && date) {
+    if (!req.user.isAdmin && team_member_id !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only modify your own schedule' });
+    }
+
+    const result = req.db.prepare(`
+      UPDATE schedule_entries SET notes = ?, updated_at = datetime('now', '+10 hours')
+      WHERE team_member_id = ? AND date = ?
+    `).run(notes || '', team_member_id, date);
+    if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
+    res.json({ success: true });
+  } else {
+    return res.status(400).json({ error: 'entry_id or (team_member_id + date) required' });
   }
-
-  if (!req.user.isAdmin && team_member_id !== req.user.memberId) {
-    return res.status(403).json({ error: 'You can only modify your own schedule' });
-  }
-
-  const result = req.db.prepare(`
-    UPDATE schedule_entries
-    SET notes = ?, updated_at = datetime('now', '+10 hours')
-    WHERE team_member_id = ? AND date = ?
-  `).run(notes || '', team_member_id, date);
-
-  if (result.changes === 0) return res.status(404).json({ error: 'Schedule entry not found' });
-  res.json({ success: true });
 });
 
 // PUT bulk assign (admin only)
@@ -163,16 +209,14 @@ router.put('/bulk', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'team_member_id, job_id, and dates array are required' });
   }
 
-  const upsert = req.db.prepare(`
+  const insert = req.db.prepare(`
     INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
     VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(team_member_id, date)
-    DO UPDATE SET job_id = excluded.job_id, notes = excluded.notes, status = excluded.status, updated_at = datetime('now', '+10 hours')
   `);
 
   const insertMany = req.db.transaction((dates) => {
     for (const date of dates) {
-      upsert.run(uuidv4(), team_member_id, job_id, date, notes || '', status || 'tentative');
+      insert.run(uuidv4(), team_member_id, job_id, date, notes || '', status || 'tentative');
     }
   });
 
@@ -308,10 +352,12 @@ router.delete('/member/:memberId/date/:date', (req, res) => {
     if (req.params.memberId !== req.user.memberId) {
       return res.status(403).json({ error: 'You can only clear your own schedule' });
     }
-    const existing = req.db.prepare(
+    // Check ALL entries for this cell — if any has a non-user-allowed status, reject
+    const entries = req.db.prepare(
       'SELECT status FROM schedule_entries WHERE team_member_id = ? AND date = ?'
-    ).get(req.params.memberId, req.params.date);
-    if (existing && !USER_ALLOWED_STATUSES.includes(existing.status)) {
+    ).all(req.params.memberId, req.params.date);
+    const hasAdminEntry = entries.some(e => !USER_ALLOWED_STATUSES.includes(e.status));
+    if (hasAdminEntry) {
       return res.status(403).json({ error: 'You cannot remove admin-assigned entries' });
     }
   }
