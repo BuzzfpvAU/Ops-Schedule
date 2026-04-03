@@ -987,6 +987,57 @@ body {
   border-radius: 4px;
 }
 
+/* ─── Resize Handles ────────────────────────────────────────────── */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.resize-handle-left {
+  left: 0;
+}
+
+.resize-handle-left::after {
+  left: 2px;
+}
+
+.resize-handle-right {
+  right: 0;
+}
+
+.resize-handle-right::after {
+  right: 2px;
+}
+
+.task-bar:hover .resize-handle {
+  opacity: 1;
+}
+
+/* Resize preview overlay */
+.resize-preview-overlay {
+  background: rgba(123, 147, 255, 0.12);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  z-index: 50;
+}
+
 /* ─── Drag-and-Drop Feedback ─────────────────────────────────────── */
 .task-bar.dragging {
   opacity: 0.5;

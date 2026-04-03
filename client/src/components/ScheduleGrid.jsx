@@ -38,6 +38,10 @@ export default function ScheduleGrid({
   const [isDragActive, setIsDragActive] = useState(false);
   const autoScrollRef = useRef(null);
 
+  // Resize state
+  const resizeRef = useRef(null); // { memberId, jobId, status, notes, edge, origStartIdx, origEndIdx, currentStartIdx, currentEndIdx }
+  const [resizePreview, setResizePreview] = useState(null); // { memberId, startIdx, endIdx }
+
   // Get unique locations for filtering
   const locations = useMemo(() => {
     const locs = [...new Set(teamMembers.map(m => m.location).filter(Boolean))];
@@ -121,7 +125,7 @@ export default function ScheduleGrid({
 
     const onMouseDown = (e) => {
       // Don't intercept clicks on interactive elements
-      if (e.target.closest('button, select, input, .task-bar, .empty-cell, .assignment-dropdown')) return;
+      if (e.target.closest('button, select, input, .task-bar, .empty-cell, .assignment-dropdown, .resize-handle')) return;
       dragState.current = { isDragging: true, startX: e.pageX, startY: e.pageY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
       el.style.cursor = 'grabbing';
       el.style.userSelect = 'none';
@@ -231,6 +235,9 @@ export default function ScheduleGrid({
     if (!scheduleMap[key]) scheduleMap[key] = [];
     scheduleMap[key].push(entry);
   }
+  // Keep a ref so resize mouseup can access the latest scheduleMap
+  const scheduleMapRef = useRef(scheduleMap);
+  scheduleMapRef.current = scheduleMap;
 
   // Build merged spans per member/equipment row
   const allEntities = useMemo(() => [...teamMembers, ...(equipment || [])], [teamMembers, equipment]);
@@ -657,18 +664,24 @@ export default function ScheduleGrid({
     }
   }, []);
 
-  // Escape key cancels active drag
+  // Escape key cancels active drag or resize
   useEffect(() => {
     const onKeyDown = (e) => {
-      if (e.key === 'Escape' && isDragActive) {
-        setIsDragActive(false);
-        setDragOverCell(null);
-        dragSourceRef.current = null;
-        clearInterval(autoScrollRef.current);
-        const dragging = document.querySelector('.task-bar.dragging');
-        if (dragging) {
-          dragging.setAttribute('draggable', 'false');
-          dragging.classList.remove('dragging');
+      if (e.key === 'Escape') {
+        if (isDragActive) {
+          setIsDragActive(false);
+          setDragOverCell(null);
+          dragSourceRef.current = null;
+          clearInterval(autoScrollRef.current);
+          const dragging = document.querySelector('.task-bar.dragging');
+          if (dragging) {
+            dragging.setAttribute('draggable', 'false');
+            dragging.classList.remove('dragging');
+          }
+        }
+        if (resizeRef.current) {
+          resizeRef.current = null;
+          setResizePreview(null);
         }
       }
     };
@@ -680,7 +693,157 @@ export default function ScheduleGrid({
     return () => clearInterval(autoScrollRef.current);
   }, []);
 
-  // ── End Drag-and-Drop ─────────────────────────────────────────────
+  // ── Resize Handlers ───────────────────────────────────────────────
+
+  // Get the date column index from a mouse X position
+  const getDateIdxFromMouseX = useCallback((clientX) => {
+    const el = gridRef.current;
+    if (!el) return -1;
+    const headers = el.querySelectorAll('.day-header');
+    for (let i = 0; i < headers.length; i++) {
+      const rect = headers[i].getBoundingClientRect();
+      if (clientX >= rect.left && clientX <= rect.right) return i;
+    }
+    // If past the last header, return last index
+    if (headers.length > 0) {
+      const lastRect = headers[headers.length - 1].getBoundingClientRect();
+      if (clientX > lastRect.right) return headers.length - 1;
+      const firstRect = headers[0].getBoundingClientRect();
+      if (clientX < firstRect.left) return 0;
+    }
+    return -1;
+  }, []);
+
+  const handleResizeMouseDown = useCallback((e, span, memberId, edge) => {
+    if (!isAdmin) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const entry = span.entry;
+    const origStartIdx = span.startIdx;
+    const origEndIdx = span.startIdx + span.length - 1;
+
+    resizeRef.current = {
+      memberId,
+      jobId: entry.job_id,
+      status: entry.status || 'tentative',
+      notes: entry.notes || '',
+      edge, // 'left' or 'right'
+      origStartIdx,
+      origEndIdx,
+      currentStartIdx: origStartIdx,
+      currentEndIdx: origEndIdx,
+    };
+    setResizePreview({ memberId, startIdx: origStartIdx, endIdx: origEndIdx });
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [isAdmin]);
+
+  // Global mousemove and mouseup for resize
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!resizeRef.current) return;
+      const idx = getDateIdxFromMouseX(e.clientX);
+      if (idx < 0) return;
+
+      const r = resizeRef.current;
+      let newStart = r.currentStartIdx;
+      let newEnd = r.currentEndIdx;
+
+      if (r.edge === 'right') {
+        newEnd = Math.max(r.origStartIdx, idx); // can't shrink past start
+      } else {
+        newStart = Math.min(r.origEndIdx, idx); // can't shrink past end
+      }
+
+      if (newStart !== r.currentStartIdx || newEnd !== r.currentEndIdx) {
+        r.currentStartIdx = newStart;
+        r.currentEndIdx = newEnd;
+        setResizePreview({ memberId: r.memberId, startIdx: newStart, endIdx: newEnd });
+      }
+
+      // Auto-scroll at edges
+      const el = gridRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const edgeZone = 60;
+        clearInterval(autoScrollRef.current);
+        if (e.clientX < rect.left + edgeZone) {
+          autoScrollRef.current = setInterval(() => { el.scrollLeft -= 8; }, 16);
+        } else if (e.clientX > rect.right - edgeZone) {
+          autoScrollRef.current = setInterval(() => { el.scrollLeft += 8; }, 16);
+        }
+      }
+    };
+
+    const onMouseUp = async () => {
+      if (!resizeRef.current) return;
+      const r = resizeRef.current;
+      resizeRef.current = null;
+      setResizePreview(null);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      clearInterval(autoScrollRef.current);
+
+      // Determine what changed
+      const origDates = new Set();
+      for (let i = r.origStartIdx; i <= r.origEndIdx; i++) {
+        if (weekDates[i]) origDates.add(weekDates[i].dateStr);
+      }
+      const newDates = new Set();
+      for (let i = r.currentStartIdx; i <= r.currentEndIdx; i++) {
+        if (weekDates[i]) newDates.add(weekDates[i].dateStr);
+      }
+
+      // Dates to add (extended)
+      const toAdd = [...newDates].filter(d => !origDates.has(d));
+      // Dates to remove (shrunk)
+      const toRemove = [...origDates].filter(d => !newDates.has(d));
+
+      if (toAdd.length === 0 && toRemove.length === 0) return; // no change
+
+      try {
+        // Add new entries
+        if (toAdd.length > 0) {
+          await bulkAssignSchedule({
+            team_member_id: r.memberId,
+            job_id: r.jobId,
+            dates: toAdd,
+            status: r.status,
+            notes: r.notes,
+          });
+        }
+        // Remove shrunk entries
+        if (toRemove.length > 0) {
+          await Promise.all(
+            toRemove.map(date => {
+              const entries = scheduleMapRef.current[`${r.memberId}-${date}`];
+              if (entries) {
+                // Delete entries matching this job
+                const matching = entries.filter(e => e.job_id === r.jobId);
+                return Promise.all(matching.map(e => deleteScheduleEntry(e.id)));
+              }
+            })
+          );
+        }
+        showToast(`Job ${toAdd.length > 0 ? 'extended' : 'shortened'} by ${Math.abs(toAdd.length || toRemove.length)} day${(toAdd.length || toRemove.length) !== 1 ? 's' : ''}`, 'success');
+        onScheduleRefresh();
+      } catch (err) {
+        showToast('Failed to resize: ' + err.message, 'error');
+        onScheduleRefresh();
+      }
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [getDateIdxFromMouseX, weekDates, showToast, onScheduleRefresh]);
+
+  // ── End Drag-and-Drop / Resize ────────────────────────────────────
 
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
   const isRealJob = (j) => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code);
@@ -844,7 +1007,7 @@ export default function ScheduleGrid({
                 const spans = memberSpans[member.id] || [];
 
                 rows.push(
-                <tr key={member.id} className={`member-row ${shade} ${rowShade}`}>
+                <tr key={member.id} data-member-id={member.id} className={`member-row ${shade} ${rowShade}`}>
                   <td className="member-cell">
                     <div className="member-name-cell">
                       <div className="member-avatar" style={{ background: member.color, color: getTextColor(member.color) }}>
@@ -911,12 +1074,14 @@ export default function ScheduleGrid({
                                 handleCellClick(member.id, clickedDate, e);
                               }}
                             >
+                              {isAdmin && <div className="resize-handle resize-handle-left" onMouseDown={(ev) => handleResizeMouseDown(ev, span, member.id, 'left')} />}
                               <span className="task-label">
                                 {span.entry.job_name || span.entry.job_code}
                               </span>
                               {isMulti && (
                                 <span className="task-days">{span.length}d</span>
                               )}
+                              {isAdmin && <div className="resize-handle resize-handle-right" onMouseDown={(ev) => handleResizeMouseDown(ev, span, member.id, 'right')} />}
                             </div>
                           )}
                         </td>
@@ -967,7 +1132,7 @@ export default function ScheduleGrid({
                     for (const item of eqItems) {
                       const spans = memberSpans[item.id] || [];
                       rows.push(
-                        <tr key={item.id} className={`member-row equipment-row ${shade}`}>
+                        <tr key={item.id} data-member-id={item.id} className={`member-row equipment-row ${shade}`}>
                           <td className="member-cell">
                             <div className="member-name-cell">
                               <div className="member-avatar equipment-avatar" style={{ background: item.color, color: getTextColor(item.color) }}>
@@ -1042,8 +1207,10 @@ export default function ScheduleGrid({
                                       const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
                                       handleCellClick(item.id, clickedDate, e);
                                     }}>
+                                      {isAdmin && <div className="resize-handle resize-handle-left" onMouseDown={(ev) => handleResizeMouseDown(ev, span, item.id, 'left')} />}
                                       <span className="task-label">{span.entry.job_name || span.entry.job_code}</span>
                                       {isMulti && <span className="task-days">{span.length}d</span>}
+                                      {isAdmin && <div className="resize-handle resize-handle-right" onMouseDown={(ev) => handleResizeMouseDown(ev, span, item.id, 'right')} />}
                                     </div>
                                   )}
                                 </td>
@@ -1082,6 +1249,34 @@ export default function ScheduleGrid({
           </tbody>
         </table>
       </div>
+
+      {/* Resize preview overlay */}
+      {resizePreview && (() => {
+        const el = gridRef.current;
+        if (!el) return null;
+        const headers = el.querySelectorAll('.day-header');
+        const startHeader = headers[resizePreview.startIdx];
+        const endHeader = headers[resizePreview.endIdx];
+        if (!startHeader || !endHeader) return null;
+        const gridRect = el.getBoundingClientRect();
+        const startRect = startHeader.getBoundingClientRect();
+        const endRect = endHeader.getBoundingClientRect();
+        // Find the member row to get vertical position
+        const memberRow = el.querySelector(`tr[data-member-id="${resizePreview.memberId}"]`);
+        const rowRect = memberRow ? memberRow.getBoundingClientRect() : null;
+        if (!rowRect) return null;
+        return (
+          <div className="resize-preview-overlay" style={{
+            position: 'fixed',
+            left: startRect.left,
+            top: rowRect.top,
+            width: endRect.right - startRect.left,
+            height: rowRect.height,
+            pointerEvents: 'none',
+            zIndex: 50,
+          }} />
+        );
+      })()}
 
       {/* Job assignment dropdown */}
       {dropdown && (() => {
