@@ -102,13 +102,33 @@ router.put('/', (req, res) => {
       `).run(job_id, notes || '', status || existing[0].status || 'tentative', existing[0].id);
       id = existing[0].id;
       isNew = false;
-    } else {
-      // Zero or multiple: insert new
+    } else if (existing.length === 0) {
+      // No entries: insert new
       id = uuidv4();
       req.db.prepare(`
         INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(id, team_member_id, job_id, date, notes || '', status || 'tentative');
+    } else {
+      // Multiple entries (collision): check if this job already exists
+      const sameJob = existing.find(e => e.job_id === job_id);
+      if (sameJob) {
+        previousJobId = sameJob.job_id;
+        req.db.prepare(`
+          UPDATE schedule_entries
+          SET notes = ?, status = ?, updated_at = datetime('now', '+10 hours')
+          WHERE id = ?
+        `).run(notes || '', status || sameJob.status || 'tentative', sameJob.id);
+        id = sameJob.id;
+        isNew = false;
+      } else {
+        // Different job: insert as new collision entry
+        id = uuidv4();
+        req.db.prepare(`
+          INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(id, team_member_id, job_id, date, notes || '', status || 'tentative');
+      }
     }
   }
 
@@ -209,22 +229,30 @@ router.put('/bulk', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'team_member_id, job_id, and dates array are required' });
   }
 
+  const check = req.db.prepare(
+    'SELECT id FROM schedule_entries WHERE team_member_id = ? AND job_id = ? AND date = ?'
+  );
   const insert = req.db.prepare(`
     INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const insertMany = req.db.transaction((dates) => {
+    let inserted = 0;
     for (const date of dates) {
-      insert.run(uuidv4(), team_member_id, job_id, date, notes || '', status || 'tentative');
+      if (!check.get(team_member_id, job_id, date)) {
+        insert.run(uuidv4(), team_member_id, job_id, date, notes || '', status || 'tentative');
+        inserted++;
+      }
     }
+    return inserted;
   });
 
-  insertMany(dates);
+  const inserted = insertMany(dates);
 
   res.json({
     success: true,
-    count: dates.length,
+    count: inserted,
     _notification: {
       type: 'bulk_assigned',
       team_member_id,

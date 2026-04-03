@@ -273,7 +273,7 @@ export default function ScheduleGrid({
             }
           }
           const seen = new Set();
-          const uniqueEntries = allSpanEntries.filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
+          const uniqueEntries = allSpanEntries.filter(e => { if (seen.has(e.job_id)) return false; seen.add(e.job_id); return true; });
           spans.push({ startIdx: i, length: end - i, entry, entries: uniqueEntries, hasCollision });
           i = end;
         } else {
