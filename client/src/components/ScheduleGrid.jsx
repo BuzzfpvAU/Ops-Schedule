@@ -213,10 +213,12 @@ export default function ScheduleGrid({
     return () => el.removeEventListener('scroll', onScroll);
   }, [onLoadMore]);
 
-  // Build schedule lookup
+  // Build schedule lookup (array per cell to support collisions)
   const scheduleMap = {};
   for (const entry of schedule) {
-    scheduleMap[`${entry.team_member_id}-${entry.date}`] = entry;
+    const key = `${entry.team_member_id}-${entry.date}`;
+    if (!scheduleMap[key]) scheduleMap[key] = [];
+    scheduleMap[key].push(entry);
   }
 
   // Build merged spans per member/equipment row
@@ -228,19 +230,33 @@ export default function ScheduleGrid({
       const spans = [];
       let i = 0;
       while (i < weekDates.length) {
-        const entry = scheduleMap[`${member.id}-${weekDates[i].dateStr}`];
+        const entries = scheduleMap[`${member.id}-${weekDates[i].dateStr}`];
+        const entry = entries ? entries[0] : null;
         if (entry) {
           // Find how many consecutive days have the same job AND status
           let end = i + 1;
           while (end < weekDates.length) {
-            const nextEntry = scheduleMap[`${member.id}-${weekDates[end].dateStr}`];
+            const nextEntries = scheduleMap[`${member.id}-${weekDates[end].dateStr}`];
+            const nextEntry = nextEntries ? nextEntries[0] : null;
             if (nextEntry && nextEntry.job_id === entry.job_id && (nextEntry.status || 'tentative') === (entry.status || 'tentative')) {
               end++;
             } else {
               break;
             }
           }
-          spans.push({ startIdx: i, length: end - i, entry });
+          // Check if ANY day in this span has multiple entries (collision)
+          let hasCollision = false;
+          const allSpanEntries = [];
+          for (let ci = i; ci < end; ci++) {
+            const dayEntries = scheduleMap[`${member.id}-${weekDates[ci].dateStr}`];
+            if (dayEntries) {
+              allSpanEntries.push(...dayEntries);
+              if (dayEntries.length > 1) hasCollision = true;
+            }
+          }
+          const seen = new Set();
+          const uniqueEntries = allSpanEntries.filter(e => { if (seen.has(e.id)) return false; seen.add(e.id); return true; });
+          spans.push({ startIdx: i, length: end - i, entry, entries: uniqueEntries, hasCollision });
           i = end;
         } else {
           spans.push({ startIdx: i, length: 1, entry: null });
@@ -364,7 +380,10 @@ export default function ScheduleGrid({
     try {
       const clickedEntry = schedule.find(e => e.team_member_id === memberId && e.date === date);
       if (!clickedEntry) {
-        await updateScheduleStatus(memberId, date, newStatus);
+        const entries = scheduleMap[`${memberId}-${date}`];
+        if (entries && entries.length > 0) {
+          await updateScheduleStatus(entries[0].id, newStatus);
+        }
       } else {
         // Find only the consecutive span containing the clicked date
         const sameJobEntries = schedule
@@ -397,7 +416,7 @@ export default function ScheduleGrid({
 
         const linkedEntries = sameJobEntries.filter(e => spanDates.has(e.date));
         await Promise.all(
-          linkedEntries.map(e => updateScheduleStatus(memberId, e.date, newStatus))
+          linkedEntries.map(e => updateScheduleStatus(e.id, newStatus))
         );
       }
       setDropdown(null);
@@ -844,8 +863,9 @@ export default function ScheduleGrid({
 
       {/* Job assignment dropdown */}
       {dropdown && (() => {
-        const existingEntry = scheduleMap[`${dropdown.memberId}-${dropdown.date}`];
-        const isPopulated = !!existingEntry;
+        const existingEntries = scheduleMap[`${dropdown.memberId}-${dropdown.date}`] || [];
+        const existingEntry = existingEntries[0];
+        const isPopulated = existingEntries.length > 0;
 
         return (
         <div
@@ -879,7 +899,7 @@ export default function ScheduleGrid({
                       const newNotes = e.target.value;
                       if (newNotes !== (existingEntry.notes || '')) {
                         try {
-                          await updateScheduleNotes(dropdown.memberId, dropdown.date, newNotes);
+                          await updateScheduleNotes(existingEntry.id, newNotes);
                           onScheduleRefresh();
                           showToast('Notes updated', 'success');
                         } catch (err) {
