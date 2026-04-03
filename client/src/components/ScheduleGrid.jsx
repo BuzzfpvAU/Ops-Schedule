@@ -706,31 +706,52 @@ export default function ScheduleGrid({
                         <td
                           key={d.dateStr}
                           colSpan={span.length}
-                          className={`task-cell filled ${d.isToday ? 'today' : ''}`}
+                          className={`task-cell filled ${d.isToday ? 'today' : ''} ${span.hasCollision ? 'collision' : ''}`}
                         >
-                          <div
-                            className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`}
-                            style={{
-                              '--task-color': statusInfo.color,
-                              '--task-text': getTextColor(statusInfo.color),
-                            }}
-                            title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`}
-                            onClick={(e) => {
+                          {span.hasCollision ? (
+                            <div className="collision-stack" onClick={(e) => {
                               const rect = e.currentTarget.getBoundingClientRect();
                               const relativeX = e.clientX - rect.left;
                               const dayWidth = rect.width / span.length;
                               const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
                               const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
                               handleCellClick(member.id, clickedDate, e);
-                            }}
-                          >
-                            <span className="task-label">
-                              {span.entry.job_name || span.entry.job_code}
-                            </span>
-                            {isMulti && (
-                              <span className="task-days">{span.length}d</span>
-                            )}
-                          </div>
+                            }}>
+                              {span.entries.slice(0, 3).map((ent) => {
+                                const si = STATUSES[ent.status || 'tentative'] || STATUSES.tentative;
+                                return (
+                                  <div key={ent.id} className="collision-bar" style={{ '--task-color': si.color, '--task-text': getTextColor(si.color) }}>
+                                    <span className="task-label">{ent.job_code || ent.job_name}</span>
+                                  </div>
+                                );
+                              })}
+                              {span.entries.length > 3 && <div className="collision-more">+{span.entries.length - 3}</div>}
+                            </div>
+                          ) : (
+                            <div
+                              className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`}
+                              style={{
+                                '--task-color': statusInfo.color,
+                                '--task-text': getTextColor(statusInfo.color),
+                              }}
+                              title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`}
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const relativeX = e.clientX - rect.left;
+                                const dayWidth = rect.width / span.length;
+                                const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
+                                const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
+                                handleCellClick(member.id, clickedDate, e);
+                              }}
+                            >
+                              <span className="task-label">
+                                {span.entry.job_name || span.entry.job_code}
+                              </span>
+                              {isMulti && (
+                                <span className="task-days">{span.length}d</span>
+                              )}
+                            </div>
+                          )}
                         </td>
                       );
                     } else {
@@ -815,18 +836,39 @@ export default function ScheduleGrid({
                               const statusKey = span.entry.status || 'tentative';
                               const statusInfo = STATUSES[statusKey] || STATUSES.tentative;
                               return (
-                                <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''}`}>
-                                  <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`} onClick={(e) => {
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  const relativeX = e.clientX - rect.left;
-                                  const dayWidth = rect.width / span.length;
-                                  const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
-                                  const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
-                                  handleCellClick(item.id, clickedDate, e);
-                                }}>
-                                    <span className="task-label">{span.entry.job_name || span.entry.job_code}</span>
-                                    {isMulti && <span className="task-days">{span.length}d</span>}
-                                  </div>
+                                <td key={d.dateStr} colSpan={span.length} className={`task-cell filled ${d.isToday ? 'today' : ''} ${span.hasCollision ? 'collision' : ''}`}>
+                                  {span.hasCollision ? (
+                                    <div className="collision-stack" onClick={(e) => {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const relativeX = e.clientX - rect.left;
+                                      const dayWidth = rect.width / span.length;
+                                      const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
+                                      const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
+                                      handleCellClick(item.id, clickedDate, e);
+                                    }}>
+                                      {span.entries.slice(0, 3).map((ent) => {
+                                        const si = STATUSES[ent.status || 'tentative'] || STATUSES.tentative;
+                                        return (
+                                          <div key={ent.id} className="collision-bar" style={{ '--task-color': si.color, '--task-text': getTextColor(si.color) }}>
+                                            <span className="task-label">{ent.job_code || ent.job_name}</span>
+                                          </div>
+                                        );
+                                      })}
+                                      {span.entries.length > 3 && <div className="collision-more">+{span.entries.length - 3}</div>}
+                                    </div>
+                                  ) : (
+                                    <div className={`task-bar ${isMulti ? 'multi-day' : 'single-day'} status-${statusKey}`} style={{ '--task-color': statusInfo.color, '--task-text': getTextColor(statusInfo.color) }} title={`${span.entry.job_name} [${statusInfo.label}]${span.entry.job_description ? '\n' + span.entry.job_description : ''}`} onClick={(e) => {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const relativeX = e.clientX - rect.left;
+                                      const dayWidth = rect.width / span.length;
+                                      const dayOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
+                                      const clickedDate = weekDates[span.startIdx + dayOffset].dateStr;
+                                      handleCellClick(item.id, clickedDate, e);
+                                    }}>
+                                      <span className="task-label">{span.entry.job_name || span.entry.job_code}</span>
+                                      {isMulti && <span className="task-days">{span.length}d</span>}
+                                    </div>
+                                  )}
                                 </td>
                               );
                             } else {
