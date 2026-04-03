@@ -580,9 +580,15 @@ export default function ScheduleGrid({
     document.addEventListener('mousemove', onMoveBeforeHold);
     document.addEventListener('mouseup', onMouseUpBeforeHold);
 
+    // Calculate which day within the span the user grabbed
+    const barRect = taskBarEl.getBoundingClientRect();
+    const relativeX = startX - barRect.left;
+    const dayWidth = barRect.width / span.length;
+    const grabOffset = Math.min(Math.floor(relativeX / dayWidth), span.length - 1);
+
     dragHoldTimer.current = setTimeout(() => {
       cleanup();
-      dragSourceRef.current = { entryIds, memberId, startDate: startDateStr, spanLength: span.length };
+      dragSourceRef.current = { entryIds, memberId, startDate: startDateStr, spanLength: span.length, grabOffset };
       setIsDragActive(true);
       taskBarEl.setAttribute('draggable', 'true');
       taskBarEl.classList.add('dragging');
@@ -628,18 +634,26 @@ export default function ScheduleGrid({
     dragSourceRef.current = null;
     clearInterval(autoScrollRef.current);
 
-    const targetStartIdx = weekDates.findIndex(d => d.dateStr === dateStr);
-    if (targetStartIdx < 0) return;
+    // Adjust target date by grab offset so the span aligns to where the cursor is
+    const dropIdx = weekDates.findIndex(d => d.dateStr === dateStr);
+    if (dropIdx < 0) return;
+    const grabOffset = source.grabOffset || 0;
+    const targetStartIdx = dropIdx - grabOffset;
+    if (targetStartIdx < 0) {
+      showToast('Cannot move: target extends beyond loaded dates', 'error');
+      return;
+    }
+    const adjustedDateStr = weekDates[targetStartIdx].dateStr;
     const targetEndIdx = targetStartIdx + source.spanLength - 1;
     if (targetEndIdx >= weekDates.length) {
       showToast('Cannot move: target extends beyond loaded dates', 'error');
       return;
     }
 
-    if (memberId === source.memberId && dateStr === source.startDate) return;
+    if (memberId === source.memberId && adjustedDateStr === source.startDate) return;
 
     try {
-      await moveScheduleEntries(source.entryIds, memberId, dateStr);
+      await moveScheduleEntries(source.entryIds, memberId, adjustedDateStr);
       showToast('Assignment moved', 'success');
       onScheduleRefresh();
     } catch (err) {
