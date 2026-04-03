@@ -987,6 +987,30 @@ body {
   border-radius: 4px;
 }
 
+/* ─── Drag-and-Drop Feedback ─────────────────────────────────────── */
+.task-bar.dragging {
+  opacity: 0.5;
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  cursor: grabbing;
+}
+
+.task-bar[draggable="true"] {
+  cursor: grab;
+}
+
+.task-cell.drag-over {
+  background: rgba(34, 197, 94, 0.15) !important;
+  outline: 2px dashed #22c55e;
+  outline-offset: -2px;
+}
+
+.task-cell.drag-over-collision {
+  background: rgba(245, 158, 11, 0.15) !important;
+  outline: 2px dashed #f59e0b;
+  outline-offset: -2px;
+}
+
 /* ─── Collision / Stacked Cells ──────────────────────────────────── */
 .task-cell.collision {
   border: 2px solid #f59e0b;
