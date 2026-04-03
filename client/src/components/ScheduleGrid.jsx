@@ -152,17 +152,19 @@ export default function ScheduleGrid({
     el.scrollLeft = Math.max(0, todayHeader.offsetLeft - memberColWidth);
   }, []);
 
-  // Scroll to today's column on initial mount
+  // Scroll to today's column on initial mount (same as pressing "Today" button)
   const hasScrolledToToday = useRef(false);
   useEffect(() => {
     if (hasScrolledToToday.current || !gridRef.current || weekDates.length === 0) return;
     const todayIdx = weekDates.findIndex(d => d.isToday);
-    if (todayIdx >= 0) {
-      setTimeout(() => {
-        scrollToTodayColumn();
-        hasScrolledToToday.current = true;
-      }, 50);
-    }
+    if (todayIdx < 0) return;
+    // Wait for schedule data before scrolling so the grid is fully rendered
+    if (!schedule || schedule.length === 0) return;
+    hasScrolledToToday.current = true;
+    // Use requestAnimationFrame + short delay to ensure DOM is painted
+    requestAnimationFrame(() => {
+      setTimeout(() => scrollToTodayColumn(), 50);
+    });
   }, [weekDates, schedule, scrollToTodayColumn]);
 
   // Scroll to today when button is pressed
