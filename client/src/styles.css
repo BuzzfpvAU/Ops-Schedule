@@ -1407,6 +1407,127 @@ body {
   background: #f8717115;
 }
 
+/* ─── Collision Dropdown (multiple entries) ──────────────────────── */
+.dropdown-collision-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.dropdown-collision-header {
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.dropdown-collision-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dropdown-collision-card {
+  padding: 8px 10px;
+  margin: 4px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.dropdown-collision-card + .dropdown-collision-card {
+  margin-top: 4px;
+}
+
+.dropdown-collision-card .dropdown-task-info {
+  padding: 0;
+  border-bottom: none;
+}
+
+.dropdown-collision-card .dropdown-task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dropdown-collision-status {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dropdown-collision-card .dropdown-notes-section {
+  padding: 4px 0 0;
+}
+
+.dropdown-collision-card .dropdown-notes-input {
+  min-height: 28px;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+.dropdown-collision-card .dropdown-link-btn {
+  font-size: 11px;
+  padding: 4px 6px;
+  margin-top: 2px;
+}
+
+.dropdown-collision-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.dropdown-collision-actions .status-picker.compact {
+  flex: 1;
+}
+
+.dropdown-collision-actions .status-picker.compact .status-buttons {
+  gap: 2px;
+}
+
+.dropdown-collision-actions .status-btn {
+  font-size: 9px;
+  padding: 2px 4px;
+}
+
+.dropdown-clear.compact {
+  width: auto;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.dropdown-clear-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(100% - 12px);
+  margin: 6px 6px 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--danger);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s;
+}
+
+.dropdown-clear-all:hover {
+  background: #f8717115;
+}
+
 /* ─── Quick Actions (vacant cell) ────────────────────────────────── */
 .dropdown-quick-actions {
   display: flex;

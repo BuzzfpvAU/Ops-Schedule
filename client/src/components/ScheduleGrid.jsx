@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, createNotification, updateScheduleStatus, updateScheduleNotes, createJob, getJobs as fetchJobs, updateTeamMember, moveScheduleEntries, STATUSES } from '../api.js';
+import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, deleteScheduleEntry, createNotification, updateScheduleStatus, updateScheduleNotes, createJob, getJobs as fetchJobs, updateTeamMember, moveScheduleEntries, STATUSES } from '../api.js';
 
 const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
@@ -1097,101 +1097,235 @@ export default function ScheduleGrid({
         >
           {isPopulated ? (
             /* ── Populated cell: show task info, notes, link, status, clear ── */
-            <>
-              <div className="dropdown-task-info">
-                <div className="dropdown-task-header">
-                  <span className="dropdown-dot" style={{ background: existingEntry.job_color }}></span>
-                  <div className="dropdown-task-details">
-                    <span className="dropdown-task-name">{existingEntry.job_name}</span>
-                    <span className="dropdown-task-code">{existingEntry.job_code}</span>
-                  </div>
+            existingEntries.length > 1 ? (
+              /* ── Multiple entries (collision): show each as a card ── */
+              <div className="dropdown-collision-list">
+                <div className="dropdown-collision-header">
+                  <span className="dropdown-collision-title">{existingEntries.length} assignments on {dropdown.date}</span>
                 </div>
-                {existingEntry.job_description && (
-                  <p className="dropdown-task-desc">{existingEntry.job_description}</p>
+                {existingEntries.map((entry) => {
+                  const entryStatus = STATUSES[entry.status || 'tentative'] || STATUSES.tentative;
+                  return (
+                    <div key={entry.id} className="dropdown-collision-card">
+                      <div className="dropdown-task-info">
+                        <div className="dropdown-task-header">
+                          <span className="dropdown-dot" style={{ background: entry.job_color }}></span>
+                          <div className="dropdown-task-details">
+                            <span className="dropdown-task-name">{entry.job_name}</span>
+                            <span className="dropdown-task-code">{entry.job_code}</span>
+                          </div>
+                          <span className="dropdown-collision-status" style={{ background: entryStatus.color, color: getTextColor(entryStatus.color) }}>
+                            {entryStatus.label}
+                          </span>
+                        </div>
+                      </div>
+                      {isAdmin && (
+                        <div className="dropdown-notes-section">
+                          <textarea
+                            className="dropdown-notes-input"
+                            placeholder="Notes..."
+                            defaultValue={entry.notes || ''}
+                            onBlur={async (e) => {
+                              const newNotes = e.target.value;
+                              if (newNotes !== (entry.notes || '')) {
+                                try {
+                                  await updateScheduleNotes(entry.id, newNotes);
+                                  onScheduleRefresh();
+                                  showToast('Notes updated', 'success');
+                                } catch (err) {
+                                  showToast('Failed to update notes: ' + err.message, 'error');
+                                }
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                e.target.blur();
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
+                      {entry.job_file_url && (
+                        <a href={entry.job_file_url} target="_blank" rel="noopener noreferrer" className="dropdown-link-btn" onClick={(e) => e.stopPropagation()}>
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                            <path d="M6.5 3.5H3a1 1 0 00-1 1V13a1 1 0 001 1h8.5a1 1 0 001-1V9.5M9.5 2h4.5v4.5M14 2L7.5 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Info
+                        </a>
+                      )}
+                      {isAdmin && (
+                        <div className="dropdown-collision-actions">
+                          <div className="status-picker compact">
+                            <div className="status-buttons">
+                              {Object.entries(STATUSES).map(([key, { label, color }]) => (
+                                <button
+                                  key={key}
+                                  className={`status-btn ${(entry.status || 'tentative') === key ? 'active' : ''}`}
+                                  style={{ '--status-color': color }}
+                                  title={label}
+                                  onClick={async () => {
+                                    try {
+                                      await updateScheduleStatus(entry.id, key);
+                                      onScheduleRefresh();
+                                      showToast(`Status changed to ${STATUSES[key].label}`, 'success');
+                                    } catch (err) {
+                                      showToast('Failed to update status: ' + err.message, 'error');
+                                    }
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <button className="dropdown-clear compact" onClick={async () => {
+                            try {
+                              await deleteScheduleEntry(entry.id);
+                              onScheduleRefresh();
+                              showToast(`Cleared ${entry.job_name} on ${dropdown.date}`, 'success');
+                              // Close dropdown if this was the last collision (now only 1 entry left)
+                              if (existingEntries.length <= 2) setDropdown(null);
+                            } catch (err) {
+                              showToast('Failed to clear: ' + err.message, 'error');
+                            }
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                      {!isAdmin && USER_ALLOWED_STATUSES.includes(entry.status) && (
+                        <div className="dropdown-collision-actions">
+                          <button className="dropdown-clear compact" onClick={async () => {
+                            try {
+                              await deleteScheduleEntry(entry.id);
+                              onScheduleRefresh();
+                              showToast(`Cleared ${entry.job_name} on ${dropdown.date}`, 'success');
+                              if (existingEntries.length <= 2) setDropdown(null);
+                            } catch (err) {
+                              showToast('Failed to clear: ' + err.message, 'error');
+                            }
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {isAdmin && (
+                  <button className="dropdown-clear-all" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                    Clear all assignments
+                  </button>
                 )}
               </div>
-              {isAdmin && (
-                <div className="dropdown-notes-section">
-                  <label className="dropdown-notes-label">Notes</label>
-                  <textarea
-                    className="dropdown-notes-input"
-                    placeholder="Add a note for this day..."
-                    defaultValue={existingEntry.notes || ''}
-                    onBlur={async (e) => {
-                      const newNotes = e.target.value;
-                      if (newNotes !== (existingEntry.notes || '')) {
-                        try {
-                          await updateScheduleNotes(existingEntry.id, newNotes);
-                          onScheduleRefresh();
-                          showToast('Notes updated', 'success');
-                        } catch (err) {
-                          showToast('Failed to update notes: ' + err.message, 'error');
-                        }
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        e.target.blur();
-                      }
-                    }}
-                  />
-                </div>
-              )}
-              {existingEntry.job_file_url && (
-                <a
-                  href={existingEntry.job_file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="dropdown-link-btn"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M6.5 3.5H3a1 1 0 00-1 1V13a1 1 0 001 1h8.5a1 1 0 001-1V9.5M9.5 2h4.5v4.5M14 2L7.5 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  More information
-                </a>
-              )}
-              {isAdmin && (
-                <div className="dropdown-footer">
-                  <div className="status-picker">
-                    <span className="status-picker-label">Status</span>
-                    <div className="status-buttons">
-                      {Object.entries(STATUSES).map(([key, { label, color }]) => {
-                        const currentStatus = existingEntry.status || 'tentative';
-                        return (
-                          <button
-                            key={key}
-                            className={`status-btn ${currentStatus === key ? 'active' : ''}`}
-                            style={{ '--status-color': color }}
-                            title={label}
-                            onClick={() => handleStatusChange(dropdown.memberId, dropdown.date, key)}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
+            ) : (
+              /* ── Single entry: original behavior ── */
+              <>
+                <div className="dropdown-task-info">
+                  <div className="dropdown-task-header">
+                    <span className="dropdown-dot" style={{ background: existingEntry.job_color }}></span>
+                    <div className="dropdown-task-details">
+                      <span className="dropdown-task-name">{existingEntry.job_name}</span>
+                      <span className="dropdown-task-code">{existingEntry.job_code}</span>
                     </div>
                   </div>
-                  <button className="dropdown-clear" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                    Clear assignment
-                  </button>
+                  {existingEntry.job_description && (
+                    <p className="dropdown-task-desc">{existingEntry.job_description}</p>
+                  )}
                 </div>
-              )}
-              {!isAdmin && USER_ALLOWED_STATUSES.includes(existingEntry.status) && (
-                <div className="dropdown-footer">
-                  <button className="dropdown-clear" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                {isAdmin && (
+                  <div className="dropdown-notes-section">
+                    <label className="dropdown-notes-label">Notes</label>
+                    <textarea
+                      className="dropdown-notes-input"
+                      placeholder="Add a note for this day..."
+                      defaultValue={existingEntry.notes || ''}
+                      onBlur={async (e) => {
+                        const newNotes = e.target.value;
+                        if (newNotes !== (existingEntry.notes || '')) {
+                          try {
+                            await updateScheduleNotes(existingEntry.id, newNotes);
+                            onScheduleRefresh();
+                            showToast('Notes updated', 'success');
+                          } catch (err) {
+                            showToast('Failed to update notes: ' + err.message, 'error');
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          e.target.blur();
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+                {existingEntry.job_file_url && (
+                  <a
+                    href={existingEntry.job_file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="dropdown-link-btn"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M6.5 3.5H3a1 1 0 00-1 1V13a1 1 0 001 1h8.5a1 1 0 001-1V9.5M9.5 2h4.5v4.5M14 2L7.5 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                    Clear assignment
-                  </button>
-                </div>
-              )}
-            </>
+                    More information
+                  </a>
+                )}
+                {isAdmin && (
+                  <div className="dropdown-footer">
+                    <div className="status-picker">
+                      <span className="status-picker-label">Status</span>
+                      <div className="status-buttons">
+                        {Object.entries(STATUSES).map(([key, { label, color }]) => {
+                          const currentStatus = existingEntry.status || 'tentative';
+                          return (
+                            <button
+                              key={key}
+                              className={`status-btn ${currentStatus === key ? 'active' : ''}`}
+                              style={{ '--status-color': color }}
+                              title={label}
+                              onClick={() => handleStatusChange(dropdown.memberId, dropdown.date, key)}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button className="dropdown-clear" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      Clear assignment
+                    </button>
+                  </div>
+                )}
+                {!isAdmin && USER_ALLOWED_STATUSES.includes(existingEntry.status) && (
+                  <div className="dropdown-footer">
+                    <button className="dropdown-clear" onClick={() => handleClear(dropdown.memberId, dropdown.date)}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      Clear assignment
+                    </button>
+                  </div>
+                )}
+              </>
+            )
           ) : (
             /* ── Empty cell: show quick actions, search, job list ── */
             <>
