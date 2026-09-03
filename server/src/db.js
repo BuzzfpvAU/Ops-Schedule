@@ -158,6 +158,29 @@ export function initDb() {
   if (!columns.includes('airtag_name')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN airtag_name TEXT DEFAULT ''`);
   }
+  if (!columns.includes('equipment_category')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN equipment_category TEXT DEFAULT ''`);
+    // Backfill categories from name/role keywords (only rows still unset)
+    const backfill = (kw, cat) => db.prepare(
+      `UPDATE team_members SET equipment_category = ?
+       WHERE is_equipment = 1 AND equipment_category = ''
+         AND (lower(COALESCE(role,'')) LIKE ? OR lower(COALESCE(name,'')) LIKE ?)`
+    ).run(cat, `%${kw}%`, `%${kw}%`);
+    backfill('battery', 'Batteries');
+    backfill('payload', 'Payloads');
+    backfill('camera', 'Payloads');
+    backfill('sensor', 'Payloads');
+    backfill('lidar', 'Payloads');
+    backfill('thermal', 'Payloads');
+    backfill('survey', 'Survey Equip');
+    backfill('drtk', 'Survey Equip');
+    backfill('pole', 'Survey Equip');
+    backfill('gnss', 'Survey Equip');
+    // Anything not matched is a drone
+    db.prepare(
+      "UPDATE team_members SET equipment_category = 'Drones' WHERE is_equipment = 1 AND equipment_category = ''"
+    ).run();
+  }
 
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`

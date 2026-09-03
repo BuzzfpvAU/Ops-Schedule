@@ -5,6 +5,8 @@ const LOCATIONS = [
   'NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'NT', 'ACT', 'Processing', 'Other'
 ];
 
+const CATEGORIES = ['Drones', 'Payloads', 'Batteries', 'Survey Equip'];
+
 const DEFAULT_COLORS = ['#64748b', '#475569', '#6366f1', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 
 const PRESET_COLORS = [
@@ -18,33 +20,30 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [collapsedStates, setCollapsedStates] = useState({});
-  const [groupBy, setGroupBy] = useState('type');
+  const [groupBy, setGroupBy] = useState('category');
   const [form, setForm] = useState({
     name: '', role: 'Equipment', location: '', timezone: 'Australia/Sydney', color: '#64748b', sort_order: 100, info_url: '',
-    serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: ''
+    serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: '',
+    equipment_category: ''
   });
 
-  // Group equipment by type or state
+  // Group equipment by category or state
   const grouped = {};
   for (const item of equipmentItems) {
-    const key = groupBy === 'type' ? (item.role || 'Unspecified') : (item.location || 'Unassigned');
+    const key = groupBy === 'category' ? (item.equipment_category || 'Unspecified') : (item.location || 'Unassigned');
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(item);
   }
 
-  // Sort group headers: state follows LOCATIONS order; type is alphabetical, Unspecified last
+  // Sort group headers: category follows CATEGORIES order; state follows LOCATIONS order
   const sortedGroups = Object.keys(grouped).sort((a, b) => {
-    if (groupBy === 'state') {
-      const idxA = LOCATIONS.indexOf(a);
-      const idxB = LOCATIONS.indexOf(b);
-      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
-      if (idxA === -1) return 1;
-      if (idxB === -1) return -1;
-      return idxA - idxB;
-    }
-    if (a === 'Unspecified') return 1;
-    if (b === 'Unspecified') return -1;
-    return a.localeCompare(b);
+    const order = groupBy === 'category' ? CATEGORIES : LOCATIONS;
+    const idxA = order.indexOf(a);
+    const idxB = order.indexOf(b);
+    if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+    if (idxA === -1) return 1;
+    if (idxB === -1) return -1;
+    return idxA - idxB;
   });
 
   const changeGroupBy = (mode) => {
@@ -62,7 +61,8 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
       name: '', role: 'Equipment', location: '', timezone: 'Australia/Sydney',
       color: DEFAULT_COLORS[equipmentItems.length % DEFAULT_COLORS.length],
       sort_order: 100 + equipmentItems.length, info_url: '',
-      serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: ''
+      serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: '',
+      equipment_category: ''
     });
     setShowModal(true);
   };
@@ -74,7 +74,7 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
       timezone: item.timezone, color: item.color, sort_order: item.sort_order, info_url: item.info_url || '',
       serial_number: item.serial_number || '', dimensions: item.dimensions || '',
       weight: item.weight || '', serviceable: item.serviceable !== 0, sds_url: item.sds_url || '',
-      airtag_name: item.airtag_name || ''
+      airtag_name: item.airtag_name || '', equipment_category: item.equipment_category || ''
     });
     setShowModal(true);
   };
@@ -121,7 +121,7 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
               title="Group equipment by"
               style={{ cursor: 'pointer' }}
             >
-              <option value="type">Group: Type</option>
+              <option value="category">Group: Category</option>
               <option value="state">Group: State</option>
             </select>
             <button className="btn btn-primary" onClick={openCreate}>+ Add Equipment</button>
@@ -219,14 +219,28 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
                 />
               </div>
 
-              <div className="form-group">
-                <label>Type / Description</label>
-                <input
-                  type="text"
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                  placeholder="e.g. Drone, Camera, Vehicle"
-                />
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Category</label>
+                  <select
+                    value={form.equipment_category}
+                    onChange={(e) => setForm({ ...form, equipment_category: e.target.value })}
+                  >
+                    <option value="">Unset</option>
+                    {CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Type / Description</label>
+                  <input
+                    type="text"
+                    value={form.role}
+                    onChange={(e) => setForm({ ...form, role: e.target.value })}
+                    placeholder="e.g. Heavy-lift, Thermal camera"
+                  />
+                </div>
               </div>
 
               <div className="form-group">
