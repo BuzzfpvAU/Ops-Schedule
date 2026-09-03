@@ -18,28 +18,39 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [collapsedStates, setCollapsedStates] = useState({});
+  const [groupBy, setGroupBy] = useState('type');
   const [form, setForm] = useState({
     name: '', role: 'Equipment', location: '', timezone: 'Australia/Sydney', color: '#64748b', sort_order: 100, info_url: '',
     serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: ''
   });
 
-  // Group equipment by location
+  // Group equipment by type or state
   const grouped = {};
   for (const item of equipmentItems) {
-    const loc = item.location || 'Unassigned';
-    if (!grouped[loc]) grouped[loc] = [];
-    grouped[loc].push(item);
+    const key = groupBy === 'type' ? (item.role || 'Unspecified') : (item.location || 'Unassigned');
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(item);
   }
 
-  // Sort locations to match LOCATIONS order
-  const sortedLocations = Object.keys(grouped).sort((a, b) => {
-    const idxA = LOCATIONS.indexOf(a);
-    const idxB = LOCATIONS.indexOf(b);
-    if (idxA === -1 && idxB === -1) return a.localeCompare(b);
-    if (idxA === -1) return 1;
-    if (idxB === -1) return -1;
-    return idxA - idxB;
+  // Sort group headers: state follows LOCATIONS order; type is alphabetical, Unspecified last
+  const sortedGroups = Object.keys(grouped).sort((a, b) => {
+    if (groupBy === 'state') {
+      const idxA = LOCATIONS.indexOf(a);
+      const idxB = LOCATIONS.indexOf(b);
+      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    }
+    if (a === 'Unspecified') return 1;
+    if (b === 'Unspecified') return -1;
+    return a.localeCompare(b);
   });
+
+  const changeGroupBy = (mode) => {
+    setGroupBy(mode);
+    setCollapsedStates({});
+  };
 
   const toggleState = (loc) => {
     setCollapsedStates(prev => ({ ...prev, [loc]: !prev[loc] }));
@@ -103,6 +114,16 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
           <h3>Equipment</h3>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span className="equipment-count-badge">{equipmentItems.length} items</span>
+            <select
+              className="btn btn-sm"
+              value={groupBy}
+              onChange={(e) => changeGroupBy(e.target.value)}
+              title="Group equipment by"
+              style={{ cursor: 'pointer' }}
+            >
+              <option value="type">Group: Type</option>
+              <option value="state">Group: State</option>
+            </select>
             <button className="btn btn-primary" onClick={openCreate}>+ Add Equipment</button>
           </div>
         </div>
@@ -113,19 +134,19 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
           </p>
         )}
 
-        {sortedLocations.map((location, idx) => {
-          const items = grouped[location];
-          const isCollapsed = collapsedStates[location];
+        {sortedGroups.map((group, idx) => {
+          const items = grouped[group];
+          const isCollapsed = collapsedStates[group];
           return (
-            <div key={location} className="equipment-state-group">
-              <div className="equipment-state-header" onClick={() => toggleState(location)}>
+            <div key={group} className="equipment-state-group">
+              <div className="equipment-state-header" onClick={() => toggleState(group)}>
                 <div className="equipment-state-left">
                   <span className={`equipment-state-chevron ${isCollapsed ? '' : 'expanded'}`}>
                     <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
                       <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </span>
-                  <span className="equipment-state-name">{location}</span>
+                  <span className="equipment-state-name">{group}</span>
                   <span className="equipment-state-count">{items.length}</span>
                 </div>
               </div>
