@@ -1,11 +1,6 @@
 import React, { useState } from 'react';
 import { createEquipment, updateTeamMember, deleteTeamMember } from '../api.js';
-
-const LOCATIONS = [
-  'NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'NT', 'ACT', 'Processing', 'Other'
-];
-
-const CATEGORIES = ['Drones', 'Payloads', 'Batteries', 'Survey Equip'];
+import { CATEGORIES, LOCATIONS } from '../equipmentConstants.js';
 
 const DEFAULT_COLORS = ['#64748b', '#475569', '#6366f1', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 

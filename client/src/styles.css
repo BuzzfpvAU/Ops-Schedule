@@ -2390,6 +2390,37 @@ body {
 .eq-map-row-last.very-stale { color: #9ca3af; }
 .eq-map-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
+.eq-map-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.eq-map-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+.eq-map-group-header:hover { background: var(--bg-hover); }
+.eq-map-group-header.hidden { opacity: 0.55; }
+.eq-map-group-eye { color: var(--accent); font-size: 13px; }
+.eq-map-group-name { flex: 1; }
+.eq-map-group-count {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 @media (max-width: 800px) {
   .eq-map-layout { grid-template-columns: 1fr; height: auto; }
   .eq-map-container { height: 60vh; }

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getEquipmentLocations, getEquipmentLocationHistory, reportEquipmentLocation } from '../api.js';
+import { CATEGORIES, LOCATIONS } from '../equipmentConstants.js';
 
 const AUSTRALIA_CENTER = [-25.2744, 133.7751];
 const STALE_MS = 24 * 60 * 60 * 1000;
@@ -41,10 +42,46 @@ export default function EquipmentMap({ showToast }) {
   const trailRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [groupBy, setGroupBy] = useState('category');
+  const [hiddenGroups, setHiddenGroups] = useState({});
   const [modal, setModal] = useState(null); // { item } | null
   const [form, setForm] = useState({ lat: '', lng: '', accuracy: '' });
   const [pickMode, setPickMode] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const groupKeyOf = (item) =>
+    groupBy === 'category' ? (item.equipment_category || 'Unspecified') : (item.location || 'Unassigned');
+
+  const groupOrder = groupBy === 'category' ? CATEGORIES : LOCATIONS;
+
+  // Items grouped by the active dimension, in display order
+  const groups = useMemo(() => {
+    const grouped = {};
+    for (const item of items) {
+      const key = groupKeyOf(item);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(item);
+    }
+    return Object.keys(grouped)
+      .sort((a, b) => {
+        const ia = groupOrder.indexOf(a);
+        const ib = groupOrder.indexOf(b);
+        if (ia === -1 && ib === -1) return a.localeCompare(b);
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+      })
+      .map(key => ({ key, items: grouped[key] }));
+  }, [items, groupBy]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleGroup = (key) => {
+    setHiddenGroups(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const changeGroupBy = (mode) => {
+    setGroupBy(mode);
+    setHiddenGroups({});
+  };
 
   // ── Map init (once) ──
   useEffect(() => {
@@ -97,7 +134,9 @@ export default function EquipmentMap({ showToast }) {
     group.clearLayers();
     trailRef.current.clearLayers();
 
-    const withLocation = items.filter(i => i.lat != null && i.lng != null);
+    const withLocation = items.filter(
+      i => i.lat != null && i.lng != null && !hiddenGroups[groupKeyOf(i)]
+    );
 
     withLocation.forEach(item => {
       const icon = L.divIcon({ className: '', html: pinHtml(item), iconSize: [22, 30], iconAnchor: [11, 28] });
@@ -135,7 +174,7 @@ export default function EquipmentMap({ showToast }) {
         mapRef.current._fitted = true;
       }
     }
-  }, [items]);
+  }, [items, hiddenGroups, groupBy]);
 
   const flyTo = (item) => {
     if (item.lat == null || item.lng == null) {
@@ -189,8 +228,26 @@ export default function EquipmentMap({ showToast }) {
       <div className="card">
         <div className="card-header">
           <h3>Equipment Map</h3>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="equipment-count-badge">{locatedCount}/{items.length} located</span>
+            <select
+              className="btn btn-sm"
+              value={groupBy}
+              onChange={(e) => changeGroupBy(e.target.value)}
+              title="Group equipment by"
+              style={{ cursor: 'pointer' }}
+            >
+              <option value="category">Group: Category</option>
+              <option value="state">Group: State</option>
+            </select>
+            <button
+              className="btn btn-sm"
+              onClick={() => setHiddenGroups({})}
+              disabled={!Object.values(hiddenGroups).some(Boolean)}
+              title="Show all groups"
+            >
+              Show all
+            </button>
             <button className="btn" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
           </div>
         </div>
@@ -205,17 +262,31 @@ export default function EquipmentMap({ showToast }) {
             {items.length === 0 && !loading && (
               <p style={{ color: 'var(--text-dim)', padding: 16, fontSize: 13 }}>No equipment registered.</p>
             )}
-            {items.map(item => (
-              <div key={item.id} className={`eq-map-row ${item.lat == null ? 'no-loc' : ''}`}>
-                <span className="eq-map-dot" style={{ background: item.color || '#64748b' }} />
-                <div className="eq-map-row-info">
-                  <div className="eq-map-row-name" title={item.name}>{item.name}</div>
-                  <div className={`eq-map-row-last ${staleness(item.seen_at)}`}>{timeAgo(item.seen_at)}</div>
-                </div>
-                <div className="eq-map-row-actions">
-                  <button className="btn btn-sm" title="Locate on map" onClick={() => flyTo(item)} disabled={item.lat == null}>◎</button>
-                  <button className="btn btn-sm" title="Set location" onClick={() => openSetLocation(item)}>📍</button>
-                </div>
+            {groups.map(group => (
+              <div key={group.key} className="eq-map-group">
+                <button
+                  type="button"
+                  className={`eq-map-group-header ${hiddenGroups[group.key] ? 'hidden' : ''}`}
+                  onClick={() => toggleGroup(group.key)}
+                  title={hiddenGroups[group.key] ? 'Show on map' : 'Hide from map'}
+                >
+                  <span className="eq-map-group-eye">{hiddenGroups[group.key] ? '○' : '●'}</span>
+                  <span className="eq-map-group-name">{group.key}</span>
+                  <span className="eq-map-group-count">{group.items.length}</span>
+                </button>
+                {!hiddenGroups[group.key] && group.items.map(item => (
+                  <div key={item.id} className={`eq-map-row ${item.lat == null ? 'no-loc' : ''}`}>
+                    <span className="eq-map-dot" style={{ background: item.color || '#64748b' }} />
+                    <div className="eq-map-row-info">
+                      <div className="eq-map-row-name" title={item.name}>{item.name}</div>
+                      <div className={`eq-map-row-last ${staleness(item.seen_at)}`}>{timeAgo(item.seen_at)}</div>
+                    </div>
+                    <div className="eq-map-row-actions">
+                      <button className="btn btn-sm" title="Locate on map" onClick={() => flyTo(item)} disabled={item.lat == null}>◎</button>
+                      <button className="btn btn-sm" title="Set location" onClick={() => openSetLocation(item)}>📍</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
