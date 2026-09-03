@@ -5,3 +5,15 @@ dist/
 *.db-wal
 *.db-shm
 .DS_Store
+
+# AirTag tracker — local state & secrets (never commit)
+tracker/.env
+tracker/account.json
+tracker/ani_libs.bin
+tracker/keys/
+tracker/logs/
+tracker/.venv/
+
+# Local agent state
+.claude/
+.superpowers/

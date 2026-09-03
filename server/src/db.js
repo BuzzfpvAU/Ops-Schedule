@@ -155,6 +155,27 @@ export function initDb() {
   if (!columns.includes('sds_url')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN sds_url TEXT DEFAULT ''`);
   }
+  if (!columns.includes('airtag_name')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN airtag_name TEXT DEFAULT ''`);
+  }
+
+  // Equipment location history (AirTag pings + manual updates)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS equipment_locations (
+      id TEXT PRIMARY KEY,
+      team_member_id TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      accuracy REAL,
+      battery TEXT DEFAULT '',
+      source TEXT DEFAULT 'manual',
+      seen_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_equipment_locations_member_seen
+      ON equipment_locations(team_member_id, seen_at DESC);
+  `);
 
   // New tables for auth
   db.exec(`

@@ -57,6 +57,27 @@ export async function deleteTeamMember(id) {
   return api(`/team-members/${id}`, { method: 'DELETE' });
 }
 
+// ── Equipment tracking ──
+
+export async function getEquipmentLocations() {
+  return api('/equipment/locations');
+}
+
+export async function getEquipmentLocationHistory(memberId, days = 30) {
+  return api(`/equipment/locations/${memberId}/history?days=${days}`);
+}
+
+export async function reportEquipmentLocation(data) {
+  return api('/equipment/locations', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function clearEquipmentLocationHistory(memberId) {
+  return api(`/equipment/locations/${memberId}`, { method: 'DELETE' });
+}
+
 // ── Jobs ──
 
 export async function getJobs() {

@@ -20,7 +20,7 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
   const [collapsedStates, setCollapsedStates] = useState({});
   const [form, setForm] = useState({
     name: '', role: 'Equipment', location: '', timezone: 'Australia/Sydney', color: '#64748b', sort_order: 100, info_url: '',
-    serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: ''
+    serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: ''
   });
 
   // Group equipment by location
@@ -51,7 +51,7 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
       name: '', role: 'Equipment', location: '', timezone: 'Australia/Sydney',
       color: DEFAULT_COLORS[equipmentItems.length % DEFAULT_COLORS.length],
       sort_order: 100 + equipmentItems.length, info_url: '',
-      serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: ''
+      serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: ''
     });
     setShowModal(true);
   };
@@ -62,7 +62,8 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
       name: item.name, role: item.role || 'Equipment', location: item.location,
       timezone: item.timezone, color: item.color, sort_order: item.sort_order, info_url: item.info_url || '',
       serial_number: item.serial_number || '', dimensions: item.dimensions || '',
-      weight: item.weight || '', serviceable: item.serviceable !== 0, sds_url: item.sds_url || ''
+      weight: item.weight || '', serviceable: item.serviceable !== 0, sds_url: item.sds_url || '',
+      airtag_name: item.airtag_name || ''
     });
     setShowModal(true);
   };
@@ -214,6 +215,16 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
                   value={form.serial_number}
                   onChange={(e) => setForm({ ...form, serial_number: e.target.value })}
                   placeholder="e.g. 1ZNBC4A00CC000123"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>AirTag Name</label>
+                <input
+                  type="text"
+                  value={form.airtag_name}
+                  onChange={(e) => setForm({ ...form, airtag_name: e.target.value })}
+                  placeholder="e.g. M300 RTK #1 (matches the AirTag name in Find My)"
                 />
               </div>
 

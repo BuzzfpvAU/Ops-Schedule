@@ -13,6 +13,7 @@ import scheduleRoutes from './server/src/routes/schedule.js';
 import exportRoutes from './server/src/routes/export.js';
 import notificationRoutes from './server/src/routes/notifications.js';
 import seedRoutes from './server/src/routes/seed.js';
+import equipmentRoutes from './server/src/routes/equipment.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,6 +62,7 @@ app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
 app.use('/api/seed', requireAuth, requireAdmin, seedRoutes);
+app.use('/api/equipment', equipmentRoutes);
 
 // Serve static frontend
 const clientDist = path.join(__dirname, 'client', 'dist');

@@ -9,6 +9,7 @@ import ScheduleGrid from './components/ScheduleGrid.jsx';
 import TeamManager from './components/TeamManager.jsx';
 import JobManager from './components/JobManager.jsx';
 import EquipmentManager from './components/EquipmentManager.jsx';
+import EquipmentMap from './components/EquipmentMap.jsx';
 import Toast from './components/Toast.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
 import PasskeyManager from './components/PasskeyManager.jsx';
@@ -195,6 +196,7 @@ export default function App() {
             <button className={`nav-tab ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>Jobs / Projects</button>
             <button className={`nav-tab ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>Team</button>
             <button className={`nav-tab ${activeTab === 'equipment' ? 'active' : ''}`} onClick={() => setActiveTab('equipment')}>Equipment</button>
+            <button className={`nav-tab ${activeTab === 'map' ? 'active' : ''}`} onClick={() => setActiveTab('map')}>Equipment Map</button>
           </>
         )}
       </nav>
@@ -219,6 +221,9 @@ export default function App() {
         )}
         {activeTab === 'equipment' && user.isAdmin && (
           <EquipmentManager equipment={equipmentList} onRefresh={loadData} showToast={showToast} />
+        )}
+        {activeTab === 'map' && user.isAdmin && (
+          <EquipmentMap showToast={showToast} />
         )}
         {activeTab === 'team' && user.isAdmin && (
           <TeamManager members={teamMembers} equipment={equipmentList} onRefresh={loadData} showToast={showToast} />
