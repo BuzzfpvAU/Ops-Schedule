@@ -12,9 +12,9 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>API_URL</key>
-    <string>http://localhost:3000</string>
+    <string>https://taskz.id</string>
     <key>TRACKER_INGEST_KEY</key>
-    <string>REPLACE_WITH_REAL_KEY</string>
+    <string>a662d3a0d8d7b257641874314eff155c8c1c0301b36004da</string>
   </dict>
   <key>StartInterval</key>
   <integer>1200</integer>
