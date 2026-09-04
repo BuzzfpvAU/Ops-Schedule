@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getEquipmentLocations, getEquipmentLocationHistory, reportEquipmentLocation } from '../api.js';
 import { CATEGORIES, LOCATIONS } from '../equipmentConstants.js';
+import { geocodeKey, reverseGeocode } from '../geocode.js';
 
 const AUSTRALIA_CENTER = [-25.2744, 133.7751];
 const STALE_MS = 24 * 60 * 60 * 1000;
@@ -42,6 +43,25 @@ export default function EquipmentMap({ showToast }) {
   const trailRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Reverse geocoded "City, ST" per rounded coordinate (see geocode.js) —
+  // shown under each sidebar row that has a tracked position.
+  const [placeByKey, setPlaceByKey] = useState({});
+  useEffect(() => {
+    let alive = true;
+    const keys = new Set();
+    for (const item of items) {
+      if (item.lat == null || item.lng == null) continue;
+      keys.add(geocodeKey(item.lat, item.lng));
+    }
+    for (const key of keys) {
+      const [lat, lng] = key.split(',').map(Number);
+      reverseGeocode(lat, lng).then(place => {
+        if (!alive || !place) return;
+        setPlaceByKey(prev => ({ ...prev, [key]: place }));
+      });
+    }
+    return () => { alive = false; };
+  }, [items]);
   const [groupBy, setGroupBy] = useState('category');
   const [hiddenGroups, setHiddenGroups] = useState({});
   const [modal, setModal] = useState(null); // { item } | null
@@ -348,6 +368,11 @@ export default function EquipmentMap({ showToast }) {
                     <div className="eq-map-row-info">
                       <div className="eq-map-row-name" title={item.name}>{item.name}</div>
                       <div className={`eq-map-row-last ${staleness(item.seen_at)}`}>{timeAgo(item.seen_at)}</div>
+                      {item.lat != null && item.lng != null && placeByKey[geocodeKey(item.lat, item.lng)] && (
+                        <div className="eq-map-row-place" title={`${item.lat.toFixed(5)}, ${item.lng.toFixed(5)}`}>
+                          📍 {placeByKey[geocodeKey(item.lat, item.lng)]}
+                        </div>
+                      )}
                     </div>
                     <div className="eq-map-row-actions">
                       <button className="btn btn-sm" title="Locate on map" onClick={() => flyTo(item)} disabled={item.lat == null}>◎</button>

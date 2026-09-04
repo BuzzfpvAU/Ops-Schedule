@@ -2427,6 +2427,14 @@ body {
 .eq-map-row-last.fresh { color: #22c55e; }
 .eq-map-row-last.stale { color: #f59e0b; }
 .eq-map-row-last.very-stale { color: #9ca3af; }
+.eq-map-row-place {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .eq-map-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
 .eq-map-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
