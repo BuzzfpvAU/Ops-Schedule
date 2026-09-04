@@ -1,5 +1,5 @@
 // Reverse geocoding for the equipment list — "📍 Perth, WA" quick reference
-// under each item.
+// under each item, plus the short state for "Group by State" (tracked state).
 //
 // Two free, key-less, CORS-enabled providers are chained:
 //   1. Photon (OSM data, https://photon.komoot.io) — best place names, but its
@@ -21,30 +21,43 @@ const STATE_SHORT = {
   'Australian Capital Territory': 'ACT',
 };
 
-// 'lat,lng' (3dp) -> Promise<string|null> (the resolved label, if any)
+function shortState(state) {
+  return (state && STATE_SHORT[state]) || state || '';
+}
+
+// 'lat,lng' (3dp) -> Promise<{label, state}|null>; label is "Place, ST",
+// state is the short state code. Null when nothing resolvable (ocean etc).
 const cache = new Map();
 
 export function geocodeKey(lat, lng) {
   return `${Number(lat).toFixed(3)},${Number(lng).toFixed(3)}`;
 }
 
-export function reverseGeocode(lat, lng) {
+export function geocodeDetail(lat, lng) {
   const key = geocodeKey(lat, lng);
   if (!cache.has(key)) {
-    cache.set(key, fetchPlace(lat, lng));
+    cache.set(key, fetchDetail(lat, lng));
   }
   return cache.get(key);
 }
 
-async function fetchPlace(lat, lng) {
-  const photon = await fromPhoton(lat, lng);
-  if (photon) return photon;
-  const bdc = await fromBigDataCloud(lat, lng);
-  return bdc;
+// Convenience wrappers (existing call sites use these)
+export function reverseGeocode(lat, lng) {
+  return geocodeDetail(lat, lng).then(d => (d && d.label) || null);
 }
 
-function shortState(state) {
-  return (state && STATE_SHORT[state]) || state || '';
+export function reverseGeocodeState(lat, lng) {
+  return geocodeDetail(lat, lng).then(d => (d && d.state) || null);
+}
+
+function detail(label, state) {
+  return { label: label || null, state: state || null };
+}
+
+async function fetchDetail(lat, lng) {
+  const photon = await fromPhoton(lat, lng);
+  if (photon) return photon;
+  return fromBigDataCloud(lat, lng);
 }
 
 async function fromPhoton(lat, lng) {
@@ -55,8 +68,10 @@ async function fromPhoton(lat, lng) {
     const data = await res.json();
     const p = data.features?.[0]?.properties;
     if (!p) return null;
+    const state = shortState(p.state);
     const place = p.city || p.district || p.locality || p.town || p.village || '';
-    return [place, shortState(p.state)].filter(Boolean).join(', ') || null;
+    if (!place && !state) return null;
+    return detail([place, state].filter(Boolean).join(', '), state);
   } catch {
     return null;
   }
@@ -69,10 +84,10 @@ async function fromBigDataCloud(lat, lng) {
     const res = await fetch(url); // the endpoint 307s to its canonical host; fetch follows
     if (!res.ok) return null;
     const j = await res.json();
-    const place = j.locality || j.city || '';
     const state = shortState(j.principalSubdivision);
+    const place = j.locality || j.city || '';
     if (!place && !state) return null; // ocean / no-man's-land → no label
-    return [place, state].filter(Boolean).join(', ') || null;
+    return detail([place, state].filter(Boolean).join(', '), state);
   } catch {
     return null; // geocode is decorative — never break the list over it
   }

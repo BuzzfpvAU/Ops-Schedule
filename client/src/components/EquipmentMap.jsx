@@ -3,7 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getEquipmentLocations, getEquipmentLocationHistory, reportEquipmentLocation } from '../api.js';
 import { CATEGORIES, LOCATIONS } from '../equipmentConstants.js';
-import { geocodeKey, reverseGeocode } from '../geocode.js';
+import { geocodeKey, geocodeDetail } from '../geocode.js';
 
 const AUSTRALIA_CENTER = [-25.2744, 133.7751];
 const STALE_MS = 24 * 60 * 60 * 1000;
@@ -43,9 +43,9 @@ export default function EquipmentMap({ showToast }) {
   const trailRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  // Reverse geocoded "City, ST" per rounded coordinate (see geocode.js) —
-  // shown under each sidebar row that has a tracked position.
-  const [placeByKey, setPlaceByKey] = useState({});
+  // Reverse geocoded {label: "Perth, WA", state: "WA"} per rounded coordinate
+  // (see geocode.js) — shown under sidebar rows and used for state grouping.
+  const [geoByKey, setGeoByKey] = useState({});
   useEffect(() => {
     let alive = true;
     const keys = new Set();
@@ -55,9 +55,9 @@ export default function EquipmentMap({ showToast }) {
     }
     for (const key of keys) {
       const [lat, lng] = key.split(',').map(Number);
-      reverseGeocode(lat, lng).then(place => {
-        if (!alive || !place) return;
-        setPlaceByKey(prev => ({ ...prev, [key]: place }));
+      geocodeDetail(lat, lng).then(d => {
+        if (!alive || !d) return;
+        setGeoByKey(prev => ({ ...prev, [key]: d }));
       });
     }
     return () => { alive = false; };
@@ -77,8 +77,16 @@ export default function EquipmentMap({ showToast }) {
   const dragStateRef = useRef(null);
   useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
 
-  const groupKeyOf = (item) =>
-    groupBy === 'category' ? (item.equipment_category || 'Unspecified') : (item.location || 'Unassigned');
+  const groupKeyOf = (item) => {
+    if (groupBy === 'category') return item.equipment_category || 'Unspecified';
+    // State = where the item currently is (tracked, reverse-geocoded);
+    // untracked items fall back to their base location.
+    if (item.lat != null && item.lng != null) {
+      const g = geoByKey[geocodeKey(item.lat, item.lng)];
+      if (g && g.state) return g.state;
+    }
+    return item.location || 'Unassigned';
+  };
 
   const groupOrder = groupBy === 'category' ? CATEGORIES : LOCATIONS;
 
@@ -100,7 +108,7 @@ export default function EquipmentMap({ showToast }) {
         return ia - ib;
       })
       .map(key => ({ key, items: grouped[key] }));
-  }, [items, groupBy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, groupBy, geoByKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleGroup = (key) => {
     setHiddenGroups(prev => ({ ...prev, [key]: !prev[key] }));
@@ -231,7 +239,7 @@ export default function EquipmentMap({ showToast }) {
         mapRef.current._fitted = true;
       }
     }
-  }, [items, hiddenGroups, groupBy]);
+  }, [items, hiddenGroups, groupBy, geoByKey]);
 
   const flyTo = (item) => {
     if (item.lat == null || item.lng == null) {
@@ -368,9 +376,9 @@ export default function EquipmentMap({ showToast }) {
                     <div className="eq-map-row-info">
                       <div className="eq-map-row-name" title={item.name}>{item.name}</div>
                       <div className={`eq-map-row-last ${staleness(item.seen_at)}`}>{timeAgo(item.seen_at)}</div>
-                      {item.lat != null && item.lng != null && placeByKey[geocodeKey(item.lat, item.lng)] && (
+                      {item.lat != null && item.lng != null && geoByKey[geocodeKey(item.lat, item.lng)]?.label && (
                         <div className="eq-map-row-place" title={`${item.lat.toFixed(5)}, ${item.lng.toFixed(5)}`}>
-                          📍 {placeByKey[geocodeKey(item.lat, item.lng)]}
+                          📍 {geoByKey[geocodeKey(item.lat, item.lng)].label}
                         </div>
                       )}
                     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createEquipment, updateTeamMember, deleteTeamMember, getEquipmentLocations } from '../api.js';
 import { CATEGORIES, LOCATIONS } from '../equipmentConstants.js';
-import { geocodeKey, reverseGeocode } from '../geocode.js';
+import { geocodeKey, geocodeDetail } from '../geocode.js';
 
 const DEFAULT_COLORS = ['#64748b', '#475569', '#6366f1', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 
@@ -34,10 +34,11 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
     return () => { alive = false; };
   }, [equipmentItems]);
 
-  // Reverse geocode each unique tracked coordinate once → "Perth, WA".
-  // Labels are keyed by rounded coordinate, so items sharing a spot share the
-  // lookup. Decorative: failures just leave the line off.
-  const [placeByKey, setPlaceByKey] = useState({});
+  // Reverse geocode each unique tracked coordinate once → per-key detail
+  // {label: "Perth, WA", state: "WA"}. Labels keyed by rounded coordinate so
+  // items sharing a spot share the lookup. Decorative: failures leave the
+  // line off (and state grouping falls back to the base location).
+  const [geoByKey, setGeoByKey] = useState({});
   useEffect(() => {
     let alive = true;
     const keys = new Set();
@@ -48,18 +49,31 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
     }
     for (const key of keys) {
       const [lat, lng] = key.split(',').map(Number);
-      reverseGeocode(lat, lng).then(place => {
-        if (!alive || !place) return;
-        setPlaceByKey(prev => ({ ...prev, [key]: place }));
+      geocodeDetail(lat, lng).then(d => {
+        if (!alive || !d) return;
+        setGeoByKey(prev => ({ ...prev, [key]: d }));
       });
     }
     return () => { alive = false; };
   }, [equipmentItems, locsById]);
 
+  // Where the item is right now: tracked state (from reverse geocode) when it
+  // has a position, otherwise its base location; neither → 'Unassigned'.
+  const trackedStateOf = (item) => {
+    const loc = locsById[item.id];
+    if (loc && loc.lat != null && loc.lng != null) {
+      const g = geoByKey[geocodeKey(loc.lat, loc.lng)];
+      if (g && g.state) return g.state;
+    }
+    return item.location || null;
+  };
+
   // Group equipment by category or state
   const grouped = {};
   for (const item of equipmentItems) {
-    const key = groupBy === 'category' ? (item.equipment_category || 'Unspecified') : (item.location || 'Unassigned');
+    const key = groupBy === 'category'
+      ? (item.equipment_category || 'Unspecified')
+      : (trackedStateOf(item) || 'Unassigned');
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(item);
   }
@@ -183,9 +197,10 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
                 <div className="equipment-state-items">
                   {items.map(item => {
                     const loc = locsById[item.id];
-                    const placeLine = loc && loc.lat != null && loc.lng != null
-                      ? placeByKey[geocodeKey(loc.lat, loc.lng)]
+                    const geo = loc && loc.lat != null && loc.lng != null
+                      ? geoByKey[geocodeKey(loc.lat, loc.lng)]
                       : null;
+                    const placeLine = geo ? geo.label : null;
                     return (
                     <div key={item.id} className="list-item equipment-list-item">
                       <div className="list-item-info">
