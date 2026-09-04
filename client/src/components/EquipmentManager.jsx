@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { createEquipment, updateTeamMember, deleteTeamMember } from '../api.js';
+import React, { useState, useEffect } from 'react';
+import { createEquipment, updateTeamMember, deleteTeamMember, getEquipmentLocations } from '../api.js';
 import { CATEGORIES, LOCATIONS } from '../equipmentConstants.js';
+import { geocodeKey, reverseGeocode } from '../geocode.js';
 
 const DEFAULT_COLORS = ['#64748b', '#475569', '#6366f1', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 
@@ -21,6 +22,39 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
     serial_number: '', dimensions: '', weight: '', serviceable: true, sds_url: '', airtag_name: '',
     equipment_category: ''
   });
+
+  // Latest tracked position per item (id -> location row), merged from the
+  // tracking endpoint — the plain equipment list has no lat/lng.
+  const [locsById, setLocsById] = useState({});
+  useEffect(() => {
+    let alive = true;
+    getEquipmentLocations()
+      .then(rows => { if (alive) setLocsById(Object.fromEntries(rows.map(r => [r.id, r]))); })
+      .catch(() => { /* list still works without locations */ });
+    return () => { alive = false; };
+  }, [equipmentItems]);
+
+  // Reverse geocode each unique tracked coordinate once → "Perth, WA".
+  // Labels are keyed by rounded coordinate, so items sharing a spot share the
+  // lookup. Decorative: failures just leave the line off.
+  const [placeByKey, setPlaceByKey] = useState({});
+  useEffect(() => {
+    let alive = true;
+    const keys = new Set();
+    for (const item of equipmentItems) {
+      const loc = locsById[item.id];
+      if (!loc || loc.lat == null || loc.lng == null) continue;
+      keys.add(geocodeKey(loc.lat, loc.lng));
+    }
+    for (const key of keys) {
+      const [lat, lng] = key.split(',').map(Number);
+      reverseGeocode(lat, lng).then(place => {
+        if (!alive || !place) return;
+        setPlaceByKey(prev => ({ ...prev, [key]: place }));
+      });
+    }
+    return () => { alive = false; };
+  }, [equipmentItems, locsById]);
 
   // Group equipment by category or state
   const grouped = {};
@@ -147,7 +181,12 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
               </div>
               {!isCollapsed && (
                 <div className="equipment-state-items">
-                  {items.map(item => (
+                  {items.map(item => {
+                    const loc = locsById[item.id];
+                    const placeLine = loc && loc.lat != null && loc.lng != null
+                      ? placeByKey[geocodeKey(loc.lat, loc.lng)]
+                      : null;
+                    return (
                     <div key={item.id} className="list-item equipment-list-item">
                       <div className="list-item-info">
                         <div className="member-avatar equipment-avatar clickable" style={{ background: item.color, cursor: 'pointer' }} onClick={() => openEdit(item)} title="Edit equipment">
@@ -183,6 +222,11 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
                               {item.weight && <span>{item.weight}</span>}
                             </div>
                           )}
+                          {placeLine && loc && (
+                            <div className="eq-list-place" title={`${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`}>
+                              📍 {placeLine}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="list-item-actions">
@@ -190,7 +234,8 @@ export default function EquipmentManager({ equipment: equipmentItems = [], onRef
                         <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item)}>Remove</button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

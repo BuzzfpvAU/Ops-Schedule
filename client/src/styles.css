@@ -1946,6 +1946,12 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.eq-list-place {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
 .equipment-state-group:last-child {
   border-bottom: none;
 }
