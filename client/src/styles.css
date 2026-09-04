@@ -2326,6 +2326,39 @@ body {
 .eq-popup-name { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
 .eq-popup-last { font-weight: 600; margin: 6px 0 2px; color: #2563eb; }
 .eq-popup-meta { color: #4b5563; line-height: 1.4; }
+.eq-popup-actions { margin-top: 10px; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+.eq-popup-actions .btn { cursor: pointer; }
+
+/* "Pick on map" hint bar over the map */
+.eq-map-container { position: relative; }
+.eq-map-pick-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+.eq-map-pick-banner button {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.eq-map-pick-banner button:hover { background: rgba(255, 255, 255, 0.35); }
 
 /* Sidebar */
 .eq-map-sidebar {

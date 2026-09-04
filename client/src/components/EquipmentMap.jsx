@@ -48,6 +48,14 @@ export default function EquipmentMap({ showToast }) {
   const [form, setForm] = useState({ lat: '', lng: '', accuracy: '' });
   const [pickMode, setPickMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Item whose location is being picked on the map. Lives in a ref so the
+  // map-click handler and drag handlers see the current value.
+  const pickItemRef = useRef(null);
+  const pickModeRef = useRef(false);
+  // Marker that was just dragged (and its pre-drag position) while the
+  // confirmation modal is open — lets Cancel snap the pin back.
+  const dragStateRef = useRef(null);
+  useEffect(() => { pickModeRef.current = pickMode; }, [pickMode]);
 
   const groupKeyOf = (item) =>
     groupBy === 'category' ? (item.equipment_category || 'Unspecified') : (item.location || 'Unassigned');
@@ -97,14 +105,17 @@ export default function EquipmentMap({ showToast }) {
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
-  // ── Map click: pick-mode fills the form ──
+  // ── Map click: pick-mode captures the clicked spot into the Set Location modal ──
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const handler = (e) => {
-      if (pickMode) {
-        setForm(f => ({ ...f, lat: e.latlng.lat.toFixed(6), lng: e.latlng.lng.toFixed(6) }));
+      if (pickMode && pickItemRef.current) {
+        const item = pickItemRef.current;
+        pickItemRef.current = null;
         setPickMode(false);
+        setModal({ item });
+        setForm({ lat: e.latlng.lat.toFixed(6), lng: e.latlng.lng.toFixed(6), accuracy: '' });
       }
     };
     map.on('click', handler);
@@ -151,8 +162,34 @@ export default function EquipmentMap({ showToast }) {
           ${item.battery ? `<div class="eq-popup-meta">Battery: ${escapeHtml(item.battery)}</div>` : ''}
           ${item.accuracy != null ? `<div class="eq-popup-meta">Accuracy: ±${Math.round(item.accuracy)} m</div>` : ''}
           <div class="eq-popup-meta">Source: ${item.source === 'airtag' ? 'AirTag' : 'Manual'}</div>
+          <div class="eq-popup-actions">
+            <button type="button" class="btn btn-sm" data-act="update">✎ Update location</button>
+          </div>
         </div>`;
-      const marker = L.marker([item.lat, item.lng], { icon }).addTo(group).bindPopup(popup);
+      const marker = L.marker([item.lat, item.lng], { icon, draggable: true })
+        .addTo(group)
+        .bindPopup(popup);
+
+      // Update-location button in the popup → same modal as the sidebar row
+      popup.addEventListener('click', (e) => {
+        if (e.target.closest('[data-act="update"]')) {
+          marker.closePopup();
+          openSetLocation(item);
+        }
+      });
+
+      // Drag the pin = record a manual location where you drop it
+      let dragOrigin = null;
+      marker.on('dragstart', () => { dragOrigin = marker.getLatLng(); });
+      marker.on('dragend', () => {
+        if (pickModeRef.current) return;
+        const ll = marker.getLatLng();
+        marker.closePopup();
+        mapRef.current?.closePopup();
+        dragStateRef.current = { marker, orig: dragOrigin || { lat: item.lat, lng: item.lng } };
+        setModal({ item });
+        setForm({ lat: ll.lat.toFixed(6), lng: ll.lng.toFixed(6), accuracy: '' });
+      });
 
       // Draw last-30d trail when the popup opens
       marker.on('popupopen', async () => {
@@ -190,8 +227,38 @@ export default function EquipmentMap({ showToast }) {
   };
 
   const openSetLocation = (item) => {
+    dragStateRef.current = null; // opened from list/popup, not from a drag
     setModal({ item });
     setForm({ lat: item.lat != null ? item.lat : '', lng: item.lng != null ? item.lng : '', accuracy: '' });
+    setPickMode(false);
+    pickItemRef.current = null;
+  };
+
+  // Enter pick mode: close the modal so the map is clickable, then the first
+  // map click reopens it with the coordinates filled in.
+  const startPick = () => {
+    if (!modal) return;
+    pickItemRef.current = modal.item;
+    setModal(null);
+    setPickMode(true);
+  };
+
+  const cancelPick = () => {
+    pickItemRef.current = null;
+    setPickMode(false);
+  };
+
+  // Close the modal. If it was opened by dragging a pin, snap that pin back
+  // to where it was before the drag (the drag is only saved on confirm).
+  const closeModal = () => {
+    const drag = dragStateRef.current;
+    if (drag && drag.marker._map) {
+      drag.marker.setLatLng(drag.orig);
+    }
+    dragStateRef.current = null;
+    pickItemRef.current = null;
+    setModal(null);
+    setPickMode(false);
   };
 
   const saveLocation = async (e) => {
@@ -211,6 +278,7 @@ export default function EquipmentMap({ showToast }) {
         source: 'manual',
       });
       showToast(`Location saved for ${modal.item.name}`, 'success');
+      dragStateRef.current = null; // saved → pin will re-render from the DB
       setModal(null);
       setPickMode(false);
       await load();
@@ -292,23 +360,29 @@ export default function EquipmentMap({ showToast }) {
           </div>
           <div className="eq-map-container">
             <div ref={mapDivRef} style={{ height: '100%', width: '100%' }} />
+            {pickMode && (
+              <div className="eq-map-pick-banner">
+                <span>Click the map to drop the pin…</span>
+                <button type="button" onClick={cancelPick}>Cancel</button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {modal && (
-        <div className="modal-overlay" onClick={() => { setModal(null); setPickMode(false); }}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Set Location — {modal.item.name}</h2>
-            <p className="modal-subtitle">Record where this equipment is now.</p>
+            <p className="modal-subtitle">Record where this equipment is now. You can also drag its pin on the map to move it here.</p>
             <form onSubmit={saveLocation}>
               <div className="form-group">
                 <button
                   type="button"
-                  className={`btn ${pickMode ? 'btn-primary' : ''}`}
-                  onClick={() => setPickMode(p => !p)}
+                  className="btn"
+                  onClick={startPick}
                 >
-                  {pickMode ? '✓ Click the map to drop a pin…' : 'Pick on map'}
+                  Pick on map
                 </button>
               </div>
               <div className="form-row">
@@ -326,7 +400,7 @@ export default function EquipmentMap({ showToast }) {
                 <input type="number" min="0" step="any" value={form.accuracy} onChange={e => setForm({ ...form, accuracy: e.target.value })} placeholder="e.g. 25" />
               </div>
               <div className="modal-actions">
-                <button type="button" className="btn" onClick={() => { setModal(null); setPickMode(false); }}>Cancel</button>
+                <button type="button" className="btn" onClick={closeModal}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Location'}</button>
               </div>
             </form>
