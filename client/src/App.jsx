@@ -13,7 +13,7 @@ import EquipmentMap from './components/EquipmentMap.jsx';
 import Toast from './components/Toast.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
 import PasskeyManager from './components/PasskeyManager.jsx';
-import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus } from './api.js';
+import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus, getMyCalendarToken, calendarFeedUrl } from './api.js';
 import { generateDateRange, getInitialDateRange, extendDateRange } from './utils/dates.js';
 
 // Parse reset token once, outside component
@@ -30,6 +30,7 @@ export default function App() {
   const [schedule, setSchedule] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [exportModal, setExportModal] = useState(null);
+  const [myFeedToken, setMyFeedToken] = useState(null);
   const [showPasskeys, setShowPasskeys] = useState(false);
   const [resetToken, setResetToken] = useState(initialResetToken);
 
@@ -161,6 +162,7 @@ export default function App() {
                   startDate: today.toISOString().slice(0, 10),
                   endDate: monthLater.toISOString().slice(0, 10),
                 });
+                getMyCalendarToken().then(r => setMyFeedToken(r.token)).catch(() => setMyFeedToken(null));
               }}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -261,6 +263,41 @@ export default function App() {
                   onChange={(e) => setExportModal({ ...exportModal, endDate: e.target.value })}
                 />
               </div>
+            </div>
+
+            <div className="export-subscribe">
+              <div className="export-subscribe-title">Subscribe — auto-updates</div>
+              {myFeedToken ? (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>
+                    Add this link in Apple Calendar (File → New Calendar Subscription), Google Calendar (Add by URL) or Outlook. Updates automatically — covers ~60 days back and the next 13 months.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      readOnly
+                      value={calendarFeedUrl('member', myFeedToken)}
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(calendarFeedUrl('member', myFeedToken));
+                          showToast('Subscription link copied', 'success');
+                        } catch {
+                          showToast('Copy failed — select the link manually', 'error');
+                        }
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Loading subscription link…</div>
+              )}
             </div>
 
             <div className="modal-actions">

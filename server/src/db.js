@@ -221,6 +221,19 @@ export function initDb() {
     );
   `);
 
+  // Calendar-subscription feed tokens — separate table (not a column on
+  // team_members/jobs) so the SELECT * list endpoints never leak tokens.
+  // Tokens are created lazily when a feed URL is requested in the UI.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS calendar_tokens (
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      PRIMARY KEY (entity_type, entity_id)
+    );
+  `);
+
   // Create shared viewer account if it doesn't exist
   const viewerExists = db.prepare("SELECT id FROM team_members WHERE email = 'view@auav.com.au'").get();
   if (!viewerExists) {

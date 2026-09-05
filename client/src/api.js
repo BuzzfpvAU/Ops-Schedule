@@ -78,6 +78,21 @@ export async function clearEquipmentLocationHistory(memberId) {
   return api(`/equipment/locations/${memberId}`, { method: 'DELETE' });
 }
 
+// ── Calendar subscription feeds ──
+
+export async function getMyCalendarToken() {
+  return api('/calendar/me');
+}
+
+export async function getJobCalendarToken(jobId) {
+  return api(`/calendar/job/${jobId}/token`);
+}
+
+// webcal:// URL for subscribing in Apple Calendar / Google / Outlook.
+export function calendarFeedUrl(kind, token) {
+  return `webcal://${window.location.host}/api/calendar/${kind}/${token}.ics`;
+}
+
 // ── Jobs ──
 
 export async function getJobs() {

@@ -1952,6 +1952,17 @@ body {
   margin-top: 2px;
 }
 
+.export-subscribe {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.export-subscribe-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
 .equipment-state-group:last-child {
   border-bottom: none;
 }

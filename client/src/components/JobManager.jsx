@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { createJob, updateJob, deleteJob, downloadIcalJob } from '../api.js';
+import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl } from '../api.js';
 
 const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
 export default function JobManager({ jobs, onRefresh, showToast }) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [subJob, setSubJob] = useState(null); // { job, token, url } | null
   const [form, setForm] = useState({ code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '' });
 
   // Filter out auto-created status jobs (notes, toil, leave, unavailable)
@@ -61,6 +62,26 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
     }
   };
 
+  const openSubscribe = async (job) => {
+    try {
+      const { token } = await getJobCalendarToken(job.id);
+      setSubJob({ job, url: calendarFeedUrl('job', token) });
+    } catch (err) {
+      showToast('Failed to get subscription link: ' + err.message, 'error');
+    }
+  };
+
+  const copySubUrl = async () => {
+    if (!subJob) return;
+    try {
+      await navigator.clipboard.writeText(subJob.url);
+      showToast(`Subscription link copied for ${subJob.job.code}`, 'success');
+      setSubJob(null);
+    } catch {
+      showToast('Copy failed — select the link manually', 'error');
+    }
+  };
+
   return (
     <div>
       <div className="card">
@@ -92,6 +113,7 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
             </div>
             <div className="list-item-actions">
               <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
+              <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
               <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
               <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
             </div>
@@ -178,6 +200,28 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
                 <button type="submit" className="btn btn-primary">{editing ? 'Save' : 'Create Job'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {subJob && (
+        <div className="modal-overlay" onClick={() => setSubJob(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Subscribe — {subJob.job.code}</h2>
+            <p className="modal-subtitle">
+              Everyone assigned to this job, updated automatically (past 60 days → next 13 months). Add the link in Apple Calendar (File → New Calendar Subscription), Google Calendar (Add by URL) or Outlook.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                readOnly
+                value={subJob.url}
+                onFocus={(e) => e.target.select()}
+              />
+              <button type="button" className="btn btn-primary" onClick={copySubUrl}>Copy</button>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => setSubJob(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
