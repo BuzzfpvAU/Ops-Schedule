@@ -64,7 +64,8 @@ function resolveMember(db, { member_id, airtag_name }) {
 // Latest known position for every piece of equipment (nulls included).
 router.get('/locations', requireAuth, (req, res) => {
   const rows = req.db.prepare(`
-    SELECT tm.id, tm.name, tm.role, tm.color, tm.location, tm.serial_number,
+    SELECT tm.id, tm.name, tm.role, tm.color, tm.location, tm.equipment_category,
+           tm.serial_number,
            tm.airtag_name, tm.serviceable,
            el.lat, el.lng, el.accuracy, el.battery, el.source, el.seen_at
     FROM team_members tm
