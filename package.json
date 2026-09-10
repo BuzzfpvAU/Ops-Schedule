@@ -11,7 +11,8 @@
     "start": "node index.js",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "dev": "npm run dev:server & npm run dev:client"
+    "dev": "npm run dev:server & npm run dev:client",
+    "test": "node --test client/test/*.test.js server/test/*.test.js"
   },
   "engines": {
     "node": ">=20.0.0"

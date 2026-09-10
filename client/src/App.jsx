@@ -6,6 +6,7 @@ import ForgotPassword from './components/ForgotPassword.jsx';
 import ResetPassword from './components/ResetPassword.jsx';
 import ChangePassword from './components/ChangePassword.jsx';
 import ScheduleGrid from './components/ScheduleGrid.jsx';
+import IndividualSchedule from './components/IndividualSchedule.jsx';
 import TeamManager from './components/TeamManager.jsx';
 import JobManager from './components/JobManager.jsx';
 import EquipmentManager from './components/EquipmentManager.jsx';
@@ -15,12 +16,14 @@ import NotificationBell from './components/NotificationBell.jsx';
 import PasskeyManager from './components/PasskeyManager.jsx';
 import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus, getMyCalendarToken, calendarFeedUrl } from './api.js';
 import { generateDateRange, getInitialDateRange, extendDateRange } from './utils/dates.js';
+import useIsNarrow from './hooks/useIsNarrow.js';
 
 // Parse reset token once, outside component
 const initialResetToken = new URLSearchParams(window.location.search).get('token');
 
 export default function App() {
   const { user, loading, needsSetup, logout } = useAuth();
+  const isNarrow = useIsNarrow();
   const [authView, setAuthView] = useState('login');
 
   const [activeTab, setActiveTab] = useState('schedule');
@@ -204,7 +207,18 @@ export default function App() {
       </nav>
 
       <main className="main-content">
-        {activeTab === 'schedule' && (
+        {activeTab === 'schedule' && isNarrow && (
+          <IndividualSchedule
+            teamMembers={teamMembers}
+            schedule={schedule}
+            allDates={allDates}
+            onLoadMore={loadMore}
+            onScrollToToday={scrollToToday}
+            onScheduleRefresh={refreshSchedule}
+            showToast={showToast}
+          />
+        )}
+        {activeTab === 'schedule' && !isNarrow && (
           <ScheduleGrid
             teamMembers={teamMembers}
             equipment={equipmentList}

@@ -165,6 +165,15 @@ export async function updateScheduleNotes(entryIdOrMemberId, dateOrNotes, notesO
   });
 }
 
+// Add a note/TOIL/leave/unavailable entry. The server creates the backing job,
+// so this works for non-admins who cannot write to /jobs.
+export async function quickScheduleEntry(data) {
+  return api('/schedule/quick', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deleteScheduleEntry(id) {
   return api(`/schedule/${id}`, { method: 'DELETE' });
 }

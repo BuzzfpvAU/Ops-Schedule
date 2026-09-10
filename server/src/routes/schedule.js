@@ -155,6 +155,113 @@ router.put('/', (req, res) => {
   });
 });
 
+// Fixed jobs backing the non-job statuses
+const STATUS_JOBS = {
+  toil: { code: 'TOIL', name: 'TOIL', color: '#64748b' },
+  leave: { code: 'LEAVE', name: 'Leave', color: '#64748b' },
+  unavailable: { code: 'NOT-AVAIL', name: 'Not Available', color: '#64748b' },
+};
+
+// Find or create the job backing a quick entry. Runs server-side so a non-admin
+// can mark their own days without needing job-write permission.
+function resolveQuickJob(db, status, text) {
+  if (status === 'note') {
+    const name = text.trim();
+    const existing = db.prepare('SELECT * FROM jobs WHERE name = ?').get(name);
+    if (existing) return existing;
+
+    const slug = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    let code = 'NOTE-' + slug;
+    if (db.prepare('SELECT 1 FROM jobs WHERE code = ?').get(code)) {
+      code = code + '-' + Date.now().toString(36).slice(-3);
+    }
+    const id = uuidv4();
+    db.prepare('INSERT INTO jobs (id, code, name, color) VALUES (?, ?, ?, ?)').run(id, code, name, '#3b82f6');
+    return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+  }
+
+  const info = STATUS_JOBS[status];
+  const existing = db.prepare('SELECT * FROM jobs WHERE code = ?').get(info.code);
+  if (existing) return existing;
+
+  const id = uuidv4();
+  db.prepare('INSERT INTO jobs (id, code, name, color) VALUES (?, ?, ?, ?)').run(id, info.code, info.name, info.color);
+  return db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+}
+
+// POST a note / TOIL / leave / unavailable entry, creating its job if needed
+router.post('/quick', (req, res) => {
+  const { date, status, text, team_member_id } = req.body;
+
+  if (!date || !status) {
+    return res.status(400).json({ error: 'date and status are required' });
+  }
+  if (!USER_ALLOWED_STATUSES.includes(status)) {
+    return res.status(403).json({ error: 'You can only add notes, TOIL, leave, or unavailable entries' });
+  }
+  if (status === 'note' && !text?.trim()) {
+    return res.status(400).json({ error: 'text is required for a note' });
+  }
+  if (req.user.isViewer) {
+    return res.status(403).json({ error: 'Viewers cannot modify the schedule' });
+  }
+
+  const memberId = team_member_id || req.user.memberId;
+  if (!memberId) {
+    return res.status(400).json({ error: 'No team member to assign to' });
+  }
+  if (!req.user.isAdmin && memberId !== req.user.memberId) {
+    return res.status(403).json({ error: 'You can only modify your own schedule' });
+  }
+  if (!req.db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(memberId)) {
+    return res.status(404).json({ error: 'Team member not found' });
+  }
+
+  let entryId;
+  try {
+    entryId = req.db.transaction(() => {
+      const job = resolveQuickJob(req.db, status, text);
+
+      // Same job already on this day: update it rather than duplicate
+      const existing = req.db.prepare(
+        'SELECT * FROM schedule_entries WHERE team_member_id = ? AND date = ? AND job_id = ?'
+      ).get(memberId, date, job.id);
+
+      if (existing) {
+        req.db.prepare(`
+          UPDATE schedule_entries
+          SET status = ?, updated_at = datetime('now', '+10 hours')
+          WHERE id = ?
+        `).run(status, existing.id);
+        return existing.id;
+      }
+
+      const id = uuidv4();
+      req.db.prepare(`
+        INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+        VALUES (?, ?, ?, ?, '', ?)
+      `).run(id, memberId, job.id, date, status);
+      return id;
+    })();
+  } catch (err) {
+    console.error('Quick entry failed:', err);
+    return res.status(500).json({ error: 'Failed to save entry: ' + err.message });
+  }
+
+  const entry = req.db.prepare(`
+    SELECT
+      se.id, se.team_member_id, se.job_id, se.date, se.notes, se.status,
+      tm.name as member_name, tm.color as member_color,
+      j.code as job_code, j.name as job_name, j.color as job_color
+    FROM schedule_entries se
+    JOIN team_members tm ON se.team_member_id = tm.id
+    JOIN jobs j ON se.job_id = j.id
+    WHERE se.id = ?
+  `).get(entryId);
+
+  res.json(entry);
+});
+
 // PUT update status only (by entry_id or member+date)
 router.put('/status', (req, res) => {
   const { entry_id, team_member_id, date, status } = req.body;
@@ -358,9 +465,19 @@ router.post('/move', requireAdmin, (req, res) => {
 });
 
 // DELETE remove a schedule entry
-router.delete('/:id', requireAdmin, (req, res) => {
+router.delete('/:id', (req, res) => {
   const existing = req.db.prepare('SELECT * FROM schedule_entries WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Schedule entry not found' });
+
+  // Non-admins may only remove their own note/TOIL/leave/unavailable entries
+  if (!req.user.isAdmin) {
+    if (existing.team_member_id !== req.user.memberId) {
+      return res.status(403).json({ error: 'You can only modify your own schedule' });
+    }
+    if (!USER_ALLOWED_STATUSES.includes(existing.status)) {
+      return res.status(403).json({ error: 'You cannot remove admin-assigned entries' });
+    }
+  }
 
   req.db.prepare('DELETE FROM schedule_entries WHERE id = ?').run(req.params.id);
   res.json({
