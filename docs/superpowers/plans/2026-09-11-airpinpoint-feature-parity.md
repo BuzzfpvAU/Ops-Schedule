@@ -4,7 +4,7 @@
 >
 > **Date:** 11 Sep 2026 · **Author:** Hermes Agent
 > **Companion research:** full AirPinpoint platform audit (441 pages, API, SDKs, changelog) archived in `~/airpinpoint-research/`.
-> **Goal:** replicate the complete AirPinpoint (airpinpoint.com) feature set inside the taskz.id Equipment module, fitted to the existing Express + better-sqlite3 + React/Leaflet stack.
+> **Goal:** replicate the complete AirPinpoint (airpinpoint.com) feature set inside the taskz.id Equipment module, fitted to the existing Express + better-sqlite3 + React/Leaflet stack — with QR workflows powered by the already-live **tagz.au** scan/checklist platform (§6).
 
 ---
 
@@ -29,7 +29,8 @@ AirTag-based asset-tracking SaaS ($11.99–14.99/tag/mo + their own Find My-cert
 | Equipment Map | ✅ Leaflet dark map, category/state grouping + filtering, staleness badges (fresh <24h / stale 1–7d / very-stale >7d), 30d trail on popup, drag-pin / pick-on-map manual updates, reverse-geocoded city/state |
 | Notifications | ✅ per-member notifications table + NotificationBell + unread counts; Resend email wired for account flows |
 | Auth/roles | ✅ JWT httpOnly cookies, WebAuthn passkeys, admin/member/viewer roles, shared viewer account |
-| Missing (this plan) | Geofences · auto check-in/out status engine · equipment alerts (email/bell) · history playback · share links · QR labels + scanning · satellite toggle · bulk edit · public API keys + webhooks · reports/AI |
+| tagz.au platform | ✅ live — printable QR/NFC tags, public scan pages, **checklists + submissions, browser geolocation capture**, owner email alerts (details in §6) |
+| Missing (this plan) | Geofences · auto check-in/out status engine · equipment alerts (email/bell) · history playback · share links · QR labels + scanning (**via tagz.au integration — §6**) · satellite toggle · bulk edit · public API keys + webhooks · reports/AI |
 
 **Deployment note:** prod (`taskz.id`, Hostinger Passenger Node 20, DB `~/data/ops-schedule.db`) is currently live at `2613010` (mobile view deployed; verified 11 Sep — bundle `index-CrIvQEye.js`). **No cron/scheduler exists in prod** — this drives the key design decision below.
 
@@ -37,12 +38,13 @@ AirTag-based asset-tracking SaaS ($11.99–14.99/tag/mo + their own Find My-cert
 
 ## 3. Architecture fit (design decisions for this stack)
 
-1. **Geofence evaluation runs at ingest time, not on a cron.** Every position write (tracker batch or manual UI update) immediately evaluates that asset against its assigned geofences and updates status/events/notifications. No scheduler needed; statuses are "as of last known position", which matches AirPinpoint's own semantics. (Optional phase-3 extra: hourly sweep via VPS crontab for staleness alerts.)
+1. **Geofence evaluation runs at ingest time, not on a cron.** Every position write (tracker batch, manual UI update, or QR-scan sync) immediately evaluates that asset against its assigned geofences and updates status/events/notifications. No scheduler needed; statuses are "as of last known position", which matches AirPinpoint's own semantics. (Optional phase-3 extra: hourly sweep via VPS crontab for staleness alerts.)
 2. **Status model (AirPinpoint's, mapped to AUAV ops):** priority `checked_out` (manual) > `delivered` (inside a delivery geofence) > `available` (inside a check-in geofence) > `unknown` (outside everything). Manual check-out wins until a manual check-in **or** (if the item's auto-check-in toggle is on) re-entry into a check-in geofence.
 3. **Schema changes are additive + idempotent** (existing `pragma table_info` migration pattern in `server/src/db.js`). Prod DB backup before deploy (existing flow).
 4. **Notifications reuse the existing stack:** insert into `notifications` (bell UI) + Resend email to admins; throttle: max 1 alert per asset per 30 min per event type (AirPinpoint's rule).
 5. **Share links follow the `calendar_tokens` precedent** (unguessable token row, created on demand, revocable) — public page server-rendered from Express (no SPA router work), expires.
 6. **Tracker cadence:** drop launchd `StartInterval` 1200 → 300 (5 min) to match realistic Find My network update cadence and AirPinpoint's near-real-time feel.
+7. **QR workflows are integration, not new build** — tagz.au already runs tags, scan pages, checklists and geolocation capture; taskz.id consumes scans as location + status + audit events (§6).
 
 ### New schema (all in `server/src/db.js`, additive)
 
@@ -53,6 +55,8 @@ status_source    TEXT DEFAULT ''          -- '' | 'manual' | 'geofence'
 checked_out_to   TEXT DEFAULT ''          -- person/crew/job (free text or member id)
 checked_out_at   TEXT DEFAULT ''
 auto_checkin     INTEGER DEFAULT 1        -- honour geofence auto-updates?
+tagz_item_id     TEXT DEFAULT ''          -- tagz.au Item id (§6)
+tagz_short_code  TEXT DEFAULT ''          -- tagz.au short code printed on the label
 
 CREATE TABLE IF NOT EXISTS equipment_geofences (
   id TEXT PRIMARY KEY, name TEXT NOT NULL,
@@ -74,8 +78,9 @@ CREATE TABLE IF NOT EXISTS equipment_geofence_assignments (
 
 CREATE TABLE IF NOT EXISTS equipment_events (
   id TEXT PRIMARY KEY, team_member_id TEXT NOT NULL, geofence_id TEXT,
-  event TEXT NOT NULL,   -- enter|exit|status_change|battery_low|checkin|checkout
+  event TEXT NOT NULL,   -- enter|exit|status_change|battery_low|checkin|checkout|checklist|scan|found
   detail TEXT DEFAULT '', lat REAL, lng REAL,
+  external_ref TEXT UNIQUE,   -- e.g. tagz.au submission id (idempotent replay)
   notified_at TEXT, occurred_at TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now','+10 hours'))
 );
@@ -92,7 +97,7 @@ CREATE TABLE IF NOT EXISTS share_links (
 ### New server module: `server/src/services/geofenceEngine.js`
 
 ```js
-// Called after every equipment_locations insert (ingest + manual update).
+// Called after every equipment_locations insert (tracker, manual, or QR sync).
 export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, statusChanged }
 //  1. load member (is_equipment, active, auto_checkin, status, status_source)
 //  2. for each assignment: inside = haversine(lat,lng, fence) <= radius
@@ -120,6 +125,7 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 | GET/DELETE | `/api/equipment/share` | admin | list / revoke |
 | GET | `/share/:token` | public | server-rendered read-only map page (expiry + revoke checked, `noindex`) |
 | POST | `/api/equipment/locations` | (existing) | now calls geofenceEngine per inserted item |
+| POST | `/api/equipment/qr-events` | ingest key | tagz.au sync: location + event + status action (§6) |
 
 ---
 
@@ -135,7 +141,7 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 | 6 | 4-level status model | ⛔ | Chunk 1 engine |
 | 7 | Auto check-in/out from geofences | ⛔ | Chunk 1 engine (ingest-time) |
 | 8 | Circle geofences (10–5000 m) | ⛔ | Chunk 1 API + Chunk 2 map draw UI |
-| 9 | Polygon geofences | ⛔ | Chunk 5 (point-in-polygon; MySQL→SQLite: store GeoJSON, JS test) |
+| 9 | Polygon geofences | ⛔ | Chunk 5 (point-in-polygon; store GeoJSON text, JS containment test) |
 | 10 | Delivery geofences | ⛔ | Chunk 1 (`role: 'delivery'`) |
 | 11 | Manual check in/out (priority over auto) | ⛔ | Chunk 1 endpoints + Chunk 2 buttons |
 | 12 | Bulk edit (geofence assign etc.) | ⛔ | Chunk 4 (list multiselect → assign) |
@@ -147,8 +153,8 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 | 18 | Retention 30–90d + export CSV/JSON | 🟡 | Chunk 3: export endpoint (CSV/JSON) |
 | 19 | Battery % / days + reset | 🟡 (label only) | Chunk 2: Low/Very-Low badges; Chunk 2 reset action (S) |
 | 20 | Share links (1–168 h, up to 1 yr) | ⛔ | Chunk 3: token + public page + expiry |
-| 21 | QR check-in/out scanning | ⛔ | Chunk 4: phone scan page (BarcodeDetector/html5-qrcode) |
-| 22 | QR label printing | ⛔ | Chunk 4: print view (`qrcode` lib) |
+| 21 | QR check-in/out scanning | 🟡 (tagz.au live) | **Reuse + sync** — scan → taskz.id event (§6); no new scanner UI |
+| 22 | QR label printing | ⛔ | Chunk 4: print sheet encoding `tagz.au/s/<shortCode>` |
 | 23 | Multi-user + roles | ✅ | extend: geofence mgmt admin-only |
 | 24 | Org access control / viewer isolation | ✅ | shared viewer account already scoped |
 | 25 | REST API + API keys + 100/min limit | 🟡 (internal) | Chunk 5: read API w/ hashed keys + rate limit |
@@ -162,8 +168,9 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 | 33 | Usage/billing/currency/invoicing | n/a | internal tool — skipped by design |
 | 34 | Self-service vs managed tag onboarding | ✅ tracker | ops runbook in `tracker/README.md`; managed = our Apple IDs |
 | 35 | Multiple Apple IDs (32-tag sharding) | ✅ | — |
+| 36 | QR checklists + field geolocation (via tagz.au) | ✅ tagz.au | §6 integration — scans become location source + status actions + condition audits (**beyond AirPinpoint**) |
 
-**Net: 4 chunks of real work to full parity** (1–3 are the must-haves; 4–5 complete the surface).
+**Net: 4 chunks of real work to full parity** (1–3 are the must-haves; 4 is mostly integration thanks to tagz.au; 5 completes the surface).
 
 ---
 
@@ -191,7 +198,7 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 - [ ] Admin draw/edit: "Add geofence" → click map for centre → drag radius / numeric input (min 50 m) → name + role + notify toggle → save; edit/delete via popup.
 - [ ] Pin + row status: colour dot per status + labels (Available / Out / Delivered / Unknown); status filter chips; sidebar header counts (available/out/low battery).
 - [ ] Popup actions: Check out (modal: to whom/note) · Check in · Directions (Google Maps) · Play history (opens Chunk 3 modal) · Share (admin) · battery label + accuracy.
-- [ ] EquipmentManager: status column/badge; geofence assignment pickers (check-in / delivery) in edit modal; "auto check-in" toggle.
+- [ ] EquipmentManager: status column/badge; geofence assignment pickers (check-in / delivery) in edit modal; "auto check-in" toggle; tagz.au link field shown with copy helpers (§6).
 - [ ] Satellite toggle (Esri World Imagery + reference labels; persist preference).
 - [ ] Manual update flow now triggers server-side geofence eval (same endpoint) — confirm trail/pins refresh.
 
@@ -201,13 +208,18 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 - [ ] Playback modal: fetch 30d history, slider scrub, animated marker + progressive polyline, play/pause (1 pt/s), day jump.
 - [ ] Share links: "Create link" (scope: whole map or single asset; hours 1–168; default 24) → copy URL; manage/revoke list; `share_links` token (crypto.randomUUID hex — follow `calendar_tokens` pattern).
 - [ ] Public `GET /share/:token`: server-rendered minimal Leaflet page (CDN) showing live positions (+ trail for scope=member), staleness + "last updated", brand header; `noindex`; handles expiry/revoke → friendly 410 page.
-- [ ] Export: `GET /api/equipment/locations/:id/export?days=90&format=csv|json` (CSV uses the safe-cell pattern from drone-ops audit — escape leading `=+-@`).
+- [ ] Export: `GET /api/equipment/locations/:id/export?days=90&format=csv|json` (CSV uses safe-cell escaping — escape leading `=+-@`).
 
-### Chunk 4 — QR + bulk edit + photos
-- [ ] QR labels: print view (asset name/SN + QR encoding `<origin>/scan/<id>`), A4 sheet layout, print CSS.
-- [ ] Scan page: phone-open `/scan/:id` (auth required) → asset card → Check in / Check out buttons (reuses Chunk 1 endpoints; `BarcodeDetector` API + `html5-qrcode` fallback).
-- [ ] Bulk edit: checkbox column in Equipment list → bulk "Assign geofence / set category / mark serviceable".
-- [ ] Optional `photo_url` per asset (link field w/ thumbnail), mirroring info_url/sds_url pattern.
+### Chunk 4 — QR workflows (via tagz.au) + bulk edit + photos
+
+The QR platform already exists in **tagz.au** (live): printable QR/NFC tags, public scan pages, checklist builder + submissions, browser geolocation + reverse geocoding, email alerts. **We integrate rather than rebuild** — full design in §6.
+
+- [ ] taskz.id: `tagz_item_id` + `tagz_short_code` fields on equipment; `POST /api/equipment/qr-events` ingest endpoint (resolve → location + event + status action + geofence engine + notify).
+- [ ] taskz.id: QR label print view (A4 sheet, `qrcode` lib in client) encoding `https://tagz.au/s/<shortCode>`; "Open scan page" + copy-link helpers in the equipment edit modal.
+- [ ] tagz.au: `src/lib/taskz-sync.ts` + call sites in checklist/log routes when the item is linked (`data.taskz`); env `TASKZ_API_URL` + `TASKZ_INGEST_KEY`.
+- [ ] Map/detail UI: `qr` source badge ("QR scan by <name> — 12 min ago"), event feed shows checklist summary + condition flags.
+- [ ] Bulk edit: checkbox column in Equipment list → bulk assign geofence / category / serviceable.
+- [ ] Optional: `photo_url` per asset (link field w/ thumbnail), mirroring info_url/sds_url pattern.
 
 ### Chunk 5 — Integrations + polish (post-parity)
 - [ ] Read-only public API `/api/v1/equipment` (+ locations/history/geofences) with hashed API keys (admin UI: create/revoke, last-used), 100 req/min per key; OpenAPI JSON.
@@ -217,26 +229,120 @@ export function evaluateEquipment(db, memberId, lat, lng, seenAt) => { events, s
 
 ---
 
-## 6. Risks, limits, decisions
+## 6. tagz.au integration design — QR checklists & field geolocation
 
-1. **Apple dependency** — Find My is ToS-grey and can break with any Apple release (AirPinpoint carries the identical risk; they mitigate with genuine Apple hardware + dedicated Apple IDs). We use dedicated Apple IDs + the proven FindMy.py stack; keep manual updates + CSV import as fallback. Manual entry is already a first-class path here.
-2. **Update cadence & coverage** — positions arrive when a nearby Apple device sees the tag (~5 min typical, hours in remote WA sites). UI already communicates this via staleness badges — keep geofence radii ≥100 m and design alerts as "entered/exited (last known)".
-3. **Beeping tags** — standard AirTags chime when moved away from their owner's devices; for gear that travels without crew phones, prefer non-beeping Find My-certified tags (Kmart Smart Tags verified working; industrial MFi tags for long life). Document per-tag choice.
-4. **Notification noise** — 30-min throttle + per-fence `notify` toggle; default only entry/exit + low battery.
-5. **Prod DB** — additive migrations only; **backup `~/data/ops-schedule.db` before deploy** (existing pattern). Keep `TRACKER_INGEST_KEY` out of git.
-6. **Privacy** — equipment-only tagging; don't attach tags to crew vehicles without a written policy.
-7. **Status semantics decision** (recommended defaults): manual check-out locks until manual check-in **or** (per-asset `auto_checkin=1`) re-entry into a check-in fence; leaving all fences ⇒ `unknown` (not auto "checked out") — "Out" is only ever explicit or fence-driven, avoiding false alarms.
+**What tagz.au already is (verified in its codebase + live):** Next.js app on Vercel (Postgres/Neon, Resend email) that sells smart QR/NFC tags and runs their public scan experience: `/scan/<tagId>` and short links `/s/<shortCode>`. Tags attach to *Items*; an Item whose `tagType.slug === "checklist"` renders a **choose page → checklist form → submission** flow that auto-requests **browser geolocation**, captures the scanner's name, reverse-geocodes the coordinates (Nominatim) and emails the item owner (`sendChecklistAlert`). A parallel "I found this item" flow shares the finder's location + contact info. Submissions persist as `ChecklistSubmission` (+ `Scan`) rows with lat/lng — i.e. **checklists via QR, with geolocation after each checklist**, exactly as built.
+
+**The insight:** every scan carries a fresh, precise, human-verified position plus a named person performing a defined task. That becomes (a) a third location source for the Equipment Map (`airtag` | `manual` | **`qr`**), (b) a status transition (check-out / put-away), and (c) an audit trail (condition reports, damage flags, found-item recovery) — QR parity with AirPinpoint *plus* capabilities it doesn't have.
+
+### How it fits
+
+```
+Crew scans QR/NFC on gear ─► tagz.au /scan/<tag> or /s/<code>   (public, mobile-first)
+                              ├─ “Complete Checklist” → results + browser GPS + scanner name
+                              └─ “I found this item”  → finder location + owner contact
+                                     │
+                                     ▼  POST  X-Ingest-Key   (server-to-server)
+                        taskz.id  /api/equipment/qr-events
+                              ├─ equipment_locations  (source='qr')      ← fresh map ping
+                              ├─ equipment_events     (checklist | scan | found)
+                              ├─ status action        (checkin / checkout / none)
+                              ├─ geofence engine re-eval (Chunk 1) → alerts
+                              └─ admin notifications (bell + Resend, throttled)
+```
+
+### Linking (who knows whom)
+
+| Side | Field | Notes |
+|---|---|---|
+| taskz.id | `team_members.tagz_item_id`, `.tagz_short_code` | additive migration; set once when gear gets its tagz.au tag |
+| tagz.au | `item.data.taskz = { equipmentId, action }` | **no migration** (`data` is JSON); `action ∈ checkin \| checkout \| event` drives the status side |
+
+The `taskz` key is not a declared field on any tag type, so the scan page's visibility filter already excludes it from public payloads — keep it that way (add a regression test when touching `/scan/[tagId]`).
+
+### Sync contract (tagz.au → taskz.id)
+
+Fire-and-forget server-side POST (never blocks the user's scan response), 5 s timeout, one retry after 2 s:
+
+```jsonc
+POST https://taskz.id/api/equipment/qr-events        // header: X-Ingest-Key
+{
+  "equipment_id": "tm_…",          // preferred; fallback: tagz_item_id / tagz_short_code
+  "submission_id": "cuid…",        // idempotency key → equipment_events.external_ref
+  "event": "checklist" | "scan" | "found",
+  "lat": -31.9523, "lng": 115.8613,
+  "seen_at": "2026-09-11T06:12:00.000Z",
+  "scanner_name": "Grant",          // becomes checked_out_to on a checkout action
+  "checklist": { "name": "Return checklist", "passed": 8, "failed": 0, "flags": [] },
+  "source": "tagz.au"
+}
+```
+
+**taskz.id handler** (`POST /api/equipment/qr-events`): resolve equipment → insert `equipment_locations` (`source='qr'`) → insert `equipment_events` (dedupe on `submission_id`; 200 + `duplicate:true` on replay) → apply `action` (checkout → `checked_out` + `checked_out_to=scanner_name`; checkin → clear manual lock to fence-evaluated state; none → event only) → run `geofenceEngine` → notify admins (throttled) → `{ok, equipment, status}`.
+
+**tagz.au changes** (small — spec: `docs/plans/2026-09-11-taskz-id-equipment-sync.md` in the tagz.au repo):
+
+1. `src/lib/taskz-sync.ts` — `syncToTaskz(...)`: reads `TASKZ_API_URL` + `TASKZ_INGEST_KEY` env; guarded try/catch; `console.error` on failure; returns boolean.
+2. Call sites (only when `item.data.taskz?.equipmentId` exists):
+   - `api/scan/[tagId]/checklist/route.ts` — after `ChecklistSubmission` + `Scan` create (has lat/lng, scannerName, results).
+   - `api/scan/[tagId]/log/route.ts` — when coordinates are attached (found-item location share / located scan).
+3. Env on Vercel: `TASKZ_API_URL=https://taskz.id`, `TASKZ_INGEST_KEY` (shared secret; matches taskz.id).
+
+### Status actions (what a scan means)
+
+| Checklist / flow | Suggested `data.taskz.action` | Effect on taskz.id |
+|---|---|---|
+| "Equipment check-out" | `checkout` | status → checked_out, `checked_out_to = scanner`, event |
+| "Return / put away" | `checkin` | clears manual lock → fence-evaluated (usually available) |
+| "Pre-flight / inspection / condition report" | `event` | event + condition flags (damage → admin alert); no status change |
+| "I found this item" (location share) | — (no action) | `found` event + location ping → recovery trail |
+
+### Failure handling & idempotency
+
+- User submission always succeeds in tagz.au; ops sync is best-effort by design.
+- Retry once after 2 s; failures logged. Optional Phase-2: `syncState` on `ChecklistSubmission` + admin "re-send" button.
+- taskz.id dedupes by `submission_id` (safe replay from retries).
+- Unknown/unlinked equipment → 404 logged in tagz.au; never surfaced to the scanner.
+
+### Rollout order
+
+1. Land Chunk 1 in taskz.id (schema + engine — `equipment_events` already included).
+2. Add `qr-events` endpoint + `tagz_*` fields + label print view.
+3. Provision tagz.au items (one "checklist" item per gear item; author checklists; set `data.taskz`; attach physical tags), link ids both sides, print labels.
+4. Wire `taskz-sync.ts` + envs in tagz.au; test one drone end-to-end.
+5. Roll out across the fleet; author remaining checklists.
+
+### Security notes
+
+- Shared-secret `X-Ingest-Key` (same pattern as the FindMy tracker); rate-limit the endpoint; validate payload shape; escape scanner-supplied strings before rendering in taskz.id UI.
+- Scan pages stay public by design (no logins in the field — that's the point); the `taskz` pointer is never exposed publicly.
+- The location captured is the *scanner's* — equipment-ops context only, not for personal tags.
 
 ---
 
-## 7. Verification & deploy
+## 7. Risks, limits, decisions
+
+1. **Apple dependency** — Find My is ToS-grey and can break with any Apple release (AirPinpoint carries the identical risk). We use dedicated Apple IDs + the proven FindMy.py stack; keep manual updates + QR scans + CSV import as fallback. Manual entry is already a first-class path here.
+2. **Update cadence & coverage** — positions arrive when a nearby Apple device sees the tag (~5 min typical, hours in remote WA sites). The staleness badges + fresh QR pings cover this: design geofence radii ≥100 m and alert on "entered/exited (last known)". QR scans give a precise position whenever a human is actually handling the gear.
+3. **Beeping tags** — standard AirTags chime when moved away from their owner's devices; for gear that travels without crew phones, prefer non-beeping Find My-certified tags (Kmart Smart Tags verified working; industrial MFi tags for long life). Document per-tag choice.
+4. **Notification noise** — 30-min throttle + per-fence `notify` toggle; default only entry/exit + low battery.
+5. **Prod DB** — additive migrations only; **backup `~/data/ops-schedule.db` before deploy** (existing pattern). Keep `TRACKER_INGEST_KEY` / `QR_INGEST_KEY` out of git.
+6. **Privacy** — equipment-only tagging; don't attach tags to crew vehicles without a written policy. QR scan locations belong to the scanning person — scope to equipment ops.
+7. **Status semantics decision** (recommended defaults): manual check-out locks until manual check-in **or** (per-asset `auto_checkin=1`) re-entry into a check-in fence; leaving all fences ⇒ `unknown` (not auto "checked out") — "Out" is only ever explicit or fence-driven, avoiding false alarms.
+8. **Cross-system sync dependency** — tagz.au → taskz.id is best-effort (non-blocking, 1 retry, dedup by submission id, next scan backfills). If it bites, add the Phase-2 re-send button.
+
+---
+
+## 8. Verification & deploy
 
 - Local: `npm test` (node --test) + curl flow: create geofence → assign → POST position inside → expect `available` + enter event + 1 notification; POST outside → `unknown` + exit event; manual checkout → `checked_out` (latched); throttle check; share link renders + expires; playback modal scrub.
+- QR sync: `curl -X POST localhost:3001/api/equipment/qr-events` with the ingest key + a test payload → expect `201`, a new `equipment_locations` row (`source='qr'`), an `equipment_events` row, and `duplicate:true` on replay; end-to-end: scan a provisioned tag on a phone → complete checklist → confirm map ping + status action + admin bell within seconds.
 - Deploy: commit per chunk → `git push origin main` → VPS: DB backup → `cd ~/domains/taskz.id/nodejs && git reset --hard origin/main && npm install && npm run build && touch tmp/restart.txt` (npm at `/opt/alt/alt-nodejs20/root/bin`).
 - Verify live: new bundle hash served on taskz.id + endpoints return 401 (not 404) unauthenticated.
 
 ---
 
-## 8. Ops runbook — tracker (existing, for reference)
+## 9. Ops runbook — tracker & tagz.au (for reference)
 
-accounts/<apple-id-slug>/ (session + keys) → `sync_airtags.py` every 5 min (after Chunk 0 tweak: `StartInterval` 300 in `com.buzzbot.airtag-tracker.plist`) → `POST taskz.id/api/equipment/locations` with `X-Ingest-Key`. Matching is by `airtag_name` (case-insensitive, must be unique across accounts). Pending: finish Apple sign-in + key export per `tracker/README.md`.
+- **FindMy tracker:** accounts/<apple-id-slug>/ (session + keys) → `sync_airtags.py` every 5 min (after Chunk 0 tweak: `StartInterval` 300 in `com.buzzbot.airtag-tracker.plist`) → `POST taskz.id/api/equipment/locations` with `X-Ingest-Key`. Matching is by `airtag_name` (case-insensitive, must be unique across accounts). Pending: finish Apple sign-in + key export per `tracker/README.md`.
+- **tagz.au linking:** provision a "checklist"-type item per gear item; attach tag(s); set `item.data.taskz = { equipmentId, action }`; record `tagz_short_code` / `tagz_item_id` on the equipment. Envs: taskz.id `QR_INGEST_KEY` (new; fall back to `TRACKER_INGEST_KEY` if you prefer zero new config), tagz.au `TASKZ_API_URL` + `TASKZ_INGEST_KEY`.
