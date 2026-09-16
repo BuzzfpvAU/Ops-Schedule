@@ -7,6 +7,7 @@ export default function MyJobs({ currentUser, teamMembers = [], equipment = [], 
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openJob, setOpenJob] = useState(null);
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -35,8 +36,12 @@ export default function MyJobs({ currentUser, teamMembers = [], equipment = [], 
 
   // Today in the app's home timezone (same +10h convention as the server)
   const todayAEST = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
-  const upcoming = jobs.filter(j => j.roster_end && j.roster_end >= todayAEST);
-  const past = jobs.filter(j => !j.roster_end || j.roster_end < todayAEST);
+  const q = search.trim().toLowerCase();
+  const visible = q
+    ? jobs.filter(j => [j.code, j.job_number, j.name, j.client].some(v => (v || '').toLowerCase().includes(q)))
+    : jobs;
+  const upcoming = visible.filter(j => j.roster_end && j.roster_end >= todayAEST);
+  const past = visible.filter(j => !j.roster_end || j.roster_end < todayAEST);
 
   return (
     <div className="card">
@@ -44,11 +49,31 @@ export default function MyJobs({ currentUser, teamMembers = [], equipment = [], 
         <h3>My Jobs</h3>
       </div>
 
+      {jobs.length > 0 && (
+        <div className="jc-search-wrap">
+          <input
+            type="search"
+            className="jc-search"
+            placeholder="Search my jobs…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search my jobs"
+          />
+          {q && <span className="jc-search-count">{visible.length} of {jobs.length}</span>}
+        </div>
+      )}
+
       {loading && <div className="jc-loading">Loading…</div>}
 
       {!loading && jobs.length === 0 && (
         <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32, fontSize: 14 }}>
           No jobs assigned to you yet. Jobs appear here once you're on the schedule.
+        </p>
+      )}
+
+      {!loading && jobs.length > 0 && visible.length === 0 && (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32, fontSize: 14 }}>
+          No jobs match “{search}”.
         </p>
       )}
 

@@ -18,10 +18,18 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
   const [applyTemplate, setApplyTemplate] = useState(true);
   const [viewJob, setViewJob] = useState(null);   // job id open in the card view
   const [cardVersion, setCardVersion] = useState(0);
+  const [search, setSearch] = useState('');
 
   // Filter out auto-created status jobs (notes, toil, leave, unavailable)
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
   const realJobs = jobs.filter(j => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code));
+
+  const q = search.trim().toLowerCase();
+  const filteredJobs = q
+    ? realJobs.filter(j =>
+        [j.code, j.job_number, j.name, j.client, j.site_address]
+          .some(v => (v || '').toLowerCase().includes(q)))
+    : realJobs;
 
   const openCreate = () => {
     setEditing(null);
@@ -140,13 +148,31 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
           <button className="btn btn-primary" onClick={openCreate}>+ Add Job</button>
         </div>
 
+        <div className="jc-search-wrap">
+          <input
+            type="search"
+            className="jc-search"
+            placeholder="Search jobs — code, job number, name, client…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search jobs"
+          />
+          {q && <span className="jc-search-count">{filteredJobs.length} of {realJobs.length}</span>}
+        </div>
+
         {realJobs.length === 0 && (
           <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32, fontSize: 14 }}>
             No jobs yet. Click "Add Job" to create your first job code.
           </p>
         )}
 
-        {realJobs.map(job => (
+        {realJobs.length > 0 && filteredJobs.length === 0 && (
+          <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32, fontSize: 14 }}>
+            No jobs match “{search}”.
+          </p>
+        )}
+
+        {filteredJobs.map(job => (
           <JobListRow
             key={job.id}
             job={job}

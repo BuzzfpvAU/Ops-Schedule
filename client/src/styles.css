@@ -3516,3 +3516,93 @@ body {
   opacity: 0.85;
   white-space: nowrap;
 }
+
+/* ─── Job search ─────────────────────────────────────────────────── */
+.jc-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 4px;
+}
+
+.jc-search {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.jc-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.jc-search::placeholder {
+  color: var(--text-dim);
+}
+
+.jc-search-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+/* ─── Job card opened from the schedule ──────────────────────────── */
+button.dropdown-link-btn {
+  border: none;
+  background: none;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.jobcard-overlay {
+  align-items: flex-start;
+  padding: 2vh 0;
+}
+
+.jobcard-modal {
+  width: min(1020px, 95vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.ind-entry {
+  position: relative;
+  padding-right: 34px;
+}
+
+.ind-entry-open {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.ind-entry-open:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

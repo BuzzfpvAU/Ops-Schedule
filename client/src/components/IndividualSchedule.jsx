@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallba
 import { useAuth } from '../context/AuthContext.jsx';
 import { STATUSES } from '../api.js';
 import DayActionSheet from './DayActionSheet.jsx';
+import JobCard from './JobCard.jsx';
 import {
   groupEntriesByDate, annotateSpans, withMonthHeaders,
   canEditSchedule, defaultMemberId, isUserEntry,
@@ -28,6 +29,7 @@ export default function IndividualSchedule({
   const { user } = useAuth();
   const [memberId, setMemberId] = useState(null);
   const [sheetDate, setSheetDate] = useState(null);
+  const [jobCardId, setJobCardId] = useState(null);
 
   const topSentinel = useRef(null);
   const bottomSentinel = useRef(null);
@@ -185,6 +187,14 @@ export default function IndividualSchedule({
                             : <>{entry.job_code} <span className="ind-entry-name">{entry.job_name}</span></>}
                         </div>
                         {meta && <div className="ind-entry-meta">{meta}</div>}
+                        {!isStatusJob(entry) && entry.job_id && (
+                          <button
+                            type="button"
+                            className="ind-entry-open"
+                            title="Open job card"
+                            onClick={(e) => { e.stopPropagation(); setJobCardId(entry.job_id); }}
+                          >›</button>
+                        )}
                       </div>
                     );
                   })}
@@ -207,6 +217,20 @@ export default function IndividualSchedule({
           onChanged={onScheduleRefresh}
           showToast={showToast}
         />
+      )}
+
+      {jobCardId && (
+        <div className="modal-overlay jobcard-overlay" onClick={() => setJobCardId(null)}>
+          <div className="jobcard-modal" onClick={(e) => e.stopPropagation()}>
+            <JobCard
+              jobId={jobCardId}
+              onBack={() => setJobCardId(null)}
+              currentUser={user}
+              teamMembers={teamMembers}
+              showToast={showToast}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
