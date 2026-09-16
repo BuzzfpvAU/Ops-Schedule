@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob, archiveJobsBulk } from '../api.js';
 import JobCard, { JobListRow, JOB_STATUSES, fmtDateShort, JOB_STATES } from './JobCard.jsx';
 
@@ -8,7 +8,7 @@ const EMPTY_FORM = {
   code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '',
   job_number: '', sharepoint_url: '', status: 'planning', site_address: '', site_contact: '',
   notes: '', rental_required: 0,
-  state: '', crew_size: 1, planned_start: '', planned_end: '',
+  state: '', crew_size: 1, planned_start: '', planned_end: '', lead_id: '',
 };
 
 export default function JobManager({ jobs, onRefresh, showToast, currentUser, teamMembers = [], equipment = [] }) {
@@ -42,6 +42,31 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
         .sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0))
     : realJobs.filter(j => !j.archived);
 
+  // ── State grouping — a job's state is where its project lead is from ──
+  const NO_STATE = '__no_state__';
+  const people = useMemo(() => (teamMembers || []).filter(m => !m.is_equipment), [teamMembers]);
+  const leadMember = people.find(m => m.id === form.lead_id) || null;
+  const stateFromLead = !!(leadMember && leadMember.location);
+
+  const handleLeadChange = (leadId) => {
+    const m = people.find(p => p.id === leadId);
+    setForm(f => ({ ...f, lead_id: leadId, ...(m && m.location ? { state: m.location } : {}) }));
+  };
+
+  // Groups follow the JOB_STATES order, then any other state, then "No state" last
+  const groupedJobs = useMemo(() => {
+    const map = new Map();
+    for (const j of filteredJobs) {
+      const key = (j.state || '').trim() || NO_STATE;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(j);
+    }
+    const known = JOB_STATES.filter(s => map.has(s));
+    const other = [...map.keys()].filter(k => k !== NO_STATE && !JOB_STATES.includes(k)).sort();
+    const order = [...known, ...other, ...(map.has(NO_STATE) ? [NO_STATE] : [])];
+    return order.map(k => ({ key: k, jobs: map.get(k) }));
+  }, [filteredJobs]);
+
   const openCreate = () => {
     setEditing(null);
     setForm({ ...EMPTY_FORM, color: DEFAULT_COLORS[realJobs.length % DEFAULT_COLORS.length] });
@@ -60,6 +85,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
       notes: job.notes || '', rental_required: job.rental_required ? 1 : 0,
       state: job.state || '', crew_size: job.crew_size || 1,
       planned_start: job.planned_start || '', planned_end: job.planned_end || '',
+      lead_id: job.lead_id || '',
     });
     setShowModal(true);
   };
@@ -240,25 +266,36 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
           </p>
         )}
 
-        {filteredJobs.map(job => (
-          <JobListRow
-            key={job.id}
-            job={job}
-            onClick={() => setViewJob(job.id)}
-            actions={
-              <>
-                <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
-                <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
-                {job.archived ? (
-                  <button className="btn btn-sm" onClick={() => handleUnarchive(job)}>Unarchive</button>
-                ) : isPastJob(job) ? (
-                  <button className="btn btn-sm" title="All scheduled days are in the past" onClick={() => handleArchive(job)}>📦 Archive</button>
-                ) : null}
-                <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
-                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
-              </>
-            }
-          />
+        {groupedJobs.map(({ key, jobs: groupJobs }) => (
+          <div key={key} className="jc-state-group">
+            <div
+              className="jc-list-group jc-group-head"
+              title={key === NO_STATE ? "No project lead assigned yet — a job's state comes from where its lead is based" : undefined}
+            >
+              {key === NO_STATE ? 'No state' : key}
+              <span className="jc-group-count">{groupJobs.length} job{groupJobs.length === 1 ? '' : 's'}</span>
+            </div>
+            {groupJobs.map(job => (
+              <JobListRow
+                key={job.id}
+                job={job}
+                onClick={() => setViewJob(job.id)}
+                actions={
+                  <>
+                    <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
+                    <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
+                    {job.archived ? (
+                      <button className="btn btn-sm" onClick={() => handleUnarchive(job)}>Unarchive</button>
+                    ) : isPastJob(job) ? (
+                      <button className="btn btn-sm" title="All scheduled days are in the past" onClick={() => handleArchive(job)}>📦 Archive</button>
+                    ) : null}
+                    <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
+                  </>
+                }
+              />
+            ))}
+          </div>
         ))}
       </div>
 
@@ -336,10 +373,26 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>State (drives the schedule's Unallocated line)</label>
-                  <select value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}>
+                  <label>Project Lead (runs the job)</label>
+                  <select value={form.lead_id} onChange={(e) => handleLeadChange(e.target.value)}>
+                    <option value="">— none —</option>
+                    {people.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}{m.location ? ` (${m.location})` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label title={stateFromLead ? "Set automatically — the state is where the project lead is from" : "Drives the schedule's Unallocated line"}>
+                    State {stateFromLead ? '(auto — from project lead)' : '(drives the Unallocated line)'}
+                  </label>
+                  <select
+                    value={form.state}
+                    disabled={stateFromLead}
+                    onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  >
                     <option value="">— none —</option>
                     {JOB_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {form.state && !JOB_STATES.includes(form.state) && <option value={form.state}>{form.state}</option>}
                   </select>
                 </div>
                 <div className="form-group">

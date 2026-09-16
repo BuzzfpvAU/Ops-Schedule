@@ -56,6 +56,13 @@ function complianceStatus(expiresAt, refDate) {
   return expiresAt <= soon.toISOString().slice(0, 10) ? 'expiring' : 'valid';
 }
 
+// A job's state is where its project lead is from — the lead's base location (WA|VIC|QLD|NSW|NT|Processing)
+function leadLocation(db, leadId) {
+  if (!leadId) return null;
+  const m = db.prepare('SELECT location FROM team_members WHERE id = ? AND is_equipment = 0').get(leadId);
+  return m && m.location ? String(m.location).trim() : null;
+}
+
 // Job row enriched with roster dates (the "gantt") + checklist progress
 const JOB_SELECT = `
   SELECT j.*,
@@ -66,6 +73,7 @@ const JOB_SELECT = `
     ,(SELECT COUNT(DISTINCT e.team_member_id) FROM schedule_entries e
         JOIN team_members tm ON tm.id = e.team_member_id
         WHERE e.job_id = j.id AND tm.is_equipment = 0) AS crew_count
+    ,(SELECT tm.name FROM team_members tm WHERE tm.id = j.lead_id) AS lead_name
   FROM jobs j
 `;
 
@@ -164,7 +172,7 @@ router.post('/', requireAdmin, (req, res) => {
   const {
     code, name, description, color, client, file_url,
     job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
-    state, crew_size, planned_start, planned_end,
+    state, crew_size, planned_start, planned_end, lead_id,
     applyTemplate,
   } = req.body;
   if (!code || !name) return res.status(400).json({ error: 'Code and name are required' });
@@ -173,17 +181,22 @@ router.post('/', requireAdmin, (req, res) => {
   const existing = req.db.prepare('SELECT id FROM jobs WHERE code = ?').get(code);
   if (existing) return res.status(409).json({ error: 'Job code already exists' });
 
+  // State follows the project lead's base location when one is assigned
+  const derivedState = leadLocation(req.db, lead_id);
+  const finalState = derivedState !== null ? derivedState : (state || '');
+
   const id = uuidv4();
   req.db.prepare(`
     INSERT INTO jobs (id, code, name, description, color, client, file_url,
                       job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
-                      state, crew_size, planned_start, planned_end)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      state, crew_size, planned_start, planned_end, lead_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, code, name, description || '', color || '#3B82F6', client || '', file_url || '',
     job_number || '', sharepoint_url || '', status || 'planning', site_address || '',
     site_contact || '', notes || '', rental_required ? 1 : 0,
-    state || '', Math.max(1, parseInt(crew_size, 10) || 1), planned_start || '', planned_end || ''
+    finalState, Math.max(1, parseInt(crew_size, 10) || 1), planned_start || '', planned_end || '',
+    lead_id || ''
   );
 
   if (applyTemplate !== false) applyStandardChecklist(req.db, id);
@@ -197,7 +210,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   const {
     code, name, description, color, client, file_url,
     job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
-    state, crew_size, planned_start, planned_end,
+    state, crew_size, planned_start, planned_end, lead_id,
   } = req.body;
   const existing = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Job not found' });
@@ -208,11 +221,19 @@ router.put('/:id', requireAdmin, (req, res) => {
     if (dup) return res.status(409).json({ error: 'Job code already exists' });
   }
 
+  // State follows the project lead's base location when one is assigned;
+  // only falls back to the manually-picked state for jobs without a located lead.
+  const nextLeadId = lead_id !== undefined ? String(lead_id || '') : (existing.lead_id || '');
+  const derivedState = leadLocation(req.db, nextLeadId);
+  const nextState = derivedState !== null
+    ? derivedState
+    : (state !== undefined ? String(state ?? '') : existing.state);
+
   req.db.prepare(`
     UPDATE jobs
     SET code = ?, name = ?, description = ?, color = ?, client = ?, file_url = ?,
         job_number = ?, sharepoint_url = ?, status = ?, site_address = ?, site_contact = ?, notes = ?,
-        rental_required = ?, state = ?, crew_size = ?, planned_start = ?, planned_end = ?,
+        rental_required = ?, state = ?, crew_size = ?, planned_start = ?, planned_end = ?, lead_id = ?,
         updated_at = datetime('now', '+10 hours')
     WHERE id = ?
   `).run(
@@ -229,10 +250,11 @@ router.put('/:id', requireAdmin, (req, res) => {
     site_contact ?? existing.site_contact,
     notes ?? existing.notes,
     rental_required !== undefined ? (rental_required ? 1 : 0) : existing.rental_required,
-    state ?? existing.state,
+    nextState,
     crew_size !== undefined ? Math.max(1, parseInt(crew_size, 10) || 1) : existing.crew_size,
     planned_start ?? existing.planned_start,
     planned_end ?? existing.planned_end,
+    nextLeadId,
     req.params.id
   );
 

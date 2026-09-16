@@ -729,6 +729,7 @@ export function JobListRow({ job, onClick, actions }) {
             {job.roster_start
               ? `${fmtDateShort(job.roster_start)} → ${fmtDateShort(job.roster_end)} · ${days} day${days === 1 ? '' : 's'}`
               : 'Not yet rostered'}
+            {job.lead_name && <span> · 👤 {job.lead_name}</span>}
             {total > 0 && <span> · {done}/{total} ready</span>}
           </div>
           {total > 0 && (
@@ -828,7 +829,8 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
           {job.job_number && <span className="jc-ref">Job {job.job_number}</span>}
           <span className="jc-status" style={{ background: `${status.color}22`, color: status.color, borderColor: `${status.color}55` }}>{status.label}</span>
           {job.archived && <span className="jc-chip-sm jc-chip-archived" title={`Archived ${job.archived_at || ''}`}>Archived</span>}
-          {job.state && <span className="jc-chip-sm" title="State this job is allocated to">📍 {job.state}</span>}
+          {job.state && <span className="jc-chip-sm" title={job.lead_name ? "State — where the project lead is from" : "State this job is allocated to"}>📍 {job.state}</span>}
+          {job.lead_name && <span className="jc-chip-sm" title="Project Lead — the person running this job; the state comes from where they're based">👤 {job.lead_name}</span>}
           {!job.archived && job.state && (job.crew_count || 0) < (job.crew_size || 1) && (
             <span className="jc-chip-sm jc-chip-crew" title="Not fully crewed — this job shows on the Unallocated line in the schedule">
               👷 {job.crew_count || 0}/{job.crew_size || 1} crew

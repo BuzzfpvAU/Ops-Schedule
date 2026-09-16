@@ -200,6 +200,7 @@ export function initDb() {
   addJobColumn('crew_size', `crew_size INTEGER DEFAULT 1`);       // job counts as unallocated while distinct rostered crew < crew_size
   addJobColumn('planned_start', `planned_start TEXT DEFAULT ''`); // planned window shown on the Unallocated line
   addJobColumn('planned_end', `planned_end TEXT DEFAULT ''`);
+  addJobColumn('lead_id', `lead_id TEXT DEFAULT ''`);              // project lead (team member) running the job — the job's state follows their base location
 
   // Job card: readiness checklists, flights, accommodation, rentals, equipment kit
   db.exec(`
