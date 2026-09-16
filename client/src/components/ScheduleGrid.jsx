@@ -1763,7 +1763,7 @@ export default function ScheduleGrid({
                 onChange={(e) => setMultiDayModal({ ...multiDayModal, jobId: e.target.value })}
               >
                 <option value="">Select a job...</option>
-                {jobs.filter(j => isRealJob(j)).map(j => (
+                {jobs.filter(j => isRealJob(j) && !j.archived).map(j => (
                   <option key={j.id} value={j.id}>{j.name} ({j.code})</option>
                 ))}
               </select>
