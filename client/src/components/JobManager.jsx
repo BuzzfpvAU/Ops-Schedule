@@ -1,13 +1,23 @@
 import React, { useState } from 'react';
 import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl } from '../api.js';
+import JobCard, { JobListRow, JOB_STATUSES } from './JobCard.jsx';
 
 const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
-export default function JobManager({ jobs, onRefresh, showToast }) {
+const EMPTY_FORM = {
+  code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '',
+  job_number: '', sharepoint_url: '', status: 'planning', site_address: '', site_contact: '',
+  notes: '', rental_required: 0,
+};
+
+export default function JobManager({ jobs, onRefresh, showToast, currentUser, teamMembers = [], equipment = [] }) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [subJob, setSubJob] = useState(null); // { job, token, url } | null
-  const [form, setForm] = useState({ code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [applyTemplate, setApplyTemplate] = useState(true);
+  const [viewJob, setViewJob] = useState(null);   // job id open in the card view
+  const [cardVersion, setCardVersion] = useState(0);
 
   // Filter out auto-created status jobs (notes, toil, leave, unavailable)
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
@@ -15,14 +25,37 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ code: '', name: '', description: '', color: DEFAULT_COLORS[realJobs.length % DEFAULT_COLORS.length], client: '', file_url: '' });
+    setForm({ ...EMPTY_FORM, color: DEFAULT_COLORS[realJobs.length % DEFAULT_COLORS.length] });
+    setApplyTemplate(true);
     setShowModal(true);
   };
 
   const openEdit = (job) => {
     setEditing(job);
-    setForm({ code: job.code, name: job.name, description: job.description, color: job.color, client: job.client, file_url: job.file_url });
+    setForm({
+      ...EMPTY_FORM,
+      code: job.code, name: job.name, description: job.description || '', color: job.color,
+      client: job.client || '', file_url: job.file_url || '', job_number: job.job_number || '',
+      sharepoint_url: job.sharepoint_url || '', status: job.status || 'planning',
+      site_address: job.site_address || '', site_contact: job.site_contact || '',
+      notes: job.notes || '', rental_required: job.rental_required ? 1 : 0,
+    });
     setShowModal(true);
+  };
+
+  const suggestSharepoint = () => {
+    // Folder convention seen in the AUAV SharePoint: J<number>_<CLIENT>-<Name-With-Dashes>
+    const parts = [];
+    if (form.job_number) parts.push(form.job_number.toUpperCase());
+    if (form.client) parts.push(form.client.trim().toUpperCase().replace(/\s+/g, '-'));
+    if (form.name) parts.push(form.name.trim().replace(/\s+/g, '-'));
+    if (!form.job_number && !form.name) {
+      showToast('Add a job number and name first', 'error');
+      return;
+    }
+    const folder = parts.join('_').replace(/^_/, '').replace(/_+$/, '');
+    const url = `https://cwltdgroup.sharepoint.com/sites/auav-projects/Shared%20Documents/${encodeURIComponent(folder)}`;
+    setForm(f => ({ ...f, sharepoint_url: url }));
   };
 
   const handleSubmit = async (e) => {
@@ -31,9 +64,10 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
       if (editing) {
         await updateJob(editing.id, form);
         showToast('Job updated', 'success');
+        if (viewJob === editing.id) setCardVersion(v => v + 1);
       } else {
-        await createJob(form);
-        showToast('Job created', 'success');
+        await createJob({ ...form, applyTemplate });
+        showToast(applyTemplate ? 'Job created with standard checklist' : 'Job created', 'success');
       }
       setShowModal(false);
       onRefresh();
@@ -82,6 +116,22 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
     }
   };
 
+  // Card view (click a job row)
+  if (viewJob) {
+    return (
+      <JobCard
+        jobId={viewJob}
+        onBack={() => { setViewJob(null); onRefresh(); }}
+        onEdit={(job) => openEdit(job)}
+        currentUser={currentUser}
+        teamMembers={teamMembers}
+        equipment={equipment}
+        showToast={showToast}
+        refreshKey={cardVersion}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="card">
@@ -97,33 +147,25 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
         )}
 
         {realJobs.map(job => (
-          <div key={job.id} className="list-item">
-            <div className="list-item-info">
-              <span className="job-color-dot" style={{ background: job.color }}></span>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{job.code}</div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>{job.name}</div>
-                {job.client && <div style={{ fontSize: 12, color: '#94a3b8' }}>Client: {job.client}</div>}
-                {job.file_url && (
-                  <a href={job.file_url} target="_blank" rel="noopener noreferrer" className="file-link">
-                    📁 Linked files
-                  </a>
-                )}
-              </div>
-            </div>
-            <div className="list-item-actions">
-              <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
-              <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
-              <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
-              <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
-            </div>
-          </div>
+          <JobListRow
+            key={job.id}
+            job={job}
+            onClick={() => setViewJob(job.id)}
+            actions={
+              <>
+                <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
+                <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
+                <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
+                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
+              </>
+            }
+          />
         ))}
       </div>
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal jc-modal" onClick={(e) => e.stopPropagation()}>
             <h2>{editing ? 'Edit Job' : 'Add Job'}</h2>
             <form onSubmit={handleSubmit}>
               <div className="form-row">
@@ -133,9 +175,26 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
                     type="text"
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                    placeholder="e.g. MELB-001"
+                    placeholder="e.g. J2293"
                     required
                   />
+                </div>
+                <div className="form-group">
+                  <label>Job Number (external ref)</label>
+                  <input
+                    type="text"
+                    value={form.job_number}
+                    onChange={(e) => setForm({ ...form, job_number: e.target.value })}
+                    placeholder="e.g. J2293"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Status</label>
+                  <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                    {Object.entries(JOB_STATUSES).map(([key, s]) => (
+                      <option key={key} value={key}>{s.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Color</label>
@@ -154,34 +213,59 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label>Job Name *</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Melbourne Office Fitout"
-                  required
-                />
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Job Name *</label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g. Woodside KGP"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Client</label>
+                  <input
+                    type="text"
+                    value={form.client}
+                    onChange={(e) => setForm({ ...form, client: e.target.value })}
+                    placeholder="e.g. Vertech"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Site Address</label>
+                  <input
+                    type="text"
+                    value={form.site_address}
+                    onChange={(e) => setForm({ ...form, site_address: e.target.value })}
+                    placeholder="e.g. Karratha Gas Plant, WA"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Site Contact (name / phone)</label>
+                  <input
+                    type="text"
+                    value={form.site_contact}
+                    onChange={(e) => setForm({ ...form, site_contact: e.target.value })}
+                    placeholder="e.g. John Smith 0400 000 000"
+                  />
+                </div>
               </div>
 
               <div className="form-group">
-                <label>Client</label>
+                <label>
+                  SharePoint Directory
+                  <button type="button" className="jc-linklike" onClick={suggestSharepoint}>auto-build from details</button>
+                </label>
                 <input
-                  type="text"
-                  value={form.client}
-                  onChange={(e) => setForm({ ...form, client: e.target.value })}
-                  placeholder="e.g. ABC Construction"
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  placeholder="Brief description of the job..."
+                  type="url"
+                  value={form.sharepoint_url}
+                  onChange={(e) => setForm({ ...form, sharepoint_url: e.target.value })}
+                  placeholder="https://cwltdgroup.sharepoint.com/sites/auav-projects/…"
                 />
               </div>
 
@@ -193,6 +277,47 @@ export default function JobManager({ jobs, onRefresh, showToast }) {
                   onChange={(e) => setForm({ ...form, file_url: e.target.value })}
                   placeholder="e.g. https://drive.google.com/..."
                 />
+              </div>
+
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={2}
+                  placeholder="Brief description of the job..."
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  rows={2}
+                  placeholder="Job notes — meet times, contacts, gotchas…"
+                />
+              </div>
+
+              <div className="form-row jc-form-checks">
+                <label className="jc-checkline">
+                  <input
+                    type="checkbox"
+                    checked={!!form.rental_required}
+                    onChange={(e) => setForm({ ...form, rental_required: e.target.checked ? 1 : 0 })}
+                  />
+                  Rental vehicle required
+                </label>
+                {!editing && (
+                  <label className="jc-checkline">
+                    <input
+                      type="checkbox"
+                      checked={applyTemplate}
+                      onChange={(e) => setApplyTemplate(e.target.checked)}
+                    />
+                    Apply standard readiness checklist
+                  </label>
+                )}
               </div>
 
               <div className="modal-actions">

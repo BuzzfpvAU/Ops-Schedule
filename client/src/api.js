@@ -117,6 +117,94 @@ export async function deleteJob(id) {
   return api(`/jobs/${id}`, { method: 'DELETE' });
 }
 
+// ── Job card (readiness: checklist, flights, accommodation, rentals, equipment) ──
+
+export async function getJobCard(id) {
+  return api(`/jobs/${id}`);
+}
+
+export async function getMyJobs() {
+  return api('/jobs/mine');
+}
+
+export async function addChecklistItem(jobId, data) {
+  return api(`/jobs/${jobId}/checklist`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateChecklistItem(itemId, data) {
+  return api(`/jobs/checklist/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteChecklistItem(itemId) {
+  return api(`/jobs/checklist/${itemId}`, { method: 'DELETE' });
+}
+
+export async function applyChecklistTemplate(jobId) {
+  return api(`/jobs/${jobId}/checklist/template`, { method: 'POST' });
+}
+
+export async function addJobFlight(jobId, data) {
+  return api(`/jobs/${jobId}/flights`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateJobFlight(id, data) {
+  return api(`/jobs/flights/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteJobFlight(id) {
+  return api(`/jobs/flights/${id}`, { method: 'DELETE' });
+}
+
+export async function addJobAccommodation(jobId, data) {
+  return api(`/jobs/${jobId}/accommodation`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateJobAccommodation(id, data) {
+  return api(`/jobs/accommodation/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteJobAccommodation(id) {
+  return api(`/jobs/accommodation/${id}`, { method: 'DELETE' });
+}
+
+export async function addJobRental(jobId, data) {
+  return api(`/jobs/${jobId}/rentals`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateJobRental(id, data) {
+  return api(`/jobs/rentals/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteJobRental(id) {
+  return api(`/jobs/rentals/${id}`, { method: 'DELETE' });
+}
+
+export async function assignJobEquipment(jobId, data) {
+  return api(`/jobs/${jobId}/equipment`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function removeJobEquipment(id) {
+  return api(`/jobs/equipment/${id}`, { method: 'DELETE' });
+}
+
+// ── Per-person compliance ──
+
+export async function getMemberCompliance(memberId) {
+  return api(`/team-members/${memberId}/compliance`);
+}
+
+export async function addMemberCompliance(memberId, data) {
+  return api(`/team-members/${memberId}/compliance`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateMemberCompliance(id, data) {
+  return api(`/team-members/compliance/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteMemberCompliance(id) {
+  return api(`/team-members/compliance/${id}`, { method: 'DELETE' });
+}
+
 // ── Schedule ──
 
 export async function getSchedule(start, end) {

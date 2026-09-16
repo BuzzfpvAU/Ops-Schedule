@@ -9,6 +9,7 @@ import ScheduleGrid from './components/ScheduleGrid.jsx';
 import IndividualSchedule from './components/IndividualSchedule.jsx';
 import TeamManager from './components/TeamManager.jsx';
 import JobManager from './components/JobManager.jsx';
+import MyJobs from './components/MyJobs.jsx';
 import EquipmentManager from './components/EquipmentManager.jsx';
 import EquipmentMap from './components/EquipmentMap.jsx';
 import Toast from './components/Toast.jsx';
@@ -196,9 +197,13 @@ export default function App() {
 
       <nav className="nav-tabs">
         <button className={`nav-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>Schedule</button>
+        {!user.isViewer && (
+          <button className={`nav-tab ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>
+            {user.isAdmin ? 'Jobs / Projects' : 'Jobs'}
+          </button>
+        )}
         {user.isAdmin && !user.isViewer && (
           <>
-            <button className={`nav-tab ${activeTab === 'jobs' ? 'active' : ''}`} onClick={() => setActiveTab('jobs')}>Jobs / Projects</button>
             <button className={`nav-tab ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>Team</button>
             <button className={`nav-tab ${activeTab === 'equipment' ? 'active' : ''}`} onClick={() => setActiveTab('equipment')}>Equipment</button>
             <button className={`nav-tab ${activeTab === 'map' ? 'active' : ''}`} onClick={() => setActiveTab('map')}>Equipment Map</button>
@@ -232,8 +237,24 @@ export default function App() {
             showToast={showToast}
           />
         )}
-        {activeTab === 'jobs' && user.isAdmin && (
-          <JobManager jobs={jobs} onRefresh={loadData} showToast={showToast} />
+        {activeTab === 'jobs' && !user.isViewer && (
+          user.isAdmin ? (
+            <JobManager
+              jobs={jobs}
+              onRefresh={loadData}
+              showToast={showToast}
+              currentUser={user}
+              teamMembers={teamMembers}
+              equipment={equipmentList}
+            />
+          ) : (
+            <MyJobs
+              currentUser={user}
+              teamMembers={teamMembers}
+              equipment={equipmentList}
+              showToast={showToast}
+            />
+          )
         )}
         {activeTab === 'equipment' && user.isAdmin && (
           <EquipmentManager equipment={equipmentList} onRefresh={loadData} showToast={showToast} />

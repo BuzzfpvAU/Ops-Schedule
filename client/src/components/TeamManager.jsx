@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createTeamMember, updateTeamMember, deleteTeamMember, createEquipment, authAdminResetPassword, shareViewerAccess } from '../api.js';
+import ComplianceModal from './ComplianceModal.jsx';
 
 const TIMEZONES = [
   { value: 'Australia/Sydney', label: 'AEST - Sydney/Melbourne/Brisbane' },
@@ -22,6 +23,7 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
   const [shareSending, setShareSending] = useState(false);
   const [editing, setEditing] = useState(null);
   const [modalType, setModalType] = useState('member'); // 'member' or 'equipment'
+  const [complianceMember, setComplianceMember] = useState(null);
   const [form, setForm] = useState({
     name: '', role: '', location: '', timezone: 'Australia/Sydney', color: '#3B82F6', sort_order: 0,
     email: '', password: '', is_admin: false
@@ -119,6 +121,7 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
               </div>
             </div>
             <div className="list-item-actions">
+              <button className="btn btn-sm" onClick={() => setComplianceMember(member)} title="Compliance records">🛡 Compliance</button>
               <button className="btn btn-sm" onClick={() => openEdit(member)}>Edit</button>
               <button className="btn btn-sm btn-danger" onClick={() => handleDelete(member)}>Remove</button>
             </div>
@@ -127,6 +130,14 @@ export default function TeamManager({ members, equipment: equipmentItems = [], o
       </div>
 
       {/* Equipment is now managed on the Equipment tab */}
+
+      {complianceMember && (
+        <ComplianceModal
+          member={complianceMember}
+          onClose={() => setComplianceMember(null)}
+          showToast={showToast}
+        />
+      )}
 
       {showShareModal && (
         <div className="modal-overlay" onClick={() => setShowShareModal(false)}>

@@ -182,6 +182,124 @@ export function initDb() {
     ).run();
   }
 
+  // Migrate: expand jobs into full job-readiness cards (16 Sep 2026)
+  const jobColumns = db.pragma('table_info(jobs)').map(c => c.name);
+  const addJobColumn = (name, ddl) => {
+    if (!jobColumns.includes(name)) db.exec(`ALTER TABLE jobs ADD COLUMN ${ddl}`);
+  };
+  addJobColumn('job_number', `job_number TEXT DEFAULT ''`);        // external main job reference
+  addJobColumn('sharepoint_url', `sharepoint_url TEXT DEFAULT ''`);
+  addJobColumn('status', `status TEXT DEFAULT 'planning'`);        // planning|confirmed|active|complete|cancelled
+  addJobColumn('site_address', `site_address TEXT DEFAULT ''`);
+  addJobColumn('site_contact', `site_contact TEXT DEFAULT ''`);
+  addJobColumn('notes', `notes TEXT DEFAULT ''`);
+  addJobColumn('rental_required', `rental_required INTEGER DEFAULT 0`);
+
+  // Job card: readiness checklists, flights, accommodation, rentals, equipment kit
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS job_checklist_items (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'other',
+      label TEXT NOT NULL,
+      notes TEXT DEFAULT '',
+      due_date TEXT DEFAULT '',
+      assigned_to TEXT DEFAULT '',
+      done INTEGER DEFAULT 0,
+      done_by TEXT DEFAULT '',
+      done_at TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_checklist_job ON job_checklist_items(job_id, category, sort_order);
+
+    CREATE TABLE IF NOT EXISTS job_flights (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      person_id TEXT DEFAULT '',
+      person_name TEXT DEFAULT '',
+      direction TEXT DEFAULT 'out',
+      airline TEXT DEFAULT '',
+      flight_number TEXT DEFAULT '',
+      depart_airport TEXT DEFAULT '',
+      depart_at TEXT DEFAULT '',
+      arrive_airport TEXT DEFAULT '',
+      arrive_at TEXT DEFAULT '',
+      booking_ref TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_flights_job ON job_flights(job_id);
+
+    CREATE TABLE IF NOT EXISTS job_accommodation (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      person_id TEXT DEFAULT '',
+      person_name TEXT DEFAULT '',
+      venue TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      check_in TEXT DEFAULT '',
+      check_out TEXT DEFAULT '',
+      booking_ref TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_accommodation_job ON job_accommodation(job_id);
+
+    CREATE TABLE IF NOT EXISTS job_rentals (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      company TEXT DEFAULT '',
+      vehicle_desc TEXT DEFAULT '',
+      rego TEXT DEFAULT '',
+      pickup_location TEXT DEFAULT '',
+      pickup_at TEXT DEFAULT '',
+      return_at TEXT DEFAULT '',
+      booked_under TEXT DEFAULT '',
+      booking_ref TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_rentals_job ON job_rentals(job_id);
+
+    CREATE TABLE IF NOT EXISTS job_equipment (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      equipment_id TEXT NOT NULL,
+      assigned_to TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      UNIQUE(job_id, equipment_id),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+      FOREIGN KEY (equipment_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_equipment_job ON job_equipment(job_id);
+  `);
+
+  // Per-person compliance records (site inductions, White Card, licences, medicals…)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS member_compliance (
+      id TEXT PRIMARY KEY,
+      team_member_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      reference TEXT DEFAULT '',
+      site TEXT DEFAULT '',
+      issued_at TEXT DEFAULT '',
+      expires_at TEXT DEFAULT '',
+      file_url TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (team_member_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_member_compliance_member ON member_compliance(team_member_id);
+  `);
+
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`
     CREATE TABLE IF NOT EXISTS equipment_locations (

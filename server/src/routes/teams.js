@@ -126,4 +126,57 @@ router.delete('/:id', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// ── Per-person compliance (site inductions, White Card, licences…) ─────────
+
+// GET compliance records for a member
+router.get('/:id/compliance', (req, res) => {
+  const member = req.db.prepare('SELECT id FROM team_members WHERE id = ?').get(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Team member not found' });
+  const rows = req.db.prepare(`
+    SELECT * FROM member_compliance WHERE team_member_id = ?
+    ORDER BY CASE WHEN expires_at = '' THEN 1 ELSE 0 END, expires_at, type
+  `).all(req.params.id);
+  res.json(rows);
+});
+
+// POST add compliance record (admin only)
+router.post('/:id/compliance', requireAdmin, (req, res) => {
+  const { type, reference, site, issued_at, expires_at, file_url, notes } = req.body;
+  if (!type) return res.status(400).json({ error: 'Type is required' });
+  const member = req.db.prepare('SELECT id FROM team_members WHERE id = ?').get(req.params.id);
+  if (!member) return res.status(404).json({ error: 'Team member not found' });
+
+  const id = uuidv4();
+  req.db.prepare(`
+    INSERT INTO member_compliance (id, team_member_id, type, reference, site, issued_at, expires_at, file_url, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.params.id, type, reference || '', site || '', issued_at || '', expires_at || '', file_url || '', notes || '');
+  res.status(201).json(req.db.prepare('SELECT * FROM member_compliance WHERE id = ?').get(id));
+});
+
+// PUT update compliance record (admin only)
+router.put('/compliance/:id', requireAdmin, (req, res) => {
+  const row = req.db.prepare('SELECT * FROM member_compliance WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Compliance record not found' });
+  const b = req.body;
+  req.db.prepare(`
+    UPDATE member_compliance
+    SET type = ?, reference = ?, site = ?, issued_at = ?, expires_at = ?, file_url = ?, notes = ?,
+        updated_at = datetime('now', '+10 hours')
+    WHERE id = ?
+  `).run(
+    b.type || row.type, b.reference ?? row.reference, b.site ?? row.site,
+    b.issued_at ?? row.issued_at, b.expires_at ?? row.expires_at,
+    b.file_url ?? row.file_url, b.notes ?? row.notes, req.params.id
+  );
+  res.json(req.db.prepare('SELECT * FROM member_compliance WHERE id = ?').get(req.params.id));
+});
+
+// DELETE compliance record (admin only)
+router.delete('/compliance/:id', requireAdmin, (req, res) => {
+  const result = req.db.prepare('DELETE FROM member_compliance WHERE id = ?').run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Compliance record not found' });
+  res.json({ success: true });
+});
+
 export default router;
