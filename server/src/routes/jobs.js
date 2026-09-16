@@ -258,6 +258,19 @@ router.post('/:id/unarchive', requireAdmin, (req, res) => {
   res.json(req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
 });
 
+// POST archive many jobs at once (admin only) — the Jobs-tab cleanup flow
+router.post('/archive-bulk', requireAdmin, (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.filter(x => typeof x === 'string' && x) : [];
+  if (!ids.length) return res.status(400).json({ error: 'No job ids provided' });
+  const placeholders = ids.map(() => '?').join(',');
+  const result = req.db.prepare(`
+    UPDATE jobs SET archived = 1, archived_at = datetime('now', '+10 hours'),
+                    updated_at = datetime('now', '+10 hours')
+    WHERE archived = 0 AND id IN (${placeholders})
+  `).run(...ids);
+  res.json({ archived: result.changes });
+});
+
 // ── Checklists ──────────────────────────────────────────────────────────────
 
 // POST add checklist item (admin only)

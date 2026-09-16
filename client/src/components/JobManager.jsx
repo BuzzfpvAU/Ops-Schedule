@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob } from '../api.js';
-import JobCard, { JobListRow, JOB_STATUSES } from './JobCard.jsx';
+import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob, archiveJobsBulk } from '../api.js';
+import JobCard, { JobListRow, JOB_STATUSES, fmtDateShort } from './JobCard.jsx';
 
 const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
@@ -19,6 +19,8 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
   const [viewJob, setViewJob] = useState(null);   // job id open in the card view
   const [cardVersion, setCardVersion] = useState(0);
   const [search, setSearch] = useState('');
+  const [cleanup, setCleanup] = useState(null); // Set of job ids ticked in the cleanup modal | null (closed)
+  const [cleanupSaving, setCleanupSaving] = useState(false);
 
   // Filter out auto-created status jobs (notes, toil, leave, unavailable)
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
@@ -26,6 +28,8 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
 
   const todayAEST = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
   const isPastJob = (j) => !j.archived && j.roster_end && j.roster_end < todayAEST;
+  // Past-flagged jobs — candidates for the cleanup sweep (most recent first)
+  const pastJobs = realJobs.filter(isPastJob).sort((a, b) => (b.roster_end || '').localeCompare(a.roster_end || ''));
 
   // Archived jobs stay out of the list — but a search finds them (badged).
   const q = search.trim().toLowerCase();
@@ -151,6 +155,31 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
     }
   };
 
+  // ── Cleanup sweep: review past-flagged jobs, bulk-archive the ticked ones ──
+  const openCleanup = () => setCleanup(new Set(pastJobs.map(j => j.id)));
+
+  const toggleCleanup = (id) => setCleanup(sel => {
+    const next = new Set(sel);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const handleCleanupArchive = async () => {
+    const ids = [...cleanup];
+    if (!ids.length) return;
+    setCleanupSaving(true);
+    try {
+      const { archived } = await archiveJobsBulk(ids);
+      showToast(`Archived ${archived} job${archived === 1 ? '' : 's'}`, 'success');
+      setCleanup(null);
+      onRefresh();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setCleanupSaving(false);
+    }
+  };
+
   // Card view (click a job row)
   if (viewJob) {
     return (
@@ -172,7 +201,16 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
       <div className="card">
         <div className="card-header">
           <h3>Jobs / Projects</h3>
-          <button className="btn btn-primary" onClick={openCreate}>+ Add Job</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {pastJobs.length > 0 && (
+              <button
+                className="btn"
+                onClick={openCleanup}
+                title="Review jobs whose last scheduled day has passed and archive them in one go"
+              >🧹 Cleanup past ({pastJobs.length})</button>
+            )}
+            <button className="btn btn-primary" onClick={openCreate}>+ Add Job</button>
+          </div>
         </div>
 
         <div className="jc-search-wrap">
@@ -404,6 +442,45 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
             </div>
             <div className="modal-actions">
               <button type="button" className="btn" onClick={() => setSubJob(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {cleanup !== null && (
+        <div className="modal-overlay" onClick={() => !cleanupSaving && setCleanup(null)}>
+          <div className="modal jc-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Cleanup — past jobs</h2>
+            <p className="modal-subtitle">
+              Every job whose last scheduled day has passed. Tick the ones to archive — they drop off the list but stay findable via search (Unarchive puts them back).
+            </p>
+            <div className="jc-cleanup-toolbar">
+              <div>
+                <button type="button" className="btn btn-sm" onClick={() => setCleanup(new Set(pastJobs.map(j => j.id)))}>Select all</button>
+                <button type="button" className="btn btn-sm" onClick={() => setCleanup(new Set())}>Select none</button>
+              </div>
+              <span className="jc-cleanup-count">{cleanup.size} of {pastJobs.length} selected</span>
+            </div>
+            <div className="jc-cleanup-list">
+              {pastJobs.length === 0 && <div className="jc-empty">No past jobs — all caught up.</div>}
+              {pastJobs.map(j => (
+                <label key={j.id} className={`jc-cleanup-row${cleanup.has(j.id) ? ' checked' : ''}`}>
+                  <input type="checkbox" checked={cleanup.has(j.id)} onChange={() => toggleCleanup(j.id)} />
+                  <span className="jc-cleanup-main">
+                    <span className="jc-cleanup-title"><strong>{j.code}</strong>{j.job_number ? ` · ${j.job_number}` : ''} — {j.name}</span>
+                    <span className="jc-cleanup-meta">
+                      {[j.client, j.roster_start && j.roster_end
+                        ? `${fmtDateShort(j.roster_start)} → ${fmtDateShort(j.roster_end)}`
+                        : (j.roster_end ? `ends ${fmtDateShort(j.roster_end)}` : '')].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn" disabled={cleanupSaving} onClick={() => setCleanup(null)}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={cleanupSaving || cleanup.size === 0} onClick={handleCleanupArchive}>
+                {cleanupSaving ? 'Archiving…' : `📦 Archive selected (${cleanup.size})`}
+              </button>
             </div>
           </div>
         </div>

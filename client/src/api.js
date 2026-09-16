@@ -125,6 +125,10 @@ export async function unarchiveJob(id) {
   return api(`/jobs/${id}/unarchive`, { method: 'POST' });
 }
 
+export async function archiveJobsBulk(ids) {
+  return api('/jobs/archive-bulk', { method: 'POST', body: JSON.stringify({ ids }) });
+}
+
 // ── Job card (readiness: checklist, flights, accommodation, rentals, equipment) ──
 
 export async function getJobCard(id) {

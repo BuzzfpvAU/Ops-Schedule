@@ -3524,6 +3524,39 @@ body {
   border: 1px solid #eab30844 !important;
 }
 
+/* ─── Cleanup (bulk archive) modal ───────────────────────────────── */
+.jc-cleanup-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.jc-cleanup-toolbar > div { display: flex; gap: 6px; }
+.jc-cleanup-count { font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.jc-cleanup-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.jc-cleanup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e293b;
+  cursor: pointer;
+}
+.jc-cleanup-row:last-child { border-bottom: none; }
+.jc-cleanup-row:hover { background: #ffffff08; }
+.jc-cleanup-row.checked { background: #3b82f60d; }
+.jc-cleanup-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #3b82f6; flex-shrink: 0; }
+.jc-cleanup-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jc-cleanup-title { font-size: 13px; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jc-cleanup-meta { font-size: 12px; color: #94a3b8; }
+
 .jc-chip-archived {
   background: var(--bg-hover) !important;
   color: var(--text-dim) !important;
