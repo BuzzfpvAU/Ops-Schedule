@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl } from '../api.js';
+import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob } from '../api.js';
 import JobCard, { JobListRow, JOB_STATUSES } from './JobCard.jsx';
 
 const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
@@ -24,12 +24,18 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
   const realJobs = jobs.filter(j => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code));
 
+  const todayAEST = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+  const isPastJob = (j) => !j.archived && j.roster_end && j.roster_end < todayAEST;
+
+  // Archived jobs stay out of the list — but a search finds them (badged).
   const q = search.trim().toLowerCase();
   const filteredJobs = q
-    ? realJobs.filter(j =>
-        [j.code, j.job_number, j.name, j.client, j.site_address]
-          .some(v => (v || '').toLowerCase().includes(q)))
-    : realJobs;
+    ? realJobs
+        .filter(j =>
+          [j.code, j.job_number, j.name, j.client, j.site_address]
+            .some(v => (v || '').toLowerCase().includes(q)))
+        .sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0))
+    : realJobs.filter(j => !j.archived);
 
   const openCreate = () => {
     setEditing(null);
@@ -124,6 +130,27 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
     }
   };
 
+  const handleArchive = async (job) => {
+    if (!confirm(`Archive "${job.code} - ${job.name}"?\n\nIt will be hidden from the list — still findable via search.`)) return;
+    try {
+      await archiveJob(job.id);
+      showToast('Job archived', 'success');
+      onRefresh();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleUnarchive = async (job) => {
+    try {
+      await unarchiveJob(job.id);
+      showToast('Job restored to the list', 'success');
+      onRefresh();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   // Card view (click a job row)
   if (viewJob) {
     return (
@@ -152,7 +179,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
           <input
             type="search"
             className="jc-search"
-            placeholder="Search jobs — code, job number, name, client…"
+            placeholder="Search jobs — code, job number, name, client… (archived included)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search jobs"
@@ -168,7 +195,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
 
         {realJobs.length > 0 && filteredJobs.length === 0 && (
           <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32, fontSize: 14 }}>
-            No jobs match “{search}”.
+            {q ? `No jobs match “${search}”.` : 'All jobs are archived — use search to find them.'}
           </p>
         )}
 
@@ -181,6 +208,11 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
               <>
                 <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
                 <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
+                {job.archived ? (
+                  <button className="btn btn-sm" onClick={() => handleUnarchive(job)}>Unarchive</button>
+                ) : isPastJob(job) ? (
+                  <button className="btn btn-sm" title="All scheduled days are in the past" onClick={() => handleArchive(job)}>📦 Archive</button>
+                ) : null}
                 <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
                 <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
               </>

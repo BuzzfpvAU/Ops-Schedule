@@ -917,7 +917,7 @@ export default function ScheduleGrid({
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
   const isRealJob = (j) => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code);
   const filteredJobs = jobs.filter(j =>
-    isRealJob(j) &&
+    isRealJob(j) && !j.archived &&
     (!searchTerm || j.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     j.name.toLowerCase().includes(searchTerm.toLowerCase()))
   );

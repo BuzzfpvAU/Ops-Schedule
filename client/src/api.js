@@ -117,6 +117,14 @@ export async function deleteJob(id) {
   return api(`/jobs/${id}`, { method: 'DELETE' });
 }
 
+export async function archiveJob(id) {
+  return api(`/jobs/${id}/archive`, { method: 'POST' });
+}
+
+export async function unarchiveJob(id) {
+  return api(`/jobs/${id}/unarchive`, { method: 'POST' });
+}
+
 // ── Job card (readiness: checklist, flights, accommodation, rentals, equipment) ──
 
 export async function getJobCard(id) {

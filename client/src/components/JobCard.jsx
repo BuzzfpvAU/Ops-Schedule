@@ -6,6 +6,7 @@ import {
   addJobRental, updateJobRental, deleteJobRental,
   assignJobEquipment, removeJobEquipment,
   updateJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, getEquipment,
+  archiveJob, unarchiveJob,
 } from '../api.js';
 
 export const JOB_STATUSES = {
@@ -705,9 +706,11 @@ export function JobListRow({ job, onClick, actions }) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   const status = JOB_STATUSES[job.status] || JOB_STATUSES.planning;
   const days = rosterDays(job.roster_start, job.roster_end);
+  const todayAEST = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+  const isPast = !job.archived && job.roster_end && job.roster_end < todayAEST;
 
   return (
-    <div className={`list-item jc-list-row ${onClick ? 'clickable' : ''}`} onClick={onClick}>
+    <div className={`list-item jc-list-row ${onClick ? 'clickable' : ''} ${job.archived ? 'jc-list-archived' : ''}`} onClick={onClick}>
       <div className="list-item-info">
         <span className="job-color-dot" style={{ background: job.color }}></span>
         <div style={{ minWidth: 0 }}>
@@ -715,6 +718,8 @@ export function JobListRow({ job, onClick, actions }) {
             {job.code}
             {job.job_number && <span className="jc-ref">{job.job_number}</span>}
             <span className="jc-status" style={{ background: `${status.color}22`, color: status.color, borderColor: `${status.color}55` }}>{status.label}</span>
+            {job.archived && <span className="jc-chip-sm jc-chip-archived">Archived</span>}
+            {isPast && <span className="jc-chip-sm jc-chip-past" title="All scheduled days are in the past — ready to archive">Past</span>}
           </div>
           <div className="jc-list-name">{job.name}{job.client ? ` — ${job.client}` : ''}</div>
           <div className="jc-list-meta">
@@ -794,6 +799,21 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
     (c.compliance || []).filter(x => x.status !== 'valid').map(x => ({ ...x, memberName: c.name }))
   );
 
+  const toggleArchive = async () => {
+    try {
+      if (job.archived) {
+        await unarchiveJob(job.id);
+        showToast('Job unarchived', 'success');
+      } else {
+        await archiveJob(job.id);
+        showToast('Job archived', 'success');
+      }
+      load();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   return (
     <div className="job-card">
       <button className="btn btn-sm jc-back" onClick={onBack}>← Back</button>
@@ -804,8 +824,18 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
           <h2>{job.code}</h2>
           {job.job_number && <span className="jc-ref">Job {job.job_number}</span>}
           <span className="jc-status" style={{ background: `${status.color}22`, color: status.color, borderColor: `${status.color}55` }}>{status.label}</span>
+          {job.archived && <span className="jc-chip-sm jc-chip-archived" title={`Archived ${job.archived_at || ''}`}>Archived</span>}
           <div className="jc-header-actions">
             {isAdmin && onEdit && <button className="btn btn-sm" onClick={() => onEdit(job)}>✎ Edit</button>}
+            {isAdmin && (
+              <button
+                className="btn btn-sm"
+                onClick={toggleArchive}
+                title={job.archived ? 'Restore to the active jobs list' : 'Hide from the active jobs list'}
+              >
+                {job.archived ? 'Unarchive' : '📦 Archive'}
+              </button>
+            )}
           </div>
         </div>
         <div className="jc-title">{job.name}</div>

@@ -76,7 +76,7 @@ router.get('/', (req, res) => {
 router.get('/mine', (req, res) => {
   const jobs = req.db.prepare(`
     ${JOB_SELECT}
-    WHERE j.active = 1
+    WHERE j.active = 1 AND j.archived = 0
       AND j.id IN (SELECT DISTINCT job_id FROM schedule_entries WHERE team_member_id = ?)
     ORDER BY
       CASE WHEN (roster_end >= date('now', '+10 hours')) THEN 0 ELSE 1 END,
@@ -235,6 +235,27 @@ router.delete('/:id', requireAdmin, (req, res) => {
     .run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Job not found' });
   res.json({ success: true });
+});
+
+// POST archive job (admin only)
+router.post('/:id/archive', requireAdmin, (req, res) => {
+  const result = req.db.prepare(`
+    UPDATE jobs SET archived = 1, archived_at = datetime('now', '+10 hours'),
+                    updated_at = datetime('now', '+10 hours')
+    WHERE id = ?
+  `).run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Job not found' });
+  res.json(req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
+});
+
+// POST unarchive job (admin only)
+router.post('/:id/unarchive', requireAdmin, (req, res) => {
+  const result = req.db.prepare(`
+    UPDATE jobs SET archived = 0, archived_at = '', updated_at = datetime('now', '+10 hours')
+    WHERE id = ?
+  `).run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Job not found' });
+  res.json(req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id));
 });
 
 // ── Checklists ──────────────────────────────────────────────────────────────

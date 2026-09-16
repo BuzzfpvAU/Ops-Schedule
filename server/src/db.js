@@ -194,6 +194,8 @@ export function initDb() {
   addJobColumn('site_contact', `site_contact TEXT DEFAULT ''`);
   addJobColumn('notes', `notes TEXT DEFAULT ''`);
   addJobColumn('rental_required', `rental_required INTEGER DEFAULT 0`);
+  addJobColumn('archived', `archived INTEGER DEFAULT 0`);
+  addJobColumn('archived_at', `archived_at TEXT DEFAULT ''`);
 
   // Job card: readiness checklists, flights, accommodation, rentals, equipment kit
   db.exec(`
