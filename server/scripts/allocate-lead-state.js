@@ -29,7 +29,7 @@ const dbPath = (process.env.DATABASE_PATH || path.join(os.homedir(), 'data', 'op
 
 // Status markers / placeholders that are not project work — left unassigned
 const SKIP_EXACT = new Set(['CLOSED', 'NO-TRAVEL']);
-const SKIP_RE = /LEAVE|UNAVAIL|^TOIL|^BREAK-DAY|^N-A-/i;
+const SKIP_RE = /LEAVE|UNAVAIL|NOT-AVAIL|^TOIL|^BREAK-DAY|^N-A-/i;
 function isSkippable(code) {
   return SKIP_EXACT.has(code.toUpperCase()) || SKIP_RE.test(code);
 }
