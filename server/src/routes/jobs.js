@@ -63,6 +63,9 @@ const JOB_SELECT = `
     (SELECT MAX(e.date) FROM schedule_entries e WHERE e.job_id = j.id) AS roster_end,
     (SELECT COUNT(*) FROM job_checklist_items c WHERE c.job_id = j.id) AS checklist_total,
     (SELECT COUNT(*) FROM job_checklist_items c WHERE c.job_id = j.id AND c.done = 1) AS checklist_done
+    ,(SELECT COUNT(DISTINCT e.team_member_id) FROM schedule_entries e
+        JOIN team_members tm ON tm.id = e.team_member_id
+        WHERE e.job_id = j.id AND tm.is_equipment = 0) AS crew_count
   FROM jobs j
 `;
 
@@ -161,6 +164,7 @@ router.post('/', requireAdmin, (req, res) => {
   const {
     code, name, description, color, client, file_url,
     job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
+    state, crew_size, planned_start, planned_end,
     applyTemplate,
   } = req.body;
   if (!code || !name) return res.status(400).json({ error: 'Code and name are required' });
@@ -172,17 +176,19 @@ router.post('/', requireAdmin, (req, res) => {
   const id = uuidv4();
   req.db.prepare(`
     INSERT INTO jobs (id, code, name, description, color, client, file_url,
-                      job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
+                      state, crew_size, planned_start, planned_end)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, code, name, description || '', color || '#3B82F6', client || '', file_url || '',
     job_number || '', sharepoint_url || '', status || 'planning', site_address || '',
-    site_contact || '', notes || '', rental_required ? 1 : 0
+    site_contact || '', notes || '', rental_required ? 1 : 0,
+    state || '', Math.max(1, parseInt(crew_size, 10) || 1), planned_start || '', planned_end || ''
   );
 
   if (applyTemplate !== false) applyStandardChecklist(req.db, id);
 
-  const job = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+  const job = req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(id);
   res.status(201).json(job);
 });
 
@@ -191,6 +197,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   const {
     code, name, description, color, client, file_url,
     job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
+    state, crew_size, planned_start, planned_end,
   } = req.body;
   const existing = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Job not found' });
@@ -205,7 +212,8 @@ router.put('/:id', requireAdmin, (req, res) => {
     UPDATE jobs
     SET code = ?, name = ?, description = ?, color = ?, client = ?, file_url = ?,
         job_number = ?, sharepoint_url = ?, status = ?, site_address = ?, site_contact = ?, notes = ?,
-        rental_required = ?, updated_at = datetime('now', '+10 hours')
+        rental_required = ?, state = ?, crew_size = ?, planned_start = ?, planned_end = ?,
+        updated_at = datetime('now', '+10 hours')
     WHERE id = ?
   `).run(
     code || existing.code,
@@ -221,10 +229,14 @@ router.put('/:id', requireAdmin, (req, res) => {
     site_contact ?? existing.site_contact,
     notes ?? existing.notes,
     rental_required !== undefined ? (rental_required ? 1 : 0) : existing.rental_required,
+    state ?? existing.state,
+    crew_size !== undefined ? Math.max(1, parseInt(crew_size, 10) || 1) : existing.crew_size,
+    planned_start ?? existing.planned_start,
+    planned_end ?? existing.planned_end,
     req.params.id
   );
 
-  const job = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
+  const job = req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(req.params.id);
   res.json(job);
 });
 

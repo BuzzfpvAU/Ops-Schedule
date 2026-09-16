@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob, archiveJobsBulk } from '../api.js';
-import JobCard, { JobListRow, JOB_STATUSES, fmtDateShort } from './JobCard.jsx';
+import JobCard, { JobListRow, JOB_STATUSES, fmtDateShort, JOB_STATES } from './JobCard.jsx';
 
 const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
@@ -8,6 +8,7 @@ const EMPTY_FORM = {
   code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '',
   job_number: '', sharepoint_url: '', status: 'planning', site_address: '', site_contact: '',
   notes: '', rental_required: 0,
+  state: '', crew_size: 1, planned_start: '', planned_end: '',
 };
 
 export default function JobManager({ jobs, onRefresh, showToast, currentUser, teamMembers = [], equipment = [] }) {
@@ -57,6 +58,8 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
       sharepoint_url: job.sharepoint_url || '', status: job.status || 'planning',
       site_address: job.site_address || '', site_contact: job.site_contact || '',
       notes: job.notes || '', rental_required: job.rental_required ? 1 : 0,
+      state: job.state || '', crew_size: job.crew_size || 1,
+      planned_start: job.planned_start || '', planned_end: job.planned_end || '',
     });
     setShowModal(true);
   };
@@ -328,6 +331,36 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
                     onChange={(e) => setForm({ ...form, client: e.target.value })}
                     placeholder="e.g. Vertech"
                   />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>State (drives the schedule's Unallocated line)</label>
+                  <select value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}>
+                    <option value="">— none —</option>
+                    {JOB_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label title="The job shows on the Unallocated line until this many people are rostered on it">Crew size</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.crew_size}
+                    onChange={(e) => setForm({ ...form, crew_size: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label title="Shown as the bar on the schedule's Unallocated line until people are rostered">Planned start</label>
+                  <input type="date" value={form.planned_start} onChange={(e) => setForm({ ...form, planned_start: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Planned end</label>
+                  <input type="date" value={form.planned_end} onChange={(e) => setForm({ ...form, planned_end: e.target.value })} />
                 </div>
               </div>
 

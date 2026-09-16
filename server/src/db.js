@@ -196,6 +196,10 @@ export function initDb() {
   addJobColumn('rental_required', `rental_required INTEGER DEFAULT 0`);
   addJobColumn('archived', `archived INTEGER DEFAULT 0`);
   addJobColumn('archived_at', `archived_at TEXT DEFAULT ''`);
+  addJobColumn('state', `state TEXT DEFAULT ''`);                  // WA|VIC|QLD|NSW|NT|Processing — drives the schedule's Unallocated line
+  addJobColumn('crew_size', `crew_size INTEGER DEFAULT 1`);       // job counts as unallocated while distinct rostered crew < crew_size
+  addJobColumn('planned_start', `planned_start TEXT DEFAULT ''`); // planned window shown on the Unallocated line
+  addJobColumn('planned_end', `planned_end TEXT DEFAULT ''`);
 
   // Job card: readiness checklists, flights, accommodation, rentals, equipment kit
   db.exec(`

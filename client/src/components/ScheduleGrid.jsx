@@ -22,6 +22,7 @@ export default function ScheduleGrid({
   const [collapsedEquipment, setCollapsedEquipment] = useState({});
   const [selectedLocations, setSelectedLocations] = useState([]);
   const [filterMember, setFilterMember] = useState('all');
+  const [showUnallocated, setShowUnallocated] = useState(false);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const locationDropdownRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -286,6 +287,47 @@ export default function ScheduleGrid({
     }
     return result;
   }, [allEntities, schedule, weekDates]);
+
+  // ── Unallocated work: jobs tagged to a state that aren't fully crewed yet ──
+  const todayAEST = new Date().toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' });
+  const unallocatedByState = useMemo(() => {
+    const map = {};
+    for (const j of jobs || []) {
+      if (!j.state || j.archived) continue;
+      if ((j.crew_count || 0) >= (j.crew_size || 1)) continue;
+      (map[j.state] = map[j.state] || []).push(j);
+    }
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) =>
+        (a.planned_start || '9999-99-99').localeCompare(b.planned_start || '9999-99-99')
+        || (a.code || '').localeCompare(b.code || ''));
+    }
+    return map;
+  }, [jobs]);
+  const unallocatedTotal = Object.values(unallocatedByState).reduce((n, arr) => n + arr.length, 0);
+
+  // Full-coverage spans for an unallocated job's row (planned dates, else today as a chip)
+  const buildUnallocatedSpans = (uj) => {
+    const start = uj.planned_start || todayAEST;
+    const end = uj.planned_end || start;
+    const inRange = (d) => d >= start && d <= end;
+    const out = [];
+    let i = 0;
+    while (i < weekDates.length) {
+      if (inRange(weekDates[i].dateStr)) {
+        let k = i;
+        while (k + 1 < weekDates.length && inRange(weekDates[k + 1].dateStr)) k++;
+        out.push({ startIdx: i, length: k - i + 1, uj });
+        i = k + 1;
+      } else {
+        let k = i;
+        while (k + 1 < weekDates.length && !inRange(weekDates[k + 1].dateStr)) k++;
+        out.push({ startIdx: i, length: k - i + 1, uj: null });
+        i = k + 1;
+      }
+    }
+    return out;
+  };
 
   const handleCellClick = (memberId, dateStr, e) => {
     // Non-admin can only click their own row
@@ -986,6 +1028,17 @@ export default function ScheduleGrid({
               ))}
             </select>
           </div>
+          <div className="filter-group">
+            <label className="unallocated-toggle" htmlFor="show-unallocated-toggle" title="State-tagged jobs that aren't fully crewed — shown as lines inside their state group">
+              <input
+                id="show-unallocated-toggle"
+                type="checkbox"
+                checked={showUnallocated}
+                onChange={(e) => setShowUnallocated(e.target.checked)}
+              />
+              Show unallocated ({unallocatedTotal})
+            </label>
+          </div>
           {(selectedLocations.length > 0 || filterMember !== 'all') && (
             <button
               className="filter-clear-btn"
@@ -1039,6 +1092,16 @@ export default function ScheduleGrid({
                 }
               }
 
+              // Unallocated lines can exist for states with no visible members — include those groups
+              if (showUnallocated && selectedLocations.length === 0) {
+                for (const st of Object.keys(unallocatedByState)) {
+                  if (!seenLocations.has(st)) {
+                    seenLocations.add(st);
+                    orderedLocations.push(st);
+                  }
+                }
+              }
+
               // Group members by location, with logged-in user first in their group
               const membersByLocation = {};
               for (const member of filteredMembers) {
@@ -1067,6 +1130,56 @@ export default function ScheduleGrid({
                     </td>
                   </tr>
                 );
+
+                // Unallocated work for this state — one dynamic line per un-crewed job
+                const unallocJobs = showUnallocated ? (unallocatedByState[location] || []) : [];
+                if (unallocJobs.length > 0) {
+                  rows.push(
+                    <tr key={`unalloc-head-${location}`} className="unallocated-head-row">
+                      <td colSpan={weekDates.length + 1}>
+                        <span className="unallocated-head-label">⚠ Unallocated — {unallocJobs.length} job{unallocJobs.length === 1 ? '' : 's'} awaiting crew</span>
+                      </td>
+                    </tr>
+                  );
+                  for (const uj of unallocJobs) {
+                    const uspans = buildUnallocatedSpans(uj);
+                    rows.push(
+                      <tr key={`unalloc-${uj.id}`} className="member-row unallocated-row" data-unallocated-job={uj.code}>
+                        <td className="member-cell">
+                          <div className="member-name-cell">
+                            <div className="unallocated-badge">👷</div>
+                            <div className="member-info">
+                              <span className="name">{uj.code} — {uj.name}</span>
+                              <span className="location">
+                                {uj.crew_count || 0}/{uj.crew_size || 1} crew{uj.planned_start ? ` · ${uj.planned_start} → ${uj.planned_end || uj.planned_start}` : ' · no dates yet'}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        {uspans.map((span) => {
+                          const d = weekDates[span.startIdx];
+                          if (span.uj) {
+                            return (
+                              <td key={d.dateStr} colSpan={span.length} className={`task-cell filled unallocated-cell ${d.isToday ? 'today' : ''}`}>
+                                <div
+                                  className={`task-bar ${span.length > 1 ? 'multi-day' : 'single-day'} unallocated-bar`}
+                                  style={{ '--task-color': uj.color, '--task-text': getTextColor(uj.color) }}
+                                  title={`${uj.code} — ${uj.name}\nUnallocated · ${uj.crew_count || 0}/${uj.crew_size || 1} crew${uj.planned_start ? `\nPlanned ${uj.planned_start} → ${uj.planned_end || uj.planned_start}` : '\nNo planned dates — set them on the job card'}`}
+                                  onClick={() => setJobCardId(uj.id)}
+                                >
+                                  <span className="task-label">{uj.code} · {uj.crew_count || 0}/{uj.crew_size || 1}</span>
+                                </div>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={d.dateStr} colSpan={span.length} className={`task-cell empty ${d.isToday ? 'today' : ''} ${d.isWeekend ? 'weekend' : ''}`} />
+                          );
+                        })}
+                      </tr>
+                    );
+                  }
+                }
 
                 // Team members
                 for (let mi = 0; mi < membersInGroup.length; mi++) {

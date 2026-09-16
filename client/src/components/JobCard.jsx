@@ -17,6 +17,9 @@ export const JOB_STATUSES = {
   cancelled: { label: 'Cancelled', color: '#ef4444' },
 };
 
+// States/streams a job can be allocated to before (or instead of) rostering people
+export const JOB_STATES = ['WA', 'VIC', 'QLD', 'NSW', 'NT', 'Processing'];
+
 const CHECKLIST_CATEGORIES = [
   ['accommodation', 'Accommodation'],
   ['flights', 'Flights'],
@@ -825,6 +828,12 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
           {job.job_number && <span className="jc-ref">Job {job.job_number}</span>}
           <span className="jc-status" style={{ background: `${status.color}22`, color: status.color, borderColor: `${status.color}55` }}>{status.label}</span>
           {job.archived && <span className="jc-chip-sm jc-chip-archived" title={`Archived ${job.archived_at || ''}`}>Archived</span>}
+          {job.state && <span className="jc-chip-sm" title="State this job is allocated to">📍 {job.state}</span>}
+          {!job.archived && job.state && (job.crew_count || 0) < (job.crew_size || 1) && (
+            <span className="jc-chip-sm jc-chip-crew" title="Not fully crewed — this job shows on the Unallocated line in the schedule">
+              👷 {job.crew_count || 0}/{job.crew_size || 1} crew
+            </span>
+          )}
           <div className="jc-header-actions">
             {isAdmin && onEdit && <button className="btn btn-sm" onClick={() => onEdit(job)}>✎ Edit</button>}
             {isAdmin && (
@@ -851,6 +860,11 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
           <div className="jc-subtitle">
             {job.site_address && <span>📍 {job.site_address}</span>}
             {job.site_contact && <span>☎ {job.site_contact}</span>}
+          </div>
+        )}
+        {(job.planned_start || job.planned_end) && (
+          <div className="jc-subtitle">
+            <span title="Planned dates — shown as the bar on the schedule's Unallocated line">🗓 Planned: {job.planned_start ? fmtDate(job.planned_start) : '?'} → {job.planned_end ? fmtDate(job.planned_end) : '?'}</span>
           </div>
         )}
         <div className="jc-links">
