@@ -4,7 +4,7 @@ import {
   addJobFlight, updateJobFlight, deleteJobFlight,
   addJobAccommodation, updateJobAccommodation, deleteJobAccommodation,
   addJobRental, updateJobRental, deleteJobRental,
-  assignJobEquipment, removeJobEquipment, updateJobEquipmentTransit,
+  assignJobEquipment, removeJobEquipment, updateJobEquipmentTransit, adjustEquipmentBooking,
   updateJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, getEquipment,
   archiveJob, unarchiveJob,
 } from '../api.js';
@@ -641,6 +641,10 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
     if (!confirm(`Remove ${k.equipment_name} from this job?`)) return;
     try { await removeJobEquipment(k.id); reload(); } catch (err) { showToast(err.message, 'error'); }
   };
+  const adjustBooking = async (k, edge, delta) => {
+    try { await adjustEquipmentBooking(k.id, edge, delta); reload(); }
+    catch (err) { showToast(err.message, 'error'); }
+  };
   const saveTransit = async () => {
     const before = Math.max(0, Math.floor(Number(editingTransit.before) || 0));
     const after = Math.max(0, Math.floor(Number(editingTransit.after) || 0));
@@ -684,6 +688,22 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
               </div>
               {(k.serial_number || k.notes) && (
                 <div className="jc-row-meta">{[k.serial_number && `SN ${k.serial_number}`, k.notes].filter(Boolean).join(' · ')}</div>
+              )}
+              {isAdmin && (
+                k.booked_from ? (
+                  <div className="jc-row-meta">
+                    <button className="btn-icon" title="Drop first booked day" onClick={() => adjustBooking(k, 'start', -1)}>−</button>
+                    <button className="btn-icon" title="Book one day earlier" onClick={() => adjustBooking(k, 'start', 1)}>+</button>
+                    <span>📅 {fmtDateShort(k.booked_from)}{k.booked_to !== k.booked_from ? ` → ${fmtDateShort(k.booked_to)}` : ''} ({k.booked_days}d)</span>
+                    <button className="btn-icon" title="Drop last booked day" onClick={() => adjustBooking(k, 'end', -1)}>−</button>
+                    <button className="btn-icon" title="Book one day later" onClick={() => adjustBooking(k, 'end', 1)}>+</button>
+                  </div>
+                ) : (
+                  <div className="jc-row-meta">
+                    <span>Not booked</span>
+                    <button className="btn-icon" title="Start equipment booking" onClick={() => adjustBooking(k, 'end', 1)}>+</button>
+                  </div>
+                )
               )}
             </div>
             {isAdmin && (

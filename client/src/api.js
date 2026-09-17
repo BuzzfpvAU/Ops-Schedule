@@ -206,6 +206,13 @@ export async function updateJobEquipmentTransit(id, transitBefore, transitAfter)
   });
 }
 
+export async function adjustEquipmentBooking(id, edge, delta) {
+  return api(`/jobs/equipment/${id}/booking`, {
+    method: 'POST',
+    body: JSON.stringify({ edge, delta }),
+  });
+}
+
 // ── Per-person compliance ──
 
 export async function getMemberCompliance(memberId) {

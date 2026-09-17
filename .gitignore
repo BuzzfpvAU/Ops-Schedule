@@ -8,9 +8,8 @@ dist/
 
 # AirTag tracker — local state & secrets (never commit)
 tracker/.env
-tracker/account.json
+tracker/accounts/
 tracker/ani_libs.bin
-tracker/keys/
 tracker/logs/
 tracker/.venv/
 

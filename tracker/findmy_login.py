@@ -1,17 +1,32 @@
 #!/usr/bin/env python3
-"""One-time interactive Find My sign-in for the AirTag tracker."""
+"""One-time interactive Find My sign-in for the AirTag tracker (per account).
+
+Usage: .venv/bin/python findmy_login.py [acct]
+  acct defaults to "main". Creates accounts/<acct>/account.json.
+  Re-run the same command if a session expires.
+"""
 
 from __future__ import annotations
 
+import argparse
 import getpass
+import sys
 from pathlib import Path
 
 TRACKER_DIR = Path(__file__).resolve().parent
-STORE = TRACKER_DIR / "account.json"
+ACCOUNTS_ROOT = TRACKER_DIR / "accounts"
 ANISETTE_LIBS = TRACKER_DIR / "ani_libs.bin"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Sign an Apple ID in for the AirTag tracker")
+    ap.add_argument("acct", nargs="?", default="main", help="account slug under accounts/ (default: main)")
+    args = ap.parse_args(argv)
+
+    acct_dir = ACCOUNTS_ROOT / args.acct
+    store = acct_dir / "account.json"
+    acct_dir.mkdir(parents=True, exist_ok=True)
+
     from findmy import (
         AppleAccount,
         LocalAnisetteProvider,
@@ -20,9 +35,9 @@ def main() -> int:
         TrustedDeviceSecondFactorMethod,
     )
 
-    if STORE.exists():
+    if store.exists():
         try:
-            acc = AppleAccount.from_json(STORE)
+            acc = AppleAccount.from_json(store)
             print(f"Existing session for: {acc.account_name}")
             if input("Reuse it? [Y/n] ").strip().lower() != "n":
                 return 0
@@ -52,8 +67,8 @@ def main() -> int:
         print(f"Login failed (state: {state})")
         return 1
 
-    acc.to_json(STORE)
-    print(f"✅ Logged in as {acc.account_name}. Session saved to {STORE.name}")
+    acc.to_json(store)
+    print(f"✅ Logged in as {acc.account_name}. Session saved to {store}")
     return 0
 
 

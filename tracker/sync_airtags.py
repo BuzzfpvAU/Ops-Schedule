@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
-AirTag → Ops-Schedule tracker.
+AirTag → Ops-Schedule tracker (multi-account).
 
-Polls Apple's Find My network for every accessory key in ./keys/ and pushes
-the decrypted locations to the Ops-Schedule API (X-Ingest-Key auth).
+Polls Apple's Find My network for every accessory key under
+accounts/<acct>/keys/ and pushes the decrypted locations to the
+Ops-Schedule API (X-Ingest-Key auth). One Apple ID per account dir,
+so tags registered under different Apple IDs produce one combined list.
 
-One-time setup:
-  1. Enable Find My on this Mac and sign in with the Apple ID that owns the
-     AirTags, then export the accessory keys:  `python -m findmy decrypt`
-     and save each accessory's JSON into ./keys/
-  2. Run ./findmy_login.py once (Apple ID + 2FA) to create ./account.json
-  3. Set API_URL + TRACKER_INGEST_KEY in ./.env (see .env.example)
+Layout (each <acct> is one Apple ID):
+  accounts/<acct>/
+    account.json          # session — created by ./findmy_login.py <acct>
+    keys/*.json           # accessory keys — exported from iCloud by
+                          #   ./export_keys.sh <acct> <apple-id-email>
+                          # (on macOS ≤ 14 you can instead use
+                          #   `python -m findmy decrypt` → keys/)
 
-Run: .venv/bin/python sync_airtags.py
+Run: .venv/bin/python sync_airtags.py          # all accounts
+     .venv/bin/python sync_airtags.py <acct>   # one account only
 """
 
 from __future__ import annotations
@@ -27,8 +31,7 @@ from datetime import timezone
 from pathlib import Path
 
 TRACKER_DIR = Path(__file__).resolve().parent
-ACCOUNT_FILE = TRACKER_DIR / "account.json"
-KEYS_DIR = TRACKER_DIR / "keys"
+ACCOUNTS_ROOT = TRACKER_DIR / "accounts"
 ENV_FILE = TRACKER_DIR / ".env"
 
 
@@ -53,32 +56,102 @@ log = logging.getLogger("airtag-tracker")
 BATTERY = {0b00: "Full", 0b01: "Medium", 0b10: "Low", 0b11: "Very Low"}
 
 
-def get_account():
-    from findmy import AppleAccount
-
-    if not ACCOUNT_FILE.exists():
-        log.error("No session found at %s — run findmy_login.py first.", ACCOUNT_FILE)
-        return None
-    try:
-        return AppleAccount.from_json(ACCOUNT_FILE)
-    except Exception as exc:  # noqa: BLE001
-        log.error("Could not restore session (%s). Re-run findmy_login.py.", exc)
-        return None
+class AccountError(Exception):
+    """Account dir exists but is not usable yet (missing session/keys)."""
 
 
-def load_accessories():
-    from findmy import FindMyAccessory
-
-    if not KEYS_DIR.exists():
-        log.error("Missing keys dir %s — export accessory keys first (`python -m findmy decrypt`).", KEYS_DIR)
+def list_accounts(only: list[str] | None = None) -> list[Path]:
+    if not ACCOUNTS_ROOT.is_dir():
         return []
+    dirs = sorted(p for p in ACCOUNTS_ROOT.iterdir() if p.is_dir())
+    if only:
+        wanted = set(only)
+        dirs = [p for p in dirs if p.name in wanted]
+    return dirs
+
+
+def load_account(acct_dir: Path):
+    """Load one account's session + accessory keys.
+
+    Returns (account, accessories) or raises AccountError with a fix hint.
+    """
+    from findmy import AppleAccount, FindMyAccessory
+
+    slug = acct_dir.name
+    session_file = acct_dir / "account.json"
+    keys_dir = acct_dir / "keys"
+
+    if not session_file.exists():
+        raise AccountError(
+            f"[{slug}] no session — run ./findmy_login.py {slug} (Apple ID + 2FA)"
+        )
+    try:
+        account = AppleAccount.from_json(session_file)
+    except Exception as exc:  # noqa: BLE001
+        raise AccountError(
+            f"[{slug}] session restore failed ({exc}) — re-run ./findmy_login.py {slug}"
+        ) from exc
+
+    if not keys_dir.is_dir():
+        raise AccountError(
+            f"[{slug}] missing keys dir — run ./export_keys.sh {slug} <apple-id-email>"
+        )
     accessories = []
-    for path in sorted(KEYS_DIR.glob("*.json")):
+    for path in sorted(keys_dir.glob("*.json")):
         try:
             accessories.append(FindMyAccessory.from_json(path))
         except Exception as exc:  # noqa: BLE001
-            log.warning("Skipping %s: %s", path.name, exc)
-    return accessories
+            log.warning("[%s] skipping bad key file %s: %s", slug, path.name, exc)
+    if not accessories:
+        raise AccountError(
+            f"[{slug}] no valid accessory keys in {keys_dir.name}/ — run "
+            f"./export_keys.sh {slug} <apple-id-email>"
+        )
+    return account, accessories
+
+
+def fetch_account(acct_dir: Path) -> list[dict]:
+    """Fetch + decrypt locations for one account; returns API-ready rows."""
+    slug = acct_dir.name
+    account, accessories = load_account(acct_dir)
+
+    log.info("[%s] fetching Find My locations for %d accessories…", slug, len(accessories))
+    try:
+        results = account.fetch_location(accessories)
+    except Exception as exc:  # noqa: BLE001
+        log.error("[%s] Find My request failed: %s", slug, exc)
+        return []
+
+    # Persist refreshed session tokens — do this on every successful fetch so
+    # an expired session is noticed early instead of mid-rotation.
+    try:
+        account.to_json(acct_dir / "account.json")
+    except Exception:  # noqa: BLE001
+        log.warning("[%s] could not persist refreshed session", slug)
+
+    locations: list[dict] = []
+    for accessory, report in (results or {}).items():
+        name = getattr(accessory, "name", None) or getattr(accessory, "identifier", None) or "unknown"
+        if report is None:
+            log.info("[%s]  - %s: no location yet", slug, name)
+            continue
+        battery = BATTERY.get((report.status >> 6) & 0b11, "Unknown")
+        locations.append(
+            {
+                "airtag_name": name,
+                "lat": report.latitude,
+                "lng": report.longitude,
+                "accuracy": report.horizontal_accuracy,
+                "battery": battery,
+                "seen_at": report.timestamp.astimezone(timezone.utc).isoformat(),
+                "source": "airtag",
+            }
+        )
+        log.info(
+            "[%s]  - %s: %.5f, %.5f (±%sm, %s)",
+            slug, name, report.latitude, report.longitude, report.horizontal_accuracy, battery,
+        )
+    return locations
 
 
 def push(locations: list[dict]) -> bool:
@@ -108,59 +181,52 @@ def push(locations: list[dict]) -> bool:
     return True
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     if not INGEST_KEY:
         log.error("TRACKER_INGEST_KEY is not set (check %s)", ENV_FILE)
         return 2
 
-    acc = get_account()
-    if acc is None:
+    acct_dirs = list_accounts(argv)
+    if not acct_dirs:
+        log.error(
+            "No account dirs under %s — start with: ./findmy_login.py <acct>  "
+            "then  ./export_keys.sh <acct> <apple-id-email>",
+            ACCOUNTS_ROOT,
+        )
         return 2
-
-    accessories = load_accessories()
-    if not accessories:
-        return 2
-
-    log.info("Fetching Find My locations for %d accessories…", len(accessories))
-    try:
-        results = acc.fetch_location(accessories)
-    except Exception as exc:  # noqa: BLE001
-        log.error("Find My request failed: %s", exc)
-        return 1
 
     locations: list[dict] = []
-    for accessory, report in (results or {}).items():
-        name = getattr(accessory, "name", None) or getattr(accessory, "identifier", None) or "unknown"
-        if report is None:
-            log.info(" - %s: no location yet", name)
+    seen_in: dict[str, list[str]] = {}
+    failed = 0
+    for acct_dir in acct_dirs:
+        slug = acct_dir.name
+        try:
+            locs = fetch_account(acct_dir)
+        except AccountError as exc:
+            log.error("%s", exc)
+            failed += 1
             continue
-        battery = BATTERY.get((report.status >> 6) & 0b11, "Unknown")
-        locations.append(
-            {
-                "airtag_name": name,
-                "lat": report.latitude,
-                "lng": report.longitude,
-                "accuracy": report.horizontal_accuracy,
-                "battery": battery,
-                "seen_at": report.timestamp.astimezone(timezone.utc).isoformat(),
-                "source": "airtag",
-            }
-        )
-        log.info(
-            " - %s: %.5f, %.5f (±%sm, %s)",
-            name, report.latitude, report.longitude, report.horizontal_accuracy, battery,
-        )
+        for loc in locs:
+            seen_in.setdefault(loc["airtag_name"], []).append(slug)
+        locations.extend(locs)
+
+    # Names must be unique across accounts — the API matches by name only.
+    for name, slugs in seen_in.items():
+        if len(set(slugs)) > 1:
+            log.warning(
+                "Duplicate AirTag name %r in accounts %s — the map will show the "
+                "newest report; rename one tag in Find My",
+                name, sorted(set(slugs)),
+            )
 
     if not locations:
-        log.info("Nothing new to push.")
-        return 0
+        return 1 if failed else 0
 
     ok = push(locations)
-    if ok:
-        # Persist refreshed session tokens
-        acc.to_json(ACCOUNT_FILE)
+    if failed:
+        log.warning("%d account(s) failed — fix before next run", failed)
     return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:] if len(sys.argv) > 1 else None))

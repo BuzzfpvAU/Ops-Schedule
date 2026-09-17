@@ -157,6 +157,12 @@ router.get('/:id', (req, res) => {
   const equipment = db.prepare(`
     SELECT je.id, je.job_id, je.equipment_id, je.assigned_to, je.notes,
            je.transit_before, je.transit_after,
+           (SELECT MIN(se.date) FROM schedule_entries se
+             WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_from,
+           (SELECT MAX(se.date) FROM schedule_entries se
+             WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_to,
+           (SELECT COUNT(DISTINCT se.date) FROM schedule_entries se
+             WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_days,
            tm.name AS equipment_name, tm.equipment_category AS category,
            tm.role AS equipment_type, tm.serial_number
     FROM job_equipment je
@@ -499,6 +505,54 @@ router.delete('/rentals/:id', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// ── Equipment bookings (schedule_entries for kit equipment) ─────────────────
+// A kit assignment "adopts" the job timeframe: entries are created for every
+// date in the job's current roster range (MIN/MAX over all its entries).
+// The per-row +/− controls grow/shrink that range one day at a time.
+
+function aestToday() {
+  return new Date(Date.now() + 10 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function dateRange(from, to) {
+  const out = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+
+function jobRange(db, jobId) {
+  return db.prepare(`
+    SELECT MIN(date) AS from_date, MAX(date) AS to_date
+    FROM schedule_entries WHERE job_id = ?
+  `).get(jobId);
+}
+
+function bookingRange(db, jobId, equipmentId) {
+  return db.prepare(`
+    SELECT MIN(date) AS from_date, MAX(date) AS to_date,
+           COUNT(DISTINCT date) AS days
+    FROM schedule_entries WHERE job_id = ? AND team_member_id = ?
+  `).get(jobId, equipmentId);
+}
+
+function ensureBookingDay(db, jobId, equipmentId, date) {
+  const exists = db.prepare(
+    'SELECT id FROM schedule_entries WHERE job_id = ? AND team_member_id = ? AND date = ? LIMIT 1'
+  ).get(jobId, equipmentId, date);
+  if (exists) return false;
+  db.prepare(`
+    INSERT INTO schedule_entries (id, team_member_id, job_id, date, status)
+    VALUES (?, ?, ?, ?, 'tentative')
+  `).run(uuidv4(), equipmentId, jobId, date);
+  return true;
+}
+
 // ── Equipment kit / owned vehicles ──────────────────────────────────────────
 
 router.post('/:id/equipment', requireAdmin, (req, res) => {
@@ -519,13 +573,86 @@ router.post('/:id/equipment', requireAdmin, (req, res) => {
     INSERT INTO job_equipment (id, job_id, equipment_id, assigned_to, notes)
     VALUES (?, ?, ?, ?, ?)
   `).run(id, req.params.id, equipment_id, assigned_to || '', notes || '');
-  res.status(201).json({ id });
+
+  // Adopt the job's timeframe: book the equipment for every rostered date.
+  // (No roster yet → no booking; the + control can start one later.)
+  const range = jobRange(req.db, req.params.id);
+  let booked = 0;
+  if (range.from_date) {
+    for (const d of dateRange(range.from_date, range.to_date)) {
+      if (ensureBookingDay(req.db, req.params.id, equipment_id, d)) booked++;
+    }
+  }
+  res.status(201).json({
+    id,
+    booked_from: range.from_date || null,
+    booked_to: range.to_date || null,
+    booked_days: booked,
+  });
 });
 
 router.delete('/equipment/:id', requireAdmin, (req, res) => {
-  const result = req.db.prepare('DELETE FROM job_equipment WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Assignment not found' });
+  const assignment = req.db.prepare(
+    'SELECT job_id, equipment_id FROM job_equipment WHERE id = ?'
+  ).get(req.params.id);
+  if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
+  // Clear the booking entries so no ghost range lingers on the roster.
+  req.db.prepare(
+    'DELETE FROM schedule_entries WHERE job_id = ? AND team_member_id = ?'
+  ).run(assignment.job_id, assignment.equipment_id);
+  req.db.prepare('DELETE FROM job_equipment WHERE id = ?').run(req.params.id);
   res.json({ success: true });
+});
+
+// Extend/trim one edge of an equipment booking by a day.
+// Body: { edge: 'start'|'end', delta: 1|-1 }
+router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
+  const { edge, delta } = req.body;
+  if (edge !== 'start' && edge !== 'end') {
+    return res.status(400).json({ error: "edge must be 'start' or 'end'" });
+  }
+  const n = Number(delta);
+  if (n !== 1 && n !== -1) {
+    return res.status(400).json({ error: 'delta must be 1 or -1' });
+  }
+  const a = req.db.prepare(
+    'SELECT job_id, equipment_id FROM job_equipment WHERE id = ?'
+  ).get(req.params.id);
+  if (!a) return res.status(404).json({ error: 'Assignment not found' });
+
+  let cur = bookingRange(req.db, a.job_id, a.equipment_id);
+  if (!cur.from_date) {
+    // No booking yet: adopt the job range first, else start from today.
+    const jr = jobRange(req.db, a.job_id);
+    if (jr.from_date) {
+      for (const d of dateRange(jr.from_date, jr.to_date)) {
+        ensureBookingDay(req.db, a.job_id, a.equipment_id, d);
+      }
+    } else {
+      ensureBookingDay(req.db, a.job_id, a.equipment_id, aestToday());
+    }
+    cur = bookingRange(req.db, a.job_id, a.equipment_id);
+  }
+
+  if (n === 1) {
+    ensureBookingDay(req.db, a.job_id, a.equipment_id,
+      edge === 'start' ? addDays(cur.from_date, -1) : addDays(cur.to_date, 1));
+  } else {
+    // Trim the boundary day (one entry — never touches other days).
+    const boundary = edge === 'start' ? cur.from_date : cur.to_date;
+    req.db.prepare(`DELETE FROM schedule_entries WHERE id = (
+      SELECT id FROM schedule_entries
+      WHERE job_id = ? AND team_member_id = ? AND date = ? LIMIT 1
+    )`).run(a.job_id, a.equipment_id, boundary);
+  }
+
+  const after = bookingRange(req.db, a.job_id, a.equipment_id);
+  res.json({
+    success: true,
+    booked_from: after.from_date || null,
+    booked_to: after.to_date || null,
+    booked_days: after.days || 0,
+  });
 });
 
 router.put('/equipment/:id', requireAdmin, (req, res) => {
