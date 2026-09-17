@@ -22,6 +22,17 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
   const [search, setSearch] = useState('');
   const [cleanup, setCleanup] = useState(null); // Set of job ids ticked in the cleanup modal | null (closed)
   const [cleanupSaving, setCleanupSaving] = useState(false);
+  // State groups can be collapsed — remembered per browser
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('jcCollapsedStates') || '[]')); }
+    catch { return new Set(); }
+  });
+  const toggleGroup = (key) => setCollapsedGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    try { localStorage.setItem('jcCollapsedStates', JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  });
 
   // Filter out auto-created status jobs (notes, toil, leave, unavailable)
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
@@ -266,37 +277,43 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
           </p>
         )}
 
-        {groupedJobs.map(({ key, jobs: groupJobs }) => (
-          <div key={key} className="jc-state-group">
-            <div
-              className="jc-list-group jc-group-head"
-              title={key === NO_STATE ? "No project lead assigned yet — a job's state comes from where its lead is based" : undefined}
-            >
-              {key === NO_STATE ? 'No state' : key}
-              <span className="jc-group-count">{groupJobs.length} job{groupJobs.length === 1 ? '' : 's'}</span>
+        {groupedJobs.map(({ key, jobs: groupJobs }) => {
+          // While searching, always show matches — collapse only applies to the normal list
+          const isCollapsed = !q && collapsedGroups.has(key);
+          return (
+            <div key={key} className="jc-state-group">
+              <div
+                className={`jc-list-group jc-group-head${isCollapsed ? ' jc-group-collapsed' : ''}`}
+                onClick={() => toggleGroup(key)}
+                title={key === NO_STATE ? "No project lead assigned yet — a job's state comes from where its lead is based" : 'Click to collapse / expand'}
+              >
+                <span className="jc-group-caret">{isCollapsed ? '▸' : '▾'}</span>
+                <span className="jc-group-label">{key === NO_STATE ? 'No state' : key}</span>
+                <span className="jc-group-count">{groupJobs.length} job{groupJobs.length === 1 ? '' : 's'}</span>
+              </div>
+              {!isCollapsed && groupJobs.map(job => (
+                <JobListRow
+                  key={job.id}
+                  job={job}
+                  onClick={() => setViewJob(job.id)}
+                  actions={
+                    <>
+                      <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
+                      <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
+                      {job.archived ? (
+                        <button className="btn btn-sm" onClick={() => handleUnarchive(job)}>Unarchive</button>
+                      ) : isPastJob(job) ? (
+                        <button className="btn btn-sm" title="All scheduled days are in the past" onClick={() => handleArchive(job)}>📦 Archive</button>
+                      ) : null}
+                      <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
+                    </>
+                  }
+                />
+              ))}
             </div>
-            {groupJobs.map(job => (
-              <JobListRow
-                key={job.id}
-                job={job}
-                onClick={() => setViewJob(job.id)}
-                actions={
-                  <>
-                    <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
-                    <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
-                    {job.archived ? (
-                      <button className="btn btn-sm" onClick={() => handleUnarchive(job)}>Unarchive</button>
-                    ) : isPastJob(job) ? (
-                      <button className="btn btn-sm" title="All scheduled days are in the past" onClick={() => handleArchive(job)}>📦 Archive</button>
-                    ) : null}
-                    <button className="btn btn-sm" onClick={() => openEdit(job)}>Edit</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job)}>Remove</button>
-                  </>
-                }
-              />
-            ))}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {showModal && (

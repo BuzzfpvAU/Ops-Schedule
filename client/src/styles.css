@@ -3356,6 +3356,19 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.jc-group-head:hover {
+  color: var(--text-secondary);
+}
+
+.jc-group-caret {
+  font-size: 10px;
+  color: var(--text-dim);
+  width: 10px;
+  flex: none;
 }
 
 /* separator between state groups (not above the first one) */
