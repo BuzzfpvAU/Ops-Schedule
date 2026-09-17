@@ -1855,6 +1855,7 @@ export default function ScheduleGrid({
               teamMembers={teamMembers}
               equipment={equipment}
               showToast={showToast}
+              onScheduleRefresh={onScheduleRefresh}
             />
           </div>
         </div>

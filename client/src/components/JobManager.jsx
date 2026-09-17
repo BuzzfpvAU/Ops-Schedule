@@ -11,7 +11,7 @@ const EMPTY_FORM = {
   state: '', crew_size: 1, planned_start: '', planned_end: '', lead_id: '',
 };
 
-export default function JobManager({ jobs, onRefresh, showToast, currentUser, teamMembers = [], equipment = [] }) {
+export default function JobManager({ jobs, onRefresh, showToast, currentUser, teamMembers = [], equipment = [], onScheduleRefresh }) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [subJob, setSubJob] = useState(null); // { job, token, url } | null
@@ -232,6 +232,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
         equipment={equipment}
         showToast={showToast}
         refreshKey={cardVersion}
+        onScheduleRefresh={onScheduleRefresh}
       />
     );
   }

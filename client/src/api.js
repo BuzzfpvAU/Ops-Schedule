@@ -199,13 +199,6 @@ export async function removeJobEquipment(id) {
   return api(`/jobs/equipment/${id}`, { method: 'DELETE' });
 }
 
-export async function updateJobEquipmentTransit(id, transitBefore, transitAfter) {
-  return api(`/jobs/equipment/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ transit_before: transitBefore, transit_after: transitAfter }),
-  });
-}
-
 export async function adjustEquipmentBooking(id, edge, delta) {
   return api(`/jobs/equipment/${id}/booking`, {
     method: 'POST',

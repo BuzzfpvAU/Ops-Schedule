@@ -156,7 +156,6 @@ router.get('/:id', (req, res) => {
 
   const equipment = db.prepare(`
     SELECT je.id, je.job_id, je.equipment_id, je.assigned_to, je.notes,
-           je.transit_before, je.transit_after,
            (SELECT MIN(se.date) FROM schedule_entries se
              WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_from,
            (SELECT MAX(se.date) FROM schedule_entries se
@@ -653,26 +652,6 @@ router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
     booked_to: after.to_date || null,
     booked_days: after.days || 0,
   });
-});
-
-router.put('/equipment/:id', requireAdmin, (req, res) => {
-  const { transit_before, transit_after } = req.body;
-  const tb = transit_before === undefined ? null : Number(transit_before);
-  const ta = transit_after === undefined ? null : Number(transit_after);
-  for (const [label, v] of [['transit_before', tb], ['transit_after', ta]]) {
-    if (v !== null && (!Number.isInteger(v) || v < 0)) {
-      return res.status(400).json({ error: `${label} must be an integer >= 0 (minutes)` });
-    }
-  }
-  const row = req.db.prepare('SELECT id FROM job_equipment WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Assignment not found' });
-  req.db.prepare(`
-    UPDATE job_equipment
-    SET transit_before = COALESCE(?, transit_before),
-        transit_after = COALESCE(?, transit_after)
-    WHERE id = ?
-  `).run(tb, ta, req.params.id);
-  res.json({ success: true });
 });
 
 export default router;

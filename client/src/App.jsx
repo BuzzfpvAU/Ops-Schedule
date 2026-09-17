@@ -246,6 +246,7 @@ export default function App() {
               currentUser={user}
               teamMembers={teamMembers}
               equipment={equipmentList}
+              onScheduleRefresh={refreshSchedule}
             />
           ) : (
             <MyJobs

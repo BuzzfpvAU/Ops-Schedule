@@ -4,7 +4,7 @@ import {
   addJobFlight, updateJobFlight, deleteJobFlight,
   addJobAccommodation, updateJobAccommodation, deleteJobAccommodation,
   addJobRental, updateJobRental, deleteJobRental,
-  assignJobEquipment, removeJobEquipment, updateJobEquipmentTransit, adjustEquipmentBooking,
+  assignJobEquipment, removeJobEquipment, adjustEquipmentBooking,
   updateJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, getEquipment,
   archiveJob, unarchiveJob,
 } from '../api.js';
@@ -501,7 +501,8 @@ function RentalForm({ initial, onSave, onCancel, saving }) {
   );
 }
 
-function VehiclesSection({ job, rentals, vehicles, equipmentList, people, isAdmin, reload, showToast }) {
+function VehiclesSection({ job, rentals, vehicles, equipmentList, people, isAdmin, reload, showToast, onScheduleRefresh }) {
+  const refreshed = () => { reload(); onScheduleRefresh?.(); };
   const [editingRental, setEditingRental] = useState(null);
   const [saving, setSaving] = useState(false);
   const [addingVehicle, setAddingVehicle] = useState('');
@@ -529,12 +530,12 @@ function VehiclesSection({ job, rentals, vehicles, equipmentList, people, isAdmi
 
   const addVehicle = async () => {
     if (!addingVehicle) return;
-    try { await assignJobEquipment(job.id, { equipment_id: addingVehicle }); setAddingVehicle(''); reload(); }
+    try { await assignJobEquipment(job.id, { equipment_id: addingVehicle }); setAddingVehicle(''); refreshed(); }
     catch (err) { showToast(err.message, 'error'); }
   };
   const removeVehicle = async (v) => {
     if (!confirm(`Remove ${v.equipment_name} from this job?`)) return;
-    try { await removeJobEquipment(v.id); reload(); } catch (err) { showToast(err.message, 'error'); }
+    try { await removeJobEquipment(v.id); refreshed(); } catch (err) { showToast(err.message, 'error'); }
   };
 
   const vehicleOptions = equipmentList.filter(e => e.equipment_category === 'Vehicles');
@@ -619,42 +620,22 @@ function VehiclesSection({ job, rentals, vehicles, equipmentList, people, isAdmi
 
 // ── Equipment kit ──────────────────────────────────────────────
 
-// Minutes → "hand-carried" | "45m" | "2h" | "2h 15m"
-function fmtTransit(mins) {
-  if (!mins) return 'hand-carried';
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
-}
-
-function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToast }) {
+function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToast, onScheduleRefresh }) {
   const [adding, setAdding] = useState('');
-  const [editingTransit, setEditingTransit] = useState(null); // { id, name, before, after }
-  const [savingTransit, setSavingTransit] = useState(false);
+  const refreshed = () => { reload(); onScheduleRefresh?.(); };
 
   const add = async () => {
     if (!adding) return;
-    try { await assignJobEquipment(job.id, { equipment_id: adding }); setAdding(''); reload(); }
+    try { await assignJobEquipment(job.id, { equipment_id: adding }); setAdding(''); refreshed(); }
     catch (err) { showToast(err.message, 'error'); }
   };
   const remove = async (k) => {
     if (!confirm(`Remove ${k.equipment_name} from this job?`)) return;
-    try { await removeJobEquipment(k.id); reload(); } catch (err) { showToast(err.message, 'error'); }
+    try { await removeJobEquipment(k.id); refreshed(); } catch (err) { showToast(err.message, 'error'); }
   };
   const adjustBooking = async (k, edge, delta) => {
-    try { await adjustEquipmentBooking(k.id, edge, delta); reload(); }
+    try { await adjustEquipmentBooking(k.id, edge, delta); refreshed(); }
     catch (err) { showToast(err.message, 'error'); }
-  };
-  const saveTransit = async () => {
-    const before = Math.max(0, Math.floor(Number(editingTransit.before) || 0));
-    const after = Math.max(0, Math.floor(Number(editingTransit.after) || 0));
-    setSavingTransit(true);
-    try {
-      await updateJobEquipmentTransit(editingTransit.id, before, after);
-      setEditingTransit(null);
-      reload();
-    } catch (err) { showToast(err.message, 'error'); }
-    finally { setSavingTransit(false); }
   };
 
   const assignedIds = new Set(kit.map(k => k.equipment_id));
@@ -682,8 +663,6 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
               <div className="jc-row-title">
                 <strong>{k.equipment_name}</strong>
                 {k.category && <span className="jc-chip-sm">{k.category}</span>}
-                {!!k.transit_before && <span className="jc-chip-sm" title={`${k.transit_before} min before job start`}>↑ {fmtTransit(k.transit_before)} before</span>}
-                {!!k.transit_after && <span className="jc-chip-sm" title={`${k.transit_after} min after job end`}>↓ {fmtTransit(k.transit_after)} after</span>}
                 {k.assigned_to && <span>→ {nameOf(people, k.assigned_to) || 'assigned'}</span>}
               </div>
               {(k.serial_number || k.notes) && (
@@ -706,39 +685,8 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
                 )
               )}
             </div>
-            {isAdmin && (
-              <div className="jc-row-actions">
-                <button className="btn-icon" title="Edit transit" onClick={() => setEditingTransit({ id: k.id, name: k.equipment_name, before: k.transit_before || 0, after: k.transit_after || 0 })}>✎</button>
-                <button className="btn-icon" title="Remove" onClick={() => remove(k)}>✕</button>
-              </div>
-            )}
+            {isAdmin && <div className="jc-row-actions"><button className="btn-icon" title="Remove" onClick={() => remove(k)}>✕</button></div>}
           </div>
-          {isAdmin && editingTransit?.id === k.id && (
-            <div className="jc-inline-form jc-form-block">
-              <div className="form-group">
-                <label>Equipment</label>
-                <input value={editingTransit.name} readOnly disabled />
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Transit before (minutes)</label>
-                  <input type="number" min="0" step="1" value={editingTransit.before}
-                    onChange={(e) => setEditingTransit({ ...editingTransit, before: e.target.value })} />
-                  <small>0 = hand-carried</small>
-                </div>
-                <div className="form-group">
-                  <label>Transit after (minutes)</label>
-                  <input type="number" min="0" step="1" value={editingTransit.after}
-                    onChange={(e) => setEditingTransit({ ...editingTransit, after: e.target.value })} />
-                  <small>0 = hand-carried</small>
-                </div>
-              </div>
-              <div className="jc-form-actions">
-                <button className="btn btn-sm" onClick={() => setEditingTransit(null)}>Cancel</button>
-                <button className="btn btn-sm btn-primary" disabled={savingTransit} onClick={saveTransit}>{savingTransit ? 'Saving…' : 'Save'}</button>
-              </div>
-            </div>
-          )}
         </div>
       ))}
     </Section>
@@ -823,7 +771,7 @@ export function JobListRow({ job, onClick, actions }) {
 
 // ── Main card ──────────────────────────────────────────────────
 
-export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [], currentUser, showToast, onEdit, refreshKey = 0 }) {
+export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [], currentUser, showToast, onEdit, refreshKey = 0, onScheduleRefresh }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [equipList, setEquipList] = useState(equipment);
@@ -1001,8 +949,8 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
       <ChecklistSection job={job} items={checklist} people={people} isAdmin={isAdmin} canTick={canTick} reload={load} showToast={showToast} />
       <FlightsSection job={job} items={flights} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} />
       <AccommodationSection job={job} items={accommodation} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} />
-      <VehiclesSection job={job} rentals={rentals} vehicles={vehicles} equipmentList={equipList} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} />
-      <KitSection job={job} kit={otherKit} equipmentList={equipList} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} />
+      <VehiclesSection job={job} rentals={rentals} vehicles={vehicles} equipmentList={equipList} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} onScheduleRefresh={onScheduleRefresh} />
+      <KitSection job={job} kit={otherKit} equipmentList={equipList} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} onScheduleRefresh={onScheduleRefresh} />
       <NotesSection job={job} isAdmin={isAdmin} reload={load} showToast={showToast} />
     </div>
   );

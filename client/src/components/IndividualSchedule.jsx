@@ -228,6 +228,7 @@ export default function IndividualSchedule({
               currentUser={user}
               teamMembers={teamMembers}
               showToast={showToast}
+              onScheduleRefresh={onScheduleRefresh}
             />
           </div>
         </div>
