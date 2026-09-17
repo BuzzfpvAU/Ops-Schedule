@@ -199,6 +199,13 @@ export async function removeJobEquipment(id) {
   return api(`/jobs/equipment/${id}`, { method: 'DELETE' });
 }
 
+export async function updateJobEquipmentTransit(id, transitBefore, transitAfter) {
+  return api(`/jobs/equipment/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ transit_before: transitBefore, transit_after: transitAfter }),
+  });
+}
+
 // ── Per-person compliance ──
 
 export async function getMemberCompliance(memberId) {

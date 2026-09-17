@@ -156,6 +156,7 @@ router.get('/:id', (req, res) => {
 
   const equipment = db.prepare(`
     SELECT je.id, je.job_id, je.equipment_id, je.assigned_to, je.notes,
+           je.transit_before, je.transit_after,
            tm.name AS equipment_name, tm.equipment_category AS category,
            tm.role AS equipment_type, tm.serial_number
     FROM job_equipment je
@@ -524,6 +525,26 @@ router.post('/:id/equipment', requireAdmin, (req, res) => {
 router.delete('/equipment/:id', requireAdmin, (req, res) => {
   const result = req.db.prepare('DELETE FROM job_equipment WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Assignment not found' });
+  res.json({ success: true });
+});
+
+router.put('/equipment/:id', requireAdmin, (req, res) => {
+  const { transit_before, transit_after } = req.body;
+  const tb = transit_before === undefined ? null : Number(transit_before);
+  const ta = transit_after === undefined ? null : Number(transit_after);
+  for (const [label, v] of [['transit_before', tb], ['transit_after', ta]]) {
+    if (v !== null && (!Number.isInteger(v) || v < 0)) {
+      return res.status(400).json({ error: `${label} must be an integer >= 0 (minutes)` });
+    }
+  }
+  const row = req.db.prepare('SELECT id FROM job_equipment WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Assignment not found' });
+  req.db.prepare(`
+    UPDATE job_equipment
+    SET transit_before = COALESCE(?, transit_before),
+        transit_after = COALESCE(?, transit_after)
+    WHERE id = ?
+  `).run(tb, ta, req.params.id);
   res.json({ success: true });
 });
 

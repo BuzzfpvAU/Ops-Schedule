@@ -288,6 +288,15 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_job_equipment_job ON job_equipment(job_id);
   `);
 
+  // Migrate: equipment transit windows on job_equipment (minutes; 0 = hand-carried)
+  const jeColumns = db.pragma('table_info(job_equipment)').map(c => c.name);
+  if (!jeColumns.includes('transit_before')) {
+    db.exec(`ALTER TABLE job_equipment ADD COLUMN transit_before INTEGER DEFAULT 0`);
+  }
+  if (!jeColumns.includes('transit_after')) {
+    db.exec(`ALTER TABLE job_equipment ADD COLUMN transit_after INTEGER DEFAULT 0`);
+  }
+
   // Per-person compliance records (site inductions, White Card, licences, medicals…)
   db.exec(`
     CREATE TABLE IF NOT EXISTS member_compliance (

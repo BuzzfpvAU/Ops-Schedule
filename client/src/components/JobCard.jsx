@@ -4,7 +4,7 @@ import {
   addJobFlight, updateJobFlight, deleteJobFlight,
   addJobAccommodation, updateJobAccommodation, deleteJobAccommodation,
   addJobRental, updateJobRental, deleteJobRental,
-  assignJobEquipment, removeJobEquipment,
+  assignJobEquipment, removeJobEquipment, updateJobEquipmentTransit,
   updateJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, getEquipment,
   archiveJob, unarchiveJob,
 } from '../api.js';
@@ -619,8 +619,18 @@ function VehiclesSection({ job, rentals, vehicles, equipmentList, people, isAdmi
 
 // ── Equipment kit ──────────────────────────────────────────────
 
+// Minutes → "hand-carried" | "45m" | "2h" | "2h 15m"
+function fmtTransit(mins) {
+  if (!mins) return 'hand-carried';
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
 function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToast }) {
   const [adding, setAdding] = useState('');
+  const [editingTransit, setEditingTransit] = useState(null); // { id, name, before, after }
+  const [savingTransit, setSavingTransit] = useState(false);
 
   const add = async () => {
     if (!adding) return;
@@ -630,6 +640,17 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
   const remove = async (k) => {
     if (!confirm(`Remove ${k.equipment_name} from this job?`)) return;
     try { await removeJobEquipment(k.id); reload(); } catch (err) { showToast(err.message, 'error'); }
+  };
+  const saveTransit = async () => {
+    const before = Math.max(0, Math.floor(Number(editingTransit.before) || 0));
+    const after = Math.max(0, Math.floor(Number(editingTransit.after) || 0));
+    setSavingTransit(true);
+    try {
+      await updateJobEquipmentTransit(editingTransit.id, before, after);
+      setEditingTransit(null);
+      reload();
+    } catch (err) { showToast(err.message, 'error'); }
+    finally { setSavingTransit(false); }
   };
 
   const assignedIds = new Set(kit.map(k => k.equipment_id));
@@ -651,18 +672,53 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
     >
       {kit.length === 0 && <div className="jc-empty">No equipment assigned to this job yet.</div>}
       {kit.map(k => (
-        <div key={k.id} className="jc-row">
-          <div className="jc-row-main">
-            <div className="jc-row-title">
-              <strong>{k.equipment_name}</strong>
-              {k.category && <span className="jc-chip-sm">{k.category}</span>}
-              {k.assigned_to && <span>→ {nameOf(people, k.assigned_to) || 'assigned'}</span>}
+        <div key={k.id}>
+          <div className="jc-row">
+            <div className="jc-row-main">
+              <div className="jc-row-title">
+                <strong>{k.equipment_name}</strong>
+                {k.category && <span className="jc-chip-sm">{k.category}</span>}
+                {!!k.transit_before && <span className="jc-chip-sm" title={`${k.transit_before} min before job start`}>↑ {fmtTransit(k.transit_before)} before</span>}
+                {!!k.transit_after && <span className="jc-chip-sm" title={`${k.transit_after} min after job end`}>↓ {fmtTransit(k.transit_after)} after</span>}
+                {k.assigned_to && <span>→ {nameOf(people, k.assigned_to) || 'assigned'}</span>}
+              </div>
+              {(k.serial_number || k.notes) && (
+                <div className="jc-row-meta">{[k.serial_number && `SN ${k.serial_number}`, k.notes].filter(Boolean).join(' · ')}</div>
+              )}
             </div>
-            {(k.serial_number || k.notes) && (
-              <div className="jc-row-meta">{[k.serial_number && `SN ${k.serial_number}`, k.notes].filter(Boolean).join(' · ')}</div>
+            {isAdmin && (
+              <div className="jc-row-actions">
+                <button className="btn-icon" title="Edit transit" onClick={() => setEditingTransit({ id: k.id, name: k.equipment_name, before: k.transit_before || 0, after: k.transit_after || 0 })}>✎</button>
+                <button className="btn-icon" title="Remove" onClick={() => remove(k)}>✕</button>
+              </div>
             )}
           </div>
-          {isAdmin && <div className="jc-row-actions"><button className="btn-icon" title="Remove" onClick={() => remove(k)}>✕</button></div>}
+          {isAdmin && editingTransit?.id === k.id && (
+            <div className="jc-inline-form jc-form-block">
+              <div className="form-group">
+                <label>Equipment</label>
+                <input value={editingTransit.name} readOnly disabled />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Transit before (minutes)</label>
+                  <input type="number" min="0" step="1" value={editingTransit.before}
+                    onChange={(e) => setEditingTransit({ ...editingTransit, before: e.target.value })} />
+                  <small>0 = hand-carried</small>
+                </div>
+                <div className="form-group">
+                  <label>Transit after (minutes)</label>
+                  <input type="number" min="0" step="1" value={editingTransit.after}
+                    onChange={(e) => setEditingTransit({ ...editingTransit, after: e.target.value })} />
+                  <small>0 = hand-carried</small>
+                </div>
+              </div>
+              <div className="jc-form-actions">
+                <button className="btn btn-sm" onClick={() => setEditingTransit(null)}>Cancel</button>
+                <button className="btn btn-sm btn-primary" disabled={savingTransit} onClick={saveTransit}>{savingTransit ? 'Saving…' : 'Save'}</button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </Section>
