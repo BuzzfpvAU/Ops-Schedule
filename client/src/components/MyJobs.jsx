@@ -42,6 +42,8 @@ export default function MyJobs({ currentUser, teamMembers = [], equipment = [], 
                 jobId={plannerJob}
                 onBack={() => setPlannerJob(null)}
                 onOpenCard={(id) => { setPlannerJob(null); setOpenJob(id); }}
+                currentUser={currentUser}
+                showToast={showToast}
               />
             </div>
           </div>

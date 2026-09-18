@@ -601,6 +601,9 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
               jobId={plannerJob}
               onBack={() => setPlannerJob(null)}
               onOpenCard={(id) => { setPlannerJob(null); setViewJob(id); }}
+              currentUser={currentUser}
+              onScheduleRefresh={onScheduleRefresh}
+              showToast={showToast}
             />
           </div>
         </div>

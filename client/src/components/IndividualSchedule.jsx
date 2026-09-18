@@ -245,6 +245,9 @@ export default function IndividualSchedule({
               jobId={plannerJobId}
               onBack={() => setPlannerJobId(null)}
               onOpenCard={(id) => { setPlannerJobId(null); setJobCardId(id); }}
+              currentUser={user}
+              onScheduleRefresh={onScheduleRefresh}
+              showToast={showToast}
             />
           </div>
         </div>

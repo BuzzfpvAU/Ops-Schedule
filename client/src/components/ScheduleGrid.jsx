@@ -1892,6 +1892,9 @@ export default function ScheduleGrid({
               jobId={plannerJobId}
               onBack={() => setPlannerJobId(null)}
               onOpenCard={(id) => { setPlannerJobId(null); setJobCardId(id); }}
+              currentUser={authUser}
+              onScheduleRefresh={onScheduleRefresh}
+              showToast={showToast}
             />
           </div>
         </div>

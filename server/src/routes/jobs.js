@@ -194,7 +194,7 @@ router.get('/:id/planner', (req, res) => {
   `).all(req.params.id);
 
   const entries = db.prepare(`
-    SELECT team_member_id, date, status, COALESCE(notes, '') AS notes
+    SELECT id, team_member_id, date, status, COALESCE(notes, '') AS notes
     FROM schedule_entries
     WHERE job_id = ?
     ORDER BY date
@@ -203,9 +203,39 @@ router.get('/:id/planner', (req, res) => {
   const byMember = new Map();
   for (const e of entries) {
     if (!byMember.has(e.team_member_id)) byMember.set(e.team_member_id, []);
-    byMember.get(e.team_member_id).push({ date: e.date, status: e.status || 'tentative', notes: e.notes });
+    byMember.get(e.team_member_id).push({ id: e.id, date: e.date, status: e.status || 'tentative', notes: e.notes });
   }
-  const withEntries = (r) => ({ ...r, entries: byMember.get(r.id) || [] });
+
+  // Display span: the job's roster span (else its planned window)
+  const span_start = job.roster_start || job.planned_start || null;
+  const span_end = job.roster_end || job.planned_end || null;
+
+  // Other jobs/bookings the same members have inside that span — so the
+  // planner can show them faintly and flag conflicts with this job.
+  const otherByMember = new Map();
+  if (span_start && span_end && rows.length > 0) {
+    const placeholders = rows.map(() => '?').join(',');
+    const others = db.prepare(`
+      SELECT e.team_member_id, e.date, e.status, e.job_id,
+             j.code AS job_code, j.name AS job_name, j.color AS job_color
+      FROM schedule_entries e
+      JOIN jobs j ON j.id = e.job_id
+      WHERE e.team_member_id IN (${placeholders})
+        AND e.job_id != ?
+        AND e.date >= ? AND e.date <= ?
+      ORDER BY e.date
+    `).all(...rows.map(r => r.id), req.params.id, span_start, span_end);
+    for (const o of others) {
+      if (!otherByMember.has(o.team_member_id)) otherByMember.set(o.team_member_id, []);
+      otherByMember.get(o.team_member_id).push(o);
+    }
+  }
+
+  const withEntries = (r) => ({
+    ...r,
+    entries: byMember.get(r.id) || [],
+    otherEntries: otherByMember.get(r.id) || [],
+  });
   const people = rows.filter(r => !r.is_equipment).map(withEntries);
   const equipment = rows.filter(r => r.is_equipment).map(withEntries);
 
@@ -228,7 +258,7 @@ router.get('/:id/planner', (req, res) => {
     ORDER BY e.date, tm.name
   `).all(req.params.id);
 
-  res.json({ job, people, equipment, unbooked, notes });
+  res.json({ job, span: span_start ? { start: span_start, end: span_end } : null, people, equipment, unbooked, notes });
 });
 
 // POST create job (admin only)
