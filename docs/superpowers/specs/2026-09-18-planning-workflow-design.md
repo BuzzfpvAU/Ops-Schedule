@@ -123,6 +123,7 @@ Two custody shapes (the check-out vs custody split) [96]:
 
 - Close-out checklist: "Gear returned & checked in", "Serviceability inspected", "Batteries charged/stored". Damage → mark unserviceable (event recorded; excluded from future kit application).
 - Maintenance view: "Due ≤30 days" / "Overdue" from `calibration_due` / `service_interval_days` [91].
+- **Maintenance requests (v2 candidate):** any crew member can flag an item ("needs service / repair / calibration") → creates a maintenance request tied to that equipment; an assignee tracks it to close with notes and an optional post-service checklist — the Cheqroom work-order pattern [101]. An item under service can be set unserviceable to block allocation meanwhile.
 - **Utilisation v1 report:** per item, booked days ÷ available days; idle list; overdue maintenance; unserviceable list — from assignment intervals and reservations [100].
 
 ## 5. UI mapping
@@ -193,3 +194,4 @@ Two custody shapes (the check-out vs custody split) [96]:
 [98] https://knowledge.cheqroom.com/helpcenter/how_to_use_and_manage_spotchecks — Cheqroom – Spotchecks (custody audits)
 [99] https://maptrack.com/use_cases/equipment_custody — MapTrack – Equipment custody
 [100] https://maptrack.com/use_cases/equipment_utilization — MapTrack – Equipment utilisation
+[101] https://knowledge.cheqroom.com/helpcenter/how-to-submit-a-maintenance-request — Cheqroom – Submit a maintenance request (equipment work orders)

@@ -74,6 +74,7 @@
 - [ ] EquipmentManager: new fields in edit form; "Due ≤30 days" / "Overdue" filter views.
 - [ ] `GET /api/equipment/utilisation?from&to` → per item booked days / available days, idle list, overdue list, unserviceable list; small report panel in Equipment tab.
 - [ ] Tests: due-list query edge cases (empty dates), utilisation maths on seeded bookings.
+- [ ] Optional v2: equipment maintenance requests — flag an item → request record (open → in progress → closed, notes, assignee) tied to the equipment; unserviceable flag blocks allocation meanwhile (spec §4.6, Cheqroom pattern).
 - [ ] Verify: seed items with due dates; confirm warnings + report numbers.
 
 ## Chunk 6 — Compliance matrix & reminders
