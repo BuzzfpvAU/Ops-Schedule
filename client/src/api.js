@@ -135,8 +135,9 @@ export async function getJobCard(id) {
   return api(`/jobs/${id}`);
 }
 
-export async function getJobPlanner(id) {
-  return api(`/jobs/${id}/planner`);
+export async function getJobPlanner(id, from, to) {
+  const qs = from && to ? `?from=${from}&to=${to}` : '';
+  return api(`/jobs/${id}/planner${qs}`);
 }
 
 export async function getMyJobs() {

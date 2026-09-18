@@ -210,10 +210,24 @@ router.get('/:id/planner', (req, res) => {
   const span_start = job.roster_start || job.planned_start || null;
   const span_end = job.roster_end || job.planned_end || null;
 
-  // Other jobs/bookings the same members have inside that span — so the
+  // Other-bookings window: ?from&to (the planner widens this as you scroll
+  // left/right), default = span ± 6 weeks.
+  const isoDate = (s) => (typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+  const DEFAULT_WINDOW_PAD = 42;
+  let win_start = isoDate(req.query.from);
+  let win_end = isoDate(req.query.to);
+  if ((!win_start || !win_end) && span_start && span_end) {
+    win_start = addDays(span_start, -DEFAULT_WINDOW_PAD);
+    win_end = addDays(span_end, DEFAULT_WINDOW_PAD);
+  }
+  if (win_start && win_end && win_end < win_start) {
+    const t = win_start; win_start = win_end; win_end = t;
+  }
+
+  // Other jobs/bookings the same members have inside that window — so the
   // planner can show them faintly and flag conflicts with this job.
   const otherByMember = new Map();
-  if (span_start && span_end && rows.length > 0) {
+  if (win_start && win_end && rows.length > 0) {
     const placeholders = rows.map(() => '?').join(',');
     const others = db.prepare(`
       SELECT e.team_member_id, e.date, e.status, e.job_id,
@@ -224,7 +238,7 @@ router.get('/:id/planner', (req, res) => {
         AND e.job_id != ?
         AND e.date >= ? AND e.date <= ?
       ORDER BY e.date
-    `).all(...rows.map(r => r.id), req.params.id, span_start, span_end);
+    `).all(...rows.map(r => r.id), req.params.id, win_start, win_end);
     for (const o of others) {
       if (!otherByMember.has(o.team_member_id)) otherByMember.set(o.team_member_id, []);
       otherByMember.get(o.team_member_id).push(o);
@@ -258,7 +272,7 @@ router.get('/:id/planner', (req, res) => {
     ORDER BY e.date, tm.name
   `).all(req.params.id);
 
-  res.json({ job, span: span_start ? { start: span_start, end: span_end } : null, people, equipment, unbooked, notes });
+  res.json({ job, span: span_start ? { start: span_start, end: span_end } : null, window: win_start && win_end ? { start: win_start, end: win_end } : null, people, equipment, unbooked, notes });
 });
 
 // POST create job (admin only)

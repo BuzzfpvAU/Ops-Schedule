@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   getJobPlanner, STATUSES,
   assignSchedule, bulkAssignSchedule, deleteScheduleEntry, moveScheduleEntries,
@@ -12,9 +12,9 @@ import { JOB_STATUSES, fmtDateShort } from './JobCard.jsx';
 // bookings shown faintly so conflicts are obvious, and the same
 // drag/resize editing as the main schedule (admins).
 
-const MAX_DAYS = 400;
-const PAD_BEFORE = 7;   // extra draggable days before the span
-const PAD_AFTER = 14;   // extra draggable days after the span
+const MAX_DAYS = 400;      // max rendered day columns
+const CELL_W = 30;         // px per day column (keep in sync with styles.css)
+const EXTEND_DAYS = 28;    // days added when scrolling to either edge
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function parseISO(s) {
@@ -60,6 +60,7 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [collapsed, setCollapsed] = useState({ people: false, equipment: false });
   const [pop, setPop] = useState(null); // { rowId, date, x, y } day popover
   const [dragUI, setDragUI] = useState(null); // { rowId, startIdx, endIdx }
@@ -68,10 +69,15 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
   const resizeRef = useRef(null);
   const dataRef = useRef(null);
   const daysRef = useRef([]);
+  const wrapRef = useRef(null);
+  const winRef = useRef(null);
+  const centeredRef = useRef(false);
+  const pendingLeftShiftRef = useRef(0);
+  const scrollBusyRef = useRef(false);
   const toast = (msg, kind) => showToast?.(msg, kind || 'error');
 
-  const load = useCallback(async () => {
-    const d = await getJobPlanner(jobId);
+  const load = useCallback(async (from, to) => {
+    const d = await getJobPlanner(jobId, from, to);
     setData(d);
     return d;
   }, [jobId]);
@@ -89,14 +95,14 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
 
   const days = useMemo(() => {
     if (!data) return [];
-    let start = data.span?.start || null;
-    let end = data.span?.end || null;
+    let start = data.window?.start || null;
+    let end = data.window?.end || null;
+    if (!start) { start = data.span?.start || null; end = data.span?.end || null; }
     if (!start) { start = data.job.planned_start || null; end = data.job.planned_end || start; }
     if (!start || !end) return [];
     const out = [];
-    let cur = addDaysISO(start, -PAD_BEFORE);
-    const stop = addDaysISO(end, PAD_AFTER);
-    while (cur <= stop && out.length < MAX_DAYS) { out.push(cur); cur = addDaysISO(cur, 1); }
+    let cur = start;
+    while (cur <= end && out.length < MAX_DAYS) { out.push(cur); cur = addDaysISO(cur, 1); }
     return out;
   }, [data]);
 
@@ -107,11 +113,68 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
 
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { daysRef.current = days; }, [days]);
+  useEffect(() => { winRef.current = data?.window || null; }, [data]);
+
+  // Keep the visible position stable when columns are added on the left
+  useLayoutEffect(() => {
+    if (pendingLeftShiftRef.current) {
+      const el = wrapRef.current;
+      if (el) el.scrollLeft += pendingLeftShiftRef.current;
+      pendingLeftShiftRef.current = 0;
+    }
+  }, [days]);
+
+  // Open centred on the job's own span, not the far past
+  useLayoutEffect(() => {
+    if (centeredRef.current) return;
+    const el = wrapRef.current;
+    const win = data?.window;
+    const span = data?.span;
+    if (el && win && span) {
+      const off = Math.max(0, Math.round((parseISO(span.start) - parseISO(win.start)) / 86400000) * CELL_W - 80);
+      el.scrollLeft = off;
+      centeredRef.current = true;
+    }
+  }, [data]);
+
+  // Scroll to either edge → widen the window (other bookings included) and refetch
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const onScroll = async () => {
+      if (scrollBusyRef.current) return;
+      const win = winRef.current;
+      if (!win) return;
+      if (el.scrollWidth <= el.clientWidth + 300) return; // not scrollable yet
+      if (daysRef.current.length + EXTEND_DAYS > MAX_DAYS) return;
+      const nearLeft = el.scrollLeft < 200;
+      const nearRight = el.scrollLeft + el.clientWidth > el.scrollWidth - 200;
+      if (!nearLeft && !nearRight) return;
+      scrollBusyRef.current = true;
+      setLoadingMore(true);
+      try {
+        if (nearLeft) {
+          pendingLeftShiftRef.current += EXTEND_DAYS * CELL_W;
+          await load(addDaysISO(win.start, -EXTEND_DAYS), win.end);
+        } else {
+          await load(win.start, addDaysISO(win.end, EXTEND_DAYS));
+        }
+      } catch {
+        pendingLeftShiftRef.current = 0;
+      } finally {
+        scrollBusyRef.current = false;
+        setLoadingMore(false);
+      }
+    };
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [data, load]);
+
   useEffect(() => () => { document.body.style.cursor = ''; document.body.style.userSelect = ''; }, []);
 
   const finishEdit = async () => {
     setBusy(false);
-    try { await load(); } catch { /* keep old view */ }
+    try { await load(winRef.current?.start, winRef.current?.end); } catch { /* keep old view */ }
     onScheduleRefresh?.();
   };
 
@@ -397,6 +460,7 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
         <h2>{job.code}{job.job_number ? ` · ${job.job_number}` : ''} — {job.name}</h2>
         <span className="jp-chip jp-status" style={{ borderColor: status.color, color: status.color }}>{status.label}</span>
         {busy && <span className="jp-chip jp-busy">Saving…</span>}
+        {loadingMore && <span className="jp-chip jp-busy">Loading dates…</span>}
       </div>
 
       <div className="jp-chips">
@@ -427,9 +491,14 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
               <span className="jp-leg-item"><i className="jp-leg-ghost" />other jobs</span>
               <span className="jp-leg-item"><i className="jp-leg-conflict" />conflict</span>
               <span className="jp-leg-item"><i className="jp-leg-note" />day notes</span>
+              {data.window && (
+                <span className="jp-window-label">
+                  Showing {fmtDateShort(data.window.start)} – {fmtDateShort(data.window.end)} · scroll for more
+                </span>
+              )}
             </div>
 
-            <div className="jp-table-wrap">
+            <div className="jp-table-wrap" ref={wrapRef}>
               <table className="jp-table">
                 <thead>
                   <tr>
