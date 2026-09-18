@@ -771,7 +771,7 @@ export function JobListRow({ job, onClick, actions }) {
 
 // ── Main card ──────────────────────────────────────────────────
 
-export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [], currentUser, showToast, onEdit, refreshKey = 0, onScheduleRefresh }) {
+export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [], currentUser, showToast, onEdit, refreshKey = 0, onScheduleRefresh, onOpenPlanner }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [equipList, setEquipList] = useState(equipment);
@@ -902,6 +902,7 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
           )}
           <button className="btn btn-sm" onClick={() => downloadIcalJob(job.id).catch(e => showToast(e.message, 'error'))}>📅 iCal</button>
           {isAdmin && <button className="btn btn-sm" onClick={copySubscribe}>🔗 Subscribe</button>}
+          {onOpenPlanner && <button className="btn btn-sm" title="Project planner — people, equipment and notes for this job" onClick={() => onOpenPlanner(job.id)}>📋 Planner</button>}
         </div>
 
         <div className="jc-progress-wrap">

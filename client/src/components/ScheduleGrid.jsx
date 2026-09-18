@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext.jsx';
 import { assignSchedule, bulkAssignSchedule, clearScheduleEntry, deleteScheduleEntry, createNotification, updateScheduleStatus, updateScheduleNotes, createJob, getJobs as fetchJobs, updateTeamMember, moveScheduleEntries, STATUSES } from '../api.js';
 import JobCard from './JobCard.jsx';
+import JobPlanner from './JobPlanner.jsx';
 
 const USER_ALLOWED_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
@@ -15,6 +16,7 @@ export default function ScheduleGrid({
   const [multiDayModal, setMultiDayModal] = useState(null);
   const [noteModal, setNoteModal] = useState(null);
   const [jobCardId, setJobCardId] = useState(null);
+  const [plannerJobId, setPlannerJobId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [assignDays, setAssignDays] = useState(1);
   const [editMember, setEditMember] = useState(null);
@@ -1550,6 +1552,16 @@ export default function ScheduleGrid({
                         </svg>
                         Open job card
                       </button>
+                      <button
+                        type="button"
+                        className="dropdown-link-btn"
+                        onClick={(e) => { e.stopPropagation(); setPlannerJobId(entry.job_id); }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 4.5h5M2 8h9M2 11.5h6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                        Open planner
+                      </button>
                       {isAdmin && (
                         <div className="dropdown-collision-actions">
                           <div className="status-picker compact">
@@ -1649,6 +1661,16 @@ export default function ScheduleGrid({
                     <path d="M5.5 6h5M5.5 8.5h5M5.5 11h2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                   </svg>
                   Open job card
+                </button>
+                <button
+                  type="button"
+                  className="dropdown-link-btn"
+                  onClick={(e) => { e.stopPropagation(); setPlannerJobId(existingEntry.job_id); }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M2 4.5h5M2 8h9M2 11.5h6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  Open planner
                 </button>
                 {isAdmin && (
                   <div className="dropdown-notes-section">
@@ -1856,6 +1878,20 @@ export default function ScheduleGrid({
               equipment={equipment}
               showToast={showToast}
               onScheduleRefresh={onScheduleRefresh}
+              onOpenPlanner={(id) => { setJobCardId(null); setPlannerJobId(id); }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Project planner modal (opened from the schedule) */}
+      {plannerJobId && (
+        <div className="modal-overlay jp-overlay" onClick={() => setPlannerJobId(null)}>
+          <div className="jp-modal" onClick={(e) => e.stopPropagation()}>
+            <JobPlanner
+              jobId={plannerJobId}
+              onBack={() => setPlannerJobId(null)}
+              onOpenCard={(id) => { setPlannerJobId(null); setJobCardId(id); }}
             />
           </div>
         </div>

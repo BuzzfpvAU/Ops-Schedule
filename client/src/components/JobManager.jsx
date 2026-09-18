@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob, archiveJobsBulk } from '../api.js';
 import JobCard, { JobListRow, JOB_STATUSES, fmtDateShort, JOB_STATES } from './JobCard.jsx';
+import JobPlanner from './JobPlanner.jsx';
 
 const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
 
@@ -18,6 +19,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
   const [form, setForm] = useState(EMPTY_FORM);
   const [applyTemplate, setApplyTemplate] = useState(true);
   const [viewJob, setViewJob] = useState(null);   // job id open in the card view
+  const [plannerJob, setPlannerJob] = useState(null); // job id open in the project planner
   const [cardVersion, setCardVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [cleanup, setCleanup] = useState(null); // Set of job ids ticked in the cleanup modal | null (closed)
@@ -220,25 +222,24 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
     }
   };
 
-  // Card view (click a job row)
-  if (viewJob) {
-    return (
-      <JobCard
-        jobId={viewJob}
-        onBack={() => { setViewJob(null); onRefresh(); }}
-        onEdit={(job) => openEdit(job)}
-        currentUser={currentUser}
-        teamMembers={teamMembers}
-        equipment={equipment}
-        showToast={showToast}
-        refreshKey={cardVersion}
-        onScheduleRefresh={onScheduleRefresh}
-      />
-    );
-  }
-
   return (
     <div>
+      {/* Card view (click a job row). The add/edit modal below renders at the
+          same level so Edit opens on top of the card, not behind it. */}
+      {viewJob ? (
+        <JobCard
+          jobId={viewJob}
+          onBack={() => { setViewJob(null); onRefresh(); }}
+          onEdit={(job) => openEdit(job)}
+          currentUser={currentUser}
+          teamMembers={teamMembers}
+          equipment={equipment}
+          showToast={showToast}
+          refreshKey={cardVersion}
+          onScheduleRefresh={onScheduleRefresh}
+          onOpenPlanner={(id) => setPlannerJob(id)}
+        />
+      ) : (
       <div className="card">
         <div className="card-header">
           <h3>Jobs / Projects</h3>
@@ -301,6 +302,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
                     <>
                       <button className="btn-icon" title="Download iCal" onClick={() => handleExportIcal(job)}>📅</button>
                       <button className="btn-icon" title="Subscribe (calendar feed)" onClick={() => openSubscribe(job)}>🔗</button>
+                      <button className="btn-icon" title="Project planner — crew, equipment + notes" onClick={() => setPlannerJob(job.id)}>📋</button>
                       {job.archived ? (
                         <button className="btn btn-sm" onClick={() => handleUnarchive(job)}>Unarchive</button>
                       ) : isPastJob(job) ? (
@@ -316,6 +318,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
           );
         })}
       </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
@@ -586,6 +589,19 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
                 {cleanupSaving ? 'Archiving…' : `📦 Archive selected (${cleanup.size})`}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project planner modal (opened from the jobs list) */}
+      {plannerJob && (
+        <div className="modal-overlay jp-overlay" onClick={() => setPlannerJob(null)}>
+          <div className="jp-modal" onClick={(e) => e.stopPropagation()}>
+            <JobPlanner
+              jobId={plannerJob}
+              onBack={() => setPlannerJob(null)}
+              onOpenCard={(id) => { setPlannerJob(null); setViewJob(id); }}
+            />
           </div>
         </div>
       )}

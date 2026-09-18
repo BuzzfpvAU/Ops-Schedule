@@ -115,7 +115,7 @@ router.get('/:id', (req, res) => {
            COUNT(DISTINCT e.date) AS days
     FROM schedule_entries e
     JOIN team_members tm ON tm.id = e.team_member_id
-    WHERE e.job_id = ?
+    WHERE e.job_id = ? AND tm.is_equipment = 0
     GROUP BY tm.id
     ORDER BY from_date
   `).all(req.params.id);
@@ -171,6 +171,64 @@ router.get('/:id', (req, res) => {
   `).all(req.params.id);
 
   res.json({ job, crew, checklist, flights, accommodation, rentals, equipment });
+});
+
+// GET job planner: per-day view of the people + equipment on a job, plus notes.
+// Powers the "project planner" modal (people grid, equipment grid, notes list).
+router.get('/:id/planner', (req, res) => {
+  const db = req.db;
+  const job = db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  // Every member (person or equipment) with at least one roster entry on this job
+  const rows = db.prepare(`
+    SELECT tm.id, tm.name, tm.color, tm.role, tm.is_equipment,
+           COALESCE(NULLIF(tm.equipment_category, ''), '') AS category,
+           MIN(e.date) AS from_date, MAX(e.date) AS to_date,
+           COUNT(DISTINCT e.date) AS days
+    FROM schedule_entries e
+    JOIN team_members tm ON tm.id = e.team_member_id
+    WHERE e.job_id = ?
+    GROUP BY tm.id
+    ORDER BY tm.is_equipment, from_date, tm.name
+  `).all(req.params.id);
+
+  const entries = db.prepare(`
+    SELECT team_member_id, date, status, COALESCE(notes, '') AS notes
+    FROM schedule_entries
+    WHERE job_id = ?
+    ORDER BY date
+  `).all(req.params.id);
+
+  const byMember = new Map();
+  for (const e of entries) {
+    if (!byMember.has(e.team_member_id)) byMember.set(e.team_member_id, []);
+    byMember.get(e.team_member_id).push({ date: e.date, status: e.status || 'tentative', notes: e.notes });
+  }
+  const withEntries = (r) => ({ ...r, entries: byMember.get(r.id) || [] });
+  const people = rows.filter(r => !r.is_equipment).map(withEntries);
+  const equipment = rows.filter(r => r.is_equipment).map(withEntries);
+
+  // Kit assigned to the job but with no booked days yet
+  const kit = db.prepare(`
+    SELECT tm.id, tm.name, COALESCE(NULLIF(tm.equipment_category, ''), '') AS category
+    FROM job_equipment je
+    JOIN team_members tm ON tm.id = je.equipment_id
+    WHERE je.job_id = ?
+  `).all(req.params.id);
+  const bookedIds = new Set(equipment.map(e => e.id));
+  const unbooked = kit.filter(k => !bookedIds.has(k.id));
+
+  // Per-day notes across the whole job (people + equipment)
+  const notes = db.prepare(`
+    SELECT e.date, e.notes, e.status, tm.name AS member_name, tm.is_equipment
+    FROM schedule_entries e
+    JOIN team_members tm ON tm.id = e.team_member_id
+    WHERE e.job_id = ? AND TRIM(COALESCE(e.notes, '')) != ''
+    ORDER BY e.date, tm.name
+  `).all(req.params.id);
+
+  res.json({ job, people, equipment, unbooked, notes });
 });
 
 // POST create job (admin only)

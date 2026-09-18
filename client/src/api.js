@@ -135,6 +135,10 @@ export async function getJobCard(id) {
   return api(`/jobs/${id}`);
 }
 
+export async function getJobPlanner(id) {
+  return api(`/jobs/${id}/planner`);
+}
+
 export async function getMyJobs() {
   return api('/jobs/mine');
 }
