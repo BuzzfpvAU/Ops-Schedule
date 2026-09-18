@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob, archiveJobsBulk } from '../api.js';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createJob, updateJob, deleteJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, archiveJob, unarchiveJob, archiveJobsBulk, getJobsAttention } from '../api.js';
 import JobCard, { JobListRow, JOB_STATUSES, fmtDateShort, JOB_STATES } from './JobCard.jsx';
 import JobPlanner from './JobPlanner.jsx';
 
@@ -8,7 +8,7 @@ const DEFAULT_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '
 const EMPTY_FORM = {
   code: '', name: '', description: '', color: '#3B82F6', client: '', file_url: '',
   job_number: '', sharepoint_url: '', status: 'planning', site_address: '', site_contact: '',
-  notes: '', rental_required: 0,
+  notes: '', rental_required: 0, job_type: '',
   state: '', crew_size: 1, planned_start: '', planned_end: '', lead_id: '',
 };
 
@@ -24,6 +24,9 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
   const [search, setSearch] = useState('');
   const [cleanup, setCleanup] = useState(null); // Set of job ids ticked in the cleanup modal | null (closed)
   const [cleanupSaving, setCleanupSaving] = useState(false);
+  // Needs-attention map (job id → { at_risk, unallocated, reasons }) from the server
+  const [attention, setAttention] = useState(new Map());
+  const [attentionOnly, setAttentionOnly] = useState(false);
   // State groups can be collapsed — remembered per browser
   const [collapsedGroups, setCollapsedGroups] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('jcCollapsedStates') || '[]')); }
@@ -36,6 +39,13 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
     return next;
   });
 
+  // Refresh the attention map whenever the jobs list refreshes
+  useEffect(() => {
+    getJobsAttention()
+      .then(list => setAttention(new Map(list.map(a => [a.id, a]))))
+      .catch(() => { /* non-fatal */ });
+  }, [jobs]);
+
   // Filter out auto-created status jobs (notes, toil, leave, unavailable)
   const STATUS_CODES = ['TOIL', 'LEAVE', 'NOT-AVAIL'];
   const realJobs = jobs.filter(j => !j.code.startsWith('NOTE-') && !STATUS_CODES.includes(j.code));
@@ -47,13 +57,14 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
 
   // Archived jobs stay out of the list — but a search finds them (badged).
   const q = search.trim().toLowerCase();
-  const filteredJobs = q
+  const baseJobs = q
     ? realJobs
         .filter(j =>
           [j.code, j.job_number, j.name, j.client, j.site_address]
             .some(v => (v || '').toLowerCase().includes(q)))
         .sort((a, b) => (a.archived ? 1 : 0) - (b.archived ? 1 : 0))
     : realJobs.filter(j => !j.archived);
+  const filteredJobs = attentionOnly ? baseJobs.filter(j => attention.has(j.id)) : baseJobs;
 
   // ── State grouping — a job's state is where its project lead is from ──
   const NO_STATE = '__no_state__';
@@ -94,6 +105,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
       code: job.code, name: job.name, description: job.description || '', color: job.color,
       client: job.client || '', file_url: job.file_url || '', job_number: job.job_number || '',
       sharepoint_url: job.sharepoint_url || '', status: job.status || 'planning',
+      job_type: job.job_type || '',
       site_address: job.site_address || '', site_contact: job.site_contact || '',
       notes: job.notes || '', rental_required: job.rental_required ? 1 : 0,
       state: job.state || '', crew_size: job.crew_size || 1,
@@ -244,6 +256,13 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
         <div className="card-header">
           <h3>Jobs / Projects</h3>
           <div style={{ display: 'flex', gap: 8 }}>
+            {attention.size > 0 && (
+              <button
+                className={`btn ${attentionOnly ? 'btn-primary' : ''}`}
+                onClick={() => setAttentionOnly(v => !v)}
+                title="Jobs unallocated or failing readiness gates (gate detail on each job card)"
+              >⚠ Needs attention ({attention.size})</button>
+            )}
             {pastJobs.length > 0 && (
               <button
                 className="btn"
@@ -297,6 +316,7 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
                 <JobListRow
                   key={job.id}
                   job={job}
+                  attention={attention.get(job.id)}
                   onClick={() => setViewJob(job.id)}
                   actions={
                     <>
@@ -388,6 +408,15 @@ export default function JobManager({ jobs, onRefresh, showToast, currentUser, te
                     value={form.client}
                     onChange={(e) => setForm({ ...form, client: e.target.value })}
                     placeholder="e.g. Vertech"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Job Type</label>
+                  <input
+                    type="text"
+                    value={form.job_type}
+                    onChange={(e) => setForm({ ...form, job_type: e.target.value })}
+                    placeholder="e.g. Drone inspection, Bridge survey"
                   />
                 </div>
               </div>

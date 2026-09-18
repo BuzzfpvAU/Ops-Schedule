@@ -4225,3 +4225,38 @@ button.dropdown-link-btn {
   font-size: 11.5px;
   white-space: nowrap;
 }
+
+/* ── Workflow (readiness gates + gated advance) ─────────────── */
+.wf-stepper {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 2px 0 10px;
+}
+.wf-step {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--bg-hover); color: var(--text-secondary);
+  border: 1px solid transparent;
+}
+.wf-step-current { background: rgba(59,130,246,.15); color: #60a5fa; border-color: rgba(59,130,246,.4); }
+.wf-step-done { color: var(--success); }
+.wf-step-fail { color: #ef4444; border-color: rgba(239,68,68,.45); }
+.wf-step-line { width: 14px; height: 1px; background: var(--border); }
+
+.wf-gates { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.wf-gate {
+  font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-hover); border: 1px solid var(--border); cursor: default;
+}
+.wf-gate-pass { color: var(--success); border-color: rgba(34,197,94,.35); }
+.wf-gate-warn { color: #f59e0b; border-color: rgba(245,158,11,.35); }
+.wf-gate-fail { color: #ef4444; border-color: rgba(239,68,68,.45); }
+
+.wf-reasons { margin: 6px 0 4px; padding-left: 18px; font-size: 12.5px; color: var(--text-secondary); }
+.wf-reasons li { margin: 2px 0; }
+.wf-more { font-style: italic; }
+
+.wf-advance { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.wf-hint { font-size: 11.5px; color: var(--text-secondary); }
+.wf-gate-modal { max-width: 560px; }
+.wf-gate-modal-sub { color: var(--text-secondary); font-size: 13px; }
+
+.jc-chip-atrisk { border-color: rgba(239,68,68,.5); color: #ef4444; }

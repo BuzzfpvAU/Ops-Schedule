@@ -7,6 +7,7 @@ import {
   assignJobEquipment, removeJobEquipment, adjustEquipmentBooking,
   updateJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, getEquipment,
   archiveJob, unarchiveJob,
+  getJobReadiness, setJobStatus,
 } from '../api.js';
 
 export const JOB_STATUSES = {
@@ -725,9 +726,150 @@ function NotesSection({ job, isAdmin, reload, showToast }) {
   );
 }
 
+// ── Workflow (readiness gates + gated advance) ────────────────
+
+const WORKFLOW_STEPS = [
+  { key: 'planning', label: 'Planning' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'active', label: 'Active' },
+  { key: 'complete', label: 'Complete' },
+];
+
+const GATE_ICONS = { pass: '✓', warn: '⚠', fail: '✗' };
+const GATE_ORDER = ['crew', 'compliance', 'kit', 'admin', 'prep', 'closeout', 'logistics'];
+
+function WorkflowPanel({ job, isAdmin, reload, showToast }) {
+  const [readiness, setReadiness] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [gateModal, setGateModal] = useState(null); // { target, reasons } | null
+  const [overrideReason, setOverrideReason] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    getJobReadiness(job.id)
+      .then(r => { if (alive) setReadiness(r); })
+      .catch(() => { /* non-fatal — panel shows without gate detail */ });
+    return () => { alive = false; };
+  }, [job.id, job.status]);
+
+  const stepIdx = WORKFLOW_STEPS.findIndex(s => s.key === job.status);
+  const next = stepIdx >= 0 && stepIdx < WORKFLOW_STEPS.length - 1 ? WORKFLOW_STEPS[stepIdx + 1] : null;
+
+  const advance = async (reason) => {
+    if (!next) return;
+    setBusy(true);
+    try {
+      await setJobStatus(job.id, next.key, reason);
+      setGateModal(null);
+      setOverrideReason('');
+      showToast(`Job moved to ${next.label}`, 'success');
+      reload();
+    } catch (err) {
+      if (err.status === 409 && err.gates) {
+        setGateModal({ target: next, reasons: err.gates.reasons || [] });
+      } else {
+        showToast(err.message, 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const gates = readiness?.gates || null;
+
+  return (
+    <Section
+      title="🚦 Workflow"
+      badge={readiness ? (readiness.ready ? 'Ready to confirm' : (readiness.at_risk ? 'At risk' : null)) : null}
+    >
+      <div className="wf-stepper">
+        {job.status === 'cancelled' ? (
+          <span className="wf-step wf-step-fail">Cancelled</span>
+        ) : WORKFLOW_STEPS.map((s, i) => {
+          const state = i < stepIdx ? 'done' : (i === stepIdx ? 'current' : 'pending');
+          return (
+            <React.Fragment key={s.key}>
+              {i > 0 && <span className="wf-step-line"></span>}
+              <span className={`wf-step wf-step-${state}`}>{state === 'done' ? '✓ ' : ''}{s.label}</span>
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {gates && (
+        <div className="wf-gates">
+          {GATE_ORDER.map(k => {
+            const g = gates[k];
+            if (!g) return null;
+            const fails = g.checks.filter(c => !c.ok);
+            return (
+              <span
+                key={k}
+                className={`wf-gate wf-gate-${g.status}`}
+                title={fails.length ? fails.map(c => `${c.label} — ${c.note}`).join('\n') : 'All good'}
+              >
+                {GATE_ICONS[g.status]} {g.title}{fails.length ? ` (${fails.length})` : ''}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {readiness?.reasons?.length > 0 && (
+        <ul className="wf-reasons">
+          {readiness.reasons.slice(0, 6).map((r, i) => <li key={i}>{r}</li>)}
+          {readiness.reasons.length > 6 && <li className="wf-more">+{readiness.reasons.length - 6} more — hover the gate chips for detail</li>}
+        </ul>
+      )}
+
+      {isAdmin && next && (
+        <div className="wf-advance">
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => advance()}>
+            {busy ? '…' : `Advance to ${next.label}`}
+          </button>
+          {readiness && !readiness.ready && (
+            <span className="wf-hint">Gates are checked automatically — an admin can override with a reason.</span>
+          )}
+        </div>
+      )}
+
+      {gateModal && (
+        <div className="modal-overlay" onClick={() => setGateModal(null)}>
+          <div className="modal jc-modal wf-gate-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Gates not satisfied</h2>
+            <p className="wf-gate-modal-sub">Can’t move this job to <strong>{gateModal.target.label}</strong> yet:</p>
+            <ul className="wf-reasons">
+              {gateModal.reasons.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+            <div className="form-group">
+              <label>Override reason (required — recorded on the job, admins notified)</label>
+              <textarea
+                rows={2}
+                value={overrideReason}
+                placeholder="e.g. Client confirmed start — docs arriving tomorrow, approved by PM"
+                onChange={(e) => setOverrideReason(e.target.value)}
+              />
+            </div>
+            <div className="jc-form-actions">
+              <button className="btn" onClick={() => setGateModal(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                disabled={!overrideReason.trim() || busy}
+                onClick={() => advance(overrideReason.trim())}
+              >
+                {busy ? '…' : 'Advance anyway'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 // ── List row (shared by JobManager and MyJobs) ────────────────
 
-export function JobListRow({ job, onClick, actions }) {
+export function JobListRow({ job, onClick, actions, attention }) {
   const total = job.checklist_total || 0;
   const done = job.checklist_done || 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
@@ -747,6 +889,8 @@ export function JobListRow({ job, onClick, actions }) {
             <span className="jc-status" style={{ background: `${status.color}22`, color: status.color, borderColor: `${status.color}55` }}>{status.label}</span>
             {job.archived && <span className="jc-chip-sm jc-chip-archived">Archived</span>}
             {isPast && <span className="jc-chip-sm jc-chip-past" title="All scheduled days are in the past — ready to archive">Past</span>}
+            {attention?.at_risk && <span className="jc-chip-sm jc-chip-atrisk" title={(attention.reasons || []).join('\n') || 'Gates unmet'}>⚠ At risk</span>}
+            {attention?.unallocated && !attention?.at_risk && <span className="jc-chip-sm" title="Crew below crew size — this job sits on the Unallocated line">👷 {attention.crew_count}/{attention.crew_size}</span>}
           </div>
           <div className="jc-list-name">{job.name}{job.client ? ` — ${job.client}` : ''}</div>
           <div className="jc-list-meta">
@@ -946,6 +1090,8 @@ export default function JobCard({ jobId, onBack, teamMembers = [], equipment = [
           </div>
         )}
       </div>
+
+      <WorkflowPanel job={job} isAdmin={isAdmin} reload={load} showToast={showToast} />
 
       <ChecklistSection job={job} items={checklist} people={people} isAdmin={isAdmin} canTick={canTick} reload={load} showToast={showToast} />
       <FlightsSection job={job} items={flights} people={people} isAdmin={isAdmin} reload={load} showToast={showToast} />

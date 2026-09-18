@@ -140,6 +140,33 @@ export async function getJobPlanner(id, from, to) {
   return api(`/jobs/${id}/planner${qs}`);
 }
 
+export async function getJobReadiness(jobId) {
+  return api(`/jobs/${jobId}/readiness`);
+}
+
+// Status changes carry a rich 409 payload (gate reasons) — surface it on the
+// error object instead of the plain message the generic api() helper gives.
+export async function setJobStatus(jobId, status, overrideReason) {
+  const res = await fetch(`${API}/jobs/${jobId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ status, override_reason: overrideReason || undefined }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || `API error ${res.status}`);
+    err.status = res.status;
+    err.gates = body;
+    throw err;
+  }
+  return body;
+}
+
+export async function getJobsAttention() {
+  return api('/jobs/attention');
+}
+
 export async function getMyJobs() {
   return api('/jobs/mine');
 }
