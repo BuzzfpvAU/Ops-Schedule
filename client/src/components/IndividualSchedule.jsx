@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { STATUSES } from '../api.js';
 import DayActionSheet from './DayActionSheet.jsx';
 import JobCard from './JobCard.jsx';
+import JobPlanner from './JobPlanner.jsx';
 import {
   groupEntriesByDate, annotateSpans, withMonthHeaders,
   canEditSchedule, defaultMemberId, isUserEntry,
@@ -30,6 +31,7 @@ export default function IndividualSchedule({
   const [memberId, setMemberId] = useState(null);
   const [sheetDate, setSheetDate] = useState(null);
   const [jobCardId, setJobCardId] = useState(null);
+  const [plannerJobId, setPlannerJobId] = useState(null);
 
   const topSentinel = useRef(null);
   const bottomSentinel = useRef(null);
@@ -229,6 +231,20 @@ export default function IndividualSchedule({
               teamMembers={teamMembers}
               showToast={showToast}
               onScheduleRefresh={onScheduleRefresh}
+              onOpenPlanner={(id) => { setJobCardId(null); setPlannerJobId(id); }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Project planner modal (opened from the job card) */}
+      {plannerJobId && (
+        <div className="modal-overlay jp-overlay" onClick={() => setPlannerJobId(null)}>
+          <div className="jp-modal" onClick={(e) => e.stopPropagation()}>
+            <JobPlanner
+              jobId={plannerJobId}
+              onBack={() => setPlannerJobId(null)}
+              onOpenCard={(id) => { setPlannerJobId(null); setJobCardId(id); }}
             />
           </div>
         </div>

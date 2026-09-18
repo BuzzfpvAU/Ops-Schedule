@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getMyJobs } from '../api.js';
 import JobCard, { JobListRow } from './JobCard.jsx';
+import JobPlanner from './JobPlanner.jsx';
 
 // Member-facing job list: the jobs this user is rostered on, open card for details.
 export default function MyJobs({ currentUser, teamMembers = [], equipment = [], showToast }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openJob, setOpenJob] = useState(null);
+  const [plannerJob, setPlannerJob] = useState(null);
   const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
@@ -23,14 +25,28 @@ export default function MyJobs({ currentUser, teamMembers = [], equipment = [], 
 
   if (openJob) {
     return (
-      <JobCard
-        jobId={openJob}
-        onBack={() => { setOpenJob(null); load(); }}
-        currentUser={currentUser}
-        teamMembers={teamMembers}
-        equipment={equipment}
-        showToast={showToast}
-      />
+      <div>
+        <JobCard
+          jobId={openJob}
+          onBack={() => { setOpenJob(null); load(); }}
+          currentUser={currentUser}
+          teamMembers={teamMembers}
+          equipment={equipment}
+          showToast={showToast}
+          onOpenPlanner={(id) => setPlannerJob(id)}
+        />
+        {plannerJob && (
+          <div className="modal-overlay jp-overlay" onClick={() => setPlannerJob(null)}>
+            <div className="jp-modal" onClick={(e) => e.stopPropagation()}>
+              <JobPlanner
+                jobId={plannerJob}
+                onBack={() => setPlannerJob(null)}
+                onOpenCard={(id) => { setPlannerJob(null); setOpenJob(id); }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
