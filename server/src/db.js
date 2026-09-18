@@ -316,6 +316,61 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_member_compliance_member ON member_compliance(team_member_id);
   `);
 
+  // ── Planning workflow (18 Sep 2026) ─────────────────────────────────────
+  // Gate tiers on checklist items (required + stage), job types, and per-job
+  // required compliance records. See docs/superpowers/specs/2026-09-18-*.
+  const jcCols = db.pragma('table_info(job_checklist_items)').map(c => c.name);
+  if (!jcCols.includes('required')) {
+    db.exec(`ALTER TABLE job_checklist_items ADD COLUMN required INTEGER DEFAULT 0`);
+  }
+  if (!jcCols.includes('stage')) {
+    db.exec(`ALTER TABLE job_checklist_items ADD COLUMN stage TEXT DEFAULT ''`);
+  }
+  addJobColumn('job_type', `job_type TEXT DEFAULT ''`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS job_requirements (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      compliance_type TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      UNIQUE(job_id, compliance_type),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Backfill standard-template items with their gate tier. Guarded by
+  // stage='' so it can never clobber a tier once set.
+  const WORKFLOW_TIERS = [
+    // planning gate — blocks "Confirmed"
+    ['Confirm equipment kit list', 1, 'planning'],
+    ['Site inductions arranged', 1, 'planning'],
+    ['SWMS / JSA completed', 1, 'planning'],
+    ['CASA / airspace approval', 1, 'planning'],
+    ['Site access passes arranged', 1, 'planning'],
+    ['Client site contact confirmed', 1, 'planning'],
+    // prep gate — blocks "Active" (dispatch)
+    ['Charge batteries', 1, 'active'],
+    ['Pack equipment cases', 1, 'active'],
+    ['Check serviceability / calibration', 1, 'active'],
+    // logistics — advisory only
+    ['Book accommodation', 0, 'confirmed'],
+    ['Confirm check-in / check-out dates', 0, 'confirmed'],
+    ['Send booking details to crew', 0, 'confirmed'],
+    ['Book flights', 0, 'confirmed'],
+    ['Confirm flight details with crew', 0, 'confirmed'],
+    ['Check baggage / equipment allowances', 0, 'confirmed'],
+    ['Assign vehicle', 0, 'confirmed'],
+    ['Book rental car (if required)', 0, 'confirmed'],
+    ['Confirm pickup / return details', 0, 'confirmed'],
+  ];
+  const tierStmt = db.prepare(
+    `UPDATE job_checklist_items SET required = ?, stage = ? WHERE label = ? AND stage = ''`
+  );
+  for (const [label, required, stage] of WORKFLOW_TIERS) {
+    tierStmt.run(required, stage, label);
+  }
+
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`
     CREATE TABLE IF NOT EXISTS equipment_locations (

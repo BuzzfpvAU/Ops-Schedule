@@ -1,29 +1,39 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAdmin } from '../middleware/auth.js';
+import { computeReadiness, TRANSITION_GATES } from '../services/readiness.js';
+import { notifyAdmins, notifyCrew } from '../services/notify.js';
 
 const router = Router();
 
-// Standard readiness checklist applied to new jobs (skips labels already present)
+const JOB_STATUSES = ['planning', 'confirmed', 'active', 'complete', 'cancelled'];
+
+// Standard readiness checklist applied to new jobs (skips labels already present).
+// `required` items gate workflow transitions; `stage` groups them by phase:
+//   planning → gates "Confirmed" · active → gates "Active" (dispatch)
+//   confirmed → travel/logistics advisory · complete → gates close-out
 const STANDARD_CHECKLIST = [
-  { category: 'accommodation', label: 'Book accommodation' },
-  { category: 'accommodation', label: 'Confirm check-in / check-out dates' },
-  { category: 'accommodation', label: 'Send booking details to crew' },
-  { category: 'flights', label: 'Book flights' },
-  { category: 'flights', label: 'Confirm flight details with crew' },
-  { category: 'flights', label: 'Check baggage / equipment allowances' },
-  { category: 'vehicles', label: 'Assign vehicle' },
-  { category: 'vehicles', label: 'Book rental car (if required)' },
-  { category: 'vehicles', label: 'Confirm pickup / return details' },
-  { category: 'equipment', label: 'Confirm equipment kit list' },
-  { category: 'equipment', label: 'Charge batteries' },
-  { category: 'equipment', label: 'Pack equipment cases' },
-  { category: 'equipment', label: 'Check serviceability / calibration' },
-  { category: 'admin', label: 'Site inductions arranged' },
-  { category: 'admin', label: 'SWMS / JSA completed' },
-  { category: 'admin', label: 'CASA / airspace approval' },
-  { category: 'admin', label: 'Site access passes arranged' },
-  { category: 'admin', label: 'Client site contact confirmed' },
+  { category: 'accommodation', label: 'Book accommodation', required: 0, stage: 'confirmed' },
+  { category: 'accommodation', label: 'Confirm check-in / check-out dates', required: 0, stage: 'confirmed' },
+  { category: 'accommodation', label: 'Send booking details to crew', required: 0, stage: 'confirmed' },
+  { category: 'flights', label: 'Book flights', required: 0, stage: 'confirmed' },
+  { category: 'flights', label: 'Confirm flight details with crew', required: 0, stage: 'confirmed' },
+  { category: 'flights', label: 'Check baggage / equipment allowances', required: 0, stage: 'confirmed' },
+  { category: 'vehicles', label: 'Assign vehicle', required: 0, stage: 'confirmed' },
+  { category: 'vehicles', label: 'Book rental car (if required)', required: 0, stage: 'confirmed' },
+  { category: 'vehicles', label: 'Confirm pickup / return details', required: 0, stage: 'confirmed' },
+  { category: 'equipment', label: 'Confirm equipment kit list', required: 1, stage: 'planning' },
+  { category: 'equipment', label: 'Charge batteries', required: 1, stage: 'active' },
+  { category: 'equipment', label: 'Pack equipment cases', required: 1, stage: 'active' },
+  { category: 'equipment', label: 'Check serviceability / calibration', required: 1, stage: 'active' },
+  { category: 'equipment', label: 'Gear returned & checked in', required: 1, stage: 'complete' },
+  { category: 'equipment', label: 'Serviceability inspected', required: 1, stage: 'complete' },
+  { category: 'equipment', label: 'Batteries charged / stored', required: 1, stage: 'complete' },
+  { category: 'admin', label: 'Site inductions arranged', required: 1, stage: 'planning' },
+  { category: 'admin', label: 'SWMS / JSA completed', required: 1, stage: 'planning' },
+  { category: 'admin', label: 'CASA / airspace approval', required: 1, stage: 'planning' },
+  { category: 'admin', label: 'Site access passes arranged', required: 1, stage: 'planning' },
+  { category: 'admin', label: 'Client site contact confirmed', required: 1, stage: 'planning' },
 ];
 
 function applyStandardChecklist(db, jobId) {
@@ -31,20 +41,71 @@ function applyStandardChecklist(db, jobId) {
     db.prepare('SELECT label FROM job_checklist_items WHERE job_id = ?').all(jobId).map(r => r.label)
   );
   const insert = db.prepare(`
-    INSERT INTO job_checklist_items (id, job_id, category, label, sort_order)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO job_checklist_items (id, job_id, category, label, required, stage, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   let added = 0;
   const tx = db.transaction(() => {
     STANDARD_CHECKLIST.forEach((item, i) => {
       if (!existing.has(item.label)) {
-        insert.run(uuidv4(), jobId, item.category, item.label, i);
+        insert.run(uuidv4(), jobId, item.category, item.label, item.required, item.stage, i);
         added += 1;
       }
     });
   });
   tx();
   return added;
+}
+
+// ── Gated status transitions ────────────────────────────────────────────────
+// Returns a 409 payload when the move is blocked by failing gates; applies an
+// override note (job notes) and notifies admins when one is supplied.
+function validateTransition(db, job, nextStatus, overrideReason, { actor } = {}) {
+  if (!JOB_STATUSES.includes(nextStatus)) {
+    return { error: `status must be one of ${JOB_STATUSES.join(', ')}` };
+  }
+  const gateNames = TRANSITION_GATES[nextStatus] || [];
+  if (gateNames.length === 0) return null;
+
+  const readiness = computeReadiness(db, job.id);
+  const failing = gateNames.filter((g) => readiness.gates[g]?.status === 'fail');
+  if (failing.length === 0) return null;
+
+  const reasons = failing.flatMap((g) =>
+    readiness.gates[g].checks.filter((c) => !c.ok)
+      .map((c) => `${readiness.gates[g].title}: ${c.label} — ${c.note}`)
+  );
+
+  if (!overrideReason) {
+    notifyAdmins(db, {
+      message: `Gate check failed: ${job.code} → ${nextStatus} (${reasons.length} issue${reasons.length === 1 ? '' : 's'})`,
+      date: readiness.span?.start || null,
+      jobCode: job.code,
+      dedupePrefix: `Gate check failed: ${job.code}`,
+      excludeMemberId: actor?.memberId,
+    });
+    return {
+      error: 'Gates not satisfied',
+      target_status: nextStatus,
+      failing_gates: failing,
+      reasons,
+      can_override: true,
+    };
+  }
+
+  // Override — record who/why on the job and alert the other admins.
+  const stamp = new Date(Date.now() + 10 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+  const noteLine = `[${stamp}] Status override to ${nextStatus} by ${actor?.name || 'admin'}: ${overrideReason}`;
+  db.prepare(`
+    UPDATE jobs SET notes = CASE WHEN TRIM(COALESCE(notes, '')) = '' THEN ? ELSE notes || char(10) || ? END
+    WHERE id = ?
+  `).run(noteLine, noteLine, job.id);
+  notifyAdmins(db, {
+    message: `Override: ${job.code} → ${nextStatus} by ${actor?.name || 'admin'} — ${overrideReason}`,
+    jobCode: job.code,
+    excludeMemberId: actor?.memberId,
+  });
+  return null;
 }
 
 // expired (before the job) / expiring (within 30 days of the job) / valid
@@ -102,6 +163,47 @@ router.get('/code/:code', (req, res) => {
   const job = req.db.prepare('SELECT * FROM jobs WHERE code = ? AND active = 1').get(req.params.code);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json(job);
+});
+
+// GET jobs needing attention — unallocated or failing gates. Admins also
+// trigger the opportunistic at-risk sweep (deduped, max 1/day per job).
+router.get('/attention', (req, res) => {
+  const db = req.db;
+  const jobs = db.prepare(`
+    ${JOB_SELECT}
+    WHERE j.active = 1 AND j.archived = 0 AND j.status IN ('planning', 'confirmed', 'active')
+  `).all();
+  const out = [];
+  for (const job of jobs) {
+    const r = computeReadiness(db, job.id);
+    if (!r) continue;
+    const unallocated = (job.crew_count || 0) < (job.crew_size || 1);
+    if (!r.at_risk && !unallocated) continue;
+    out.push({
+      id: job.id, code: job.code, name: job.name, color: job.color, status: job.status,
+      start: r.span?.start || null,
+      crew_count: job.crew_count || 0, crew_size: job.crew_size || 1,
+      unallocated, at_risk: r.at_risk,
+      reasons: r.reasons.slice(0, 5),
+    });
+  }
+  // Opportunistic sweep: alert admins about at-risk jobs starting ≤ 7 days.
+  if (req.user.isAdmin) {
+    const today = new Date(Date.now() + 10 * 3600 * 1000).toISOString().slice(0, 10);
+    for (const o of out) {
+      if (!o.at_risk || !o.start) continue;
+      const days = Math.round((new Date(o.start + 'T00:00:00Z') - new Date(today + 'T00:00:00Z')) / 86400000);
+      if (days < 0 || days > 7) continue;
+      notifyAdmins(db, {
+        message: `At risk: ${o.code} starts in ${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`} — ${o.reasons[0] || 'gates unmet'}`,
+        date: o.start,
+        jobCode: o.code,
+        dedupePrefix: `At risk: ${o.code}`,
+        excludeMemberId: req.user.memberId,
+      });
+    }
+  }
+  res.json(out);
 });
 
 // GET full job card: job + crew + checklist + flights + accommodation + rentals + equipment
@@ -275,12 +377,42 @@ router.get('/:id/planner', (req, res) => {
   res.json({ job, span: span_start ? { start: span_start, end: span_end } : null, window: win_start && win_end ? { start: win_start, end: win_end } : null, people, equipment, unbooked, notes });
 });
 
+// GET readiness — per-gate workflow status for the job card
+router.get('/:id/readiness', (req, res) => {
+  const job = req.db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(computeReadiness(req.db, req.params.id));
+});
+
+// POST status — gated transition (admin only). Body: { status, override_reason? }
+router.post('/:id/status', requireAdmin, (req, res) => {
+  const job = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const { status, override_reason } = req.body || {};
+  if (status === job.status) {
+    return res.json({ job: req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(job.id), readiness: computeReadiness(req.db, job.id) });
+  }
+  const blocked = validateTransition(req.db, job, status, override_reason, { actor: req.user });
+  if (blocked) return res.status(blocked.failing_gates ? 409 : 400).json(blocked);
+  req.db.prepare(`UPDATE jobs SET status = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?`).run(status, job.id);
+  notifyCrew(req.db, job.id, {
+    message: `${job.code} ${job.name}: now ${status}`,
+    jobCode: job.code,
+    excludeMemberId: req.user.memberId,
+  });
+  res.json({
+    job: req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(job.id),
+    readiness: computeReadiness(req.db, job.id),
+  });
+});
+
 // POST create job (admin only)
 router.post('/', requireAdmin, (req, res) => {
   const {
     code, name, description, color, client, file_url,
     job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
     state, crew_size, planned_start, planned_end, lead_id,
+    job_type,
     applyTemplate,
   } = req.body;
   if (!code || !name) return res.status(400).json({ error: 'Code and name are required' });
@@ -296,12 +428,12 @@ router.post('/', requireAdmin, (req, res) => {
   const id = uuidv4();
   req.db.prepare(`
     INSERT INTO jobs (id, code, name, description, color, client, file_url,
-                      job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
+                      job_number, sharepoint_url, job_type, status, site_address, site_contact, notes, rental_required,
                       state, crew_size, planned_start, planned_end, lead_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, code, name, description || '', color || '#3B82F6', client || '', file_url || '',
-    job_number || '', sharepoint_url || '', status || 'planning', site_address || '',
+    job_number || '', sharepoint_url || '', job_type || '', status || 'planning', site_address || '',
     site_contact || '', notes || '', rental_required ? 1 : 0,
     finalState, Math.max(1, parseInt(crew_size, 10) || 1), planned_start || '', planned_end || '',
     lead_id || ''
@@ -317,7 +449,7 @@ router.post('/', requireAdmin, (req, res) => {
 router.put('/:id', requireAdmin, (req, res) => {
   const {
     code, name, description, color, client, file_url,
-    job_number, sharepoint_url, status, site_address, site_contact, notes, rental_required,
+    job_number, sharepoint_url, job_type, status, site_address, site_contact, notes, rental_required,
     state, crew_size, planned_start, planned_end, lead_id,
   } = req.body;
   const existing = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
@@ -327,6 +459,13 @@ router.put('/:id', requireAdmin, (req, res) => {
   if (code && code !== existing.code) {
     const dup = req.db.prepare('SELECT id FROM jobs WHERE code = ? AND id != ?').get(code, req.params.id);
     if (dup) return res.status(409).json({ error: 'Job code already exists' });
+  }
+
+  // Status changes are gated: validate transitions through the readiness engine.
+  const nextStatus = status || existing.status;
+  if (nextStatus !== existing.status) {
+    const blocked = validateTransition(req.db, existing, nextStatus, req.body.override_reason, { actor: req.user });
+    if (blocked) return res.status(blocked.failing_gates ? 409 : 400).json(blocked);
   }
 
   // State follows the project lead's base location when one is assigned;
@@ -340,7 +479,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   req.db.prepare(`
     UPDATE jobs
     SET code = ?, name = ?, description = ?, color = ?, client = ?, file_url = ?,
-        job_number = ?, sharepoint_url = ?, status = ?, site_address = ?, site_contact = ?, notes = ?,
+        job_number = ?, sharepoint_url = ?, job_type = ?, status = ?, site_address = ?, site_contact = ?, notes = ?,
         rental_required = ?, state = ?, crew_size = ?, planned_start = ?, planned_end = ?, lead_id = ?,
         updated_at = datetime('now', '+10 hours')
     WHERE id = ?
@@ -353,7 +492,8 @@ router.put('/:id', requireAdmin, (req, res) => {
     file_url ?? existing.file_url,
     job_number ?? existing.job_number,
     sharepoint_url ?? existing.sharepoint_url,
-    status || existing.status,
+    job_type ?? existing.job_type,
+    nextStatus,
     site_address ?? existing.site_address,
     site_contact ?? existing.site_contact,
     notes ?? existing.notes,
@@ -754,6 +894,35 @@ router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
     booked_to: after.to_date || null,
     booked_days: after.days || 0,
   });
+});
+
+// ── Per-job required compliance ─────────────────────────────────────────────
+
+// GET required compliance types for a job
+router.get('/:id/requirements', (req, res) => {
+  const job = req.db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(req.db.prepare('SELECT * FROM job_requirements WHERE job_id = ? ORDER BY compliance_type').all(req.params.id));
+});
+
+// POST add a requirement (admin only)
+router.post('/:id/requirements', requireAdmin, (req, res) => {
+  const type = String(req.body?.compliance_type || '').trim();
+  if (!type) return res.status(400).json({ error: 'compliance_type is required' });
+  const job = req.db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const existing = req.db.prepare('SELECT id FROM job_requirements WHERE job_id = ? AND lower(compliance_type) = lower(?)').get(req.params.id, type);
+  if (existing) return res.status(409).json({ error: 'Requirement already exists' });
+  const id = uuidv4();
+  req.db.prepare('INSERT INTO job_requirements (id, job_id, compliance_type) VALUES (?, ?, ?)').run(id, req.params.id, type);
+  res.status(201).json(req.db.prepare('SELECT * FROM job_requirements WHERE id = ?').get(id));
+});
+
+// DELETE a requirement (admin only)
+router.delete('/requirements/:id', requireAdmin, (req, res) => {
+  const result = req.db.prepare('DELETE FROM job_requirements WHERE id = ?').run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Requirement not found' });
+  res.json({ success: true });
 });
 
 export default router;
