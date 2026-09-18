@@ -363,6 +363,17 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
       if (!otherByDate.has(o.date)) otherByDate.set(o.date, []);
       otherByDate.get(o.date).push(o);
     }
+    // Buffer (pad) days at the edges of an equipment booking — pack-out,
+    // transport and turnaround days either side of the job's own span.
+    const padDates = new Set();
+    if (row.is_equipment && row.entries.length) {
+      const dates = row.entries.map((e) => e.date).sort();
+      const pb = row.pad_before || 0;
+      const pa = row.pad_after || 0;
+      for (let k = 0; k < pb && k < dates.length; k++) padDates.add(dates[k]);
+      for (let k = 0; k < pa && k < dates.length; k++) padDates.add(dates[dates.length - 1 - k]);
+    }
+    const rowConflicts = row.entries.filter((e) => otherByDate.has(e.date)).length;
     const runs = runsOf(row.entries);
     const runEdge = new Map(); // date -> { run, isFirst, isLast }
     for (const run of runs) {
@@ -376,6 +387,14 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
           {!row.is_equipment && <span className="jp-color" style={{ background: row.color || '#3B82F6' }} />}
           <span className="jp-name">{row.name}</span>
           {row.is_equipment && row.category ? <span className="jc-chip-sm">{row.category}</span> : null}
+          {row.is_equipment && row.allocation_status ? (
+            row.allocation_status === 'confirmed'
+              ? <span className="jc-chip-sm jc-chip-ok" title="Kit allocation confirmed">✓</span>
+              : <span className="jc-chip-sm jp-alloc-tentative" title="Kit allocation tentative — confirm it on the job card">· tentative</span>
+          ) : null}
+          {rowConflicts > 0 && (
+            <span className="jc-chip-sm jc-chip-atrisk" title={`${rowConflicts} day(s) overlap other bookings — red-outlined cells`}>⚠ {rowConflicts}</span>
+          )}
           <em className="jp-range">{fmtDateShort(row.from_date)}–{fmtDateShort(row.to_date)} · {row.days}d</em>
         </td>
         {days.map((d, i) => {
@@ -394,8 +413,10 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
             const conflict = others.length > 0;
             if (conflict) cls.push('jp-conflict');
             if (mine.some((e) => e.notes)) cls.push('jp-has-note');
+            if (padDates.has(d)) cls.push('jp-pad-cell');
             const edge = runEdge.get(d);
             let title = `${d}\n${mine.map((e) => statusOf(e.status).label + (e.notes ? ` — "${e.notes}"` : '')).join('\n')}`;
+            if (padDates.has(d)) title += '\n(Buffer day — pack-out / transport / turnaround)';
             if (conflict) title += `\n⚠ Also booked: ${others.map((o) => `${o.job_code} ${o.job_name}`).join(', ')}`;
             return (
               <td
@@ -489,6 +510,7 @@ export default function JobPlanner({ jobId, onBack, onOpenCard, currentUser, onS
                 <span key={k} className="jp-leg-item"><i style={{ background: s.color }} />{s.label}</span>
               ))}
               <span className="jp-leg-item"><i className="jp-leg-ghost" />other jobs</span>
+              <span className="jp-leg-item"><i className="jp-leg-pad" />buffer day</span>
               <span className="jp-leg-item"><i className="jp-leg-conflict" />conflict</span>
               <span className="jp-leg-item"><i className="jp-leg-note" />day notes</span>
               {data.window && (

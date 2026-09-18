@@ -8,6 +8,7 @@ import {
   updateJob, downloadIcalJob, getJobCalendarToken, calendarFeedUrl, getEquipment,
   archiveJob, unarchiveJob,
   getJobReadiness, setJobStatus,
+  getKits, applyKitToJob, confirmJobKit, createKit,
 } from '../api.js';
 
 export const JOB_STATUSES = {
@@ -623,7 +624,17 @@ function VehiclesSection({ job, rentals, vehicles, equipmentList, people, isAdmi
 
 function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToast, onScheduleRefresh }) {
   const [adding, setAdding] = useState('');
+  const [kitId, setKitId] = useState('');
+  const [kits, setKits] = useState([]);
+  const [confirming, setConfirming] = useState(false);
+  const [conflictModal, setConflictModal] = useState(null); // conflict[] | null
+  const [overrideReason, setOverrideReason] = useState('');
   const refreshed = () => { reload(); onScheduleRefresh?.(); };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    getKits().then(setKits).catch(() => { /* kits optional */ });
+  }, [isAdmin]);
 
   const add = async () => {
     if (!adding) return;
@@ -638,9 +649,41 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
     try { await adjustEquipmentBooking(k.id, edge, delta); refreshed(); }
     catch (err) { showToast(err.message, 'error'); }
   };
+  const applyKit = async () => {
+    if (!kitId) return;
+    try {
+      const r = await applyKitToJob(job.id, kitId);
+      showToast(`Kit applied — ${r.added.length} added${r.skipped.length ? `, ${r.skipped.length} skipped` : ''}`, 'success');
+      setKitId('');
+      refreshed();
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+  const saveAsKit = async () => {
+    const name = prompt('Save this job’s equipment as a kit template — name:', 'Standard drone kit');
+    if (!name || !name.trim()) return;
+    try {
+      await createKit({ name: name.trim(), items: kit.map(k => k.equipment_id) });
+      showToast(`Kit “${name.trim()}” saved`, 'success');
+      getKits().then(setKits).catch(() => {});
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+  const confirmAllocation = async (reason) => {
+    setConfirming(true);
+    try {
+      const r = await confirmJobKit(job.id, reason);
+      setConflictModal(null);
+      setOverrideReason('');
+      showToast(r.conflicts?.length ? 'Allocation confirmed (conflicts overridden)' : 'Allocation confirmed', 'success');
+      refreshed();
+    } catch (err) {
+      if (err.status === 409 && err.gates) setConflictModal(err.gates.conflicts || []);
+      else showToast(err.message, 'error');
+    } finally { setConfirming(false); }
+  };
 
   const assignedIds = new Set(kit.map(k => k.equipment_id));
   const options = equipmentList.filter(e => e.equipment_category !== 'Vehicles' && !assignedIds.has(e.id));
+  const allConfirmed = kit.length > 0 && kit.every(k => k.status === 'confirmed');
 
   return (
     <Section
@@ -648,6 +691,26 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
       badge={kit.length || null}
       action={isAdmin && (
         <span className="jc-inline-form jc-inline-right">
+          {kits.length > 0 && (
+            <>
+              <select value={kitId} onChange={(e) => setKitId(e.target.value)} title="Apply a saved kit template to this job">
+                <option value="">Apply kit…</option>
+                {kits.map(k => <option key={k.id} value={k.id}>{k.name} ({k.item_count})</option>)}
+              </select>
+              <button className="btn btn-sm" disabled={!kitId} onClick={applyKit}>Apply</button>
+            </>
+          )}
+          {kit.length > 0 && !allConfirmed && (
+            <button
+              className="btn btn-sm"
+              disabled={confirming}
+              onClick={() => confirmAllocation()}
+              title="Mark this job's kit allocation as confirmed — blocked by cross-job conflicts"
+            >{confirming ? '…' : '✓ Confirm allocation'}</button>
+          )}
+          {kit.length > 0 && (
+            <button className="btn btn-sm" onClick={saveAsKit} title="Save this job's equipment list as a reusable kit template">💾 Save as kit</button>
+          )}
           <select value={adding} onChange={(e) => setAdding(e.target.value)}>
             <option value="">Add equipment…</option>
             {options.map(e => <option key={e.id} value={e.id}>{e.name}{e.equipment_category ? ` (${e.equipment_category})` : ''}</option>)}
@@ -664,6 +727,15 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
               <div className="jc-row-title">
                 <strong>{k.equipment_name}</strong>
                 {k.category && <span className="jc-chip-sm">{k.category}</span>}
+                {k.status === 'confirmed'
+                  ? <span className="jc-chip-sm jc-chip-ok" title="Allocation confirmed">✓ allocated</span>
+                  : <span className="jc-chip-sm" title="Allocation tentative — confirm once it's locked in">tentative</span>}
+                {k.conflicts?.length > 0 && (
+                  <span
+                    className="jc-chip-sm jc-chip-atrisk"
+                    title={k.conflicts.map(c => `Overlaps ${c.code} ${c.name} (${c.from}–${c.to})`).join('\n')}
+                  >⚠ conflict</span>
+                )}
                 {k.assigned_to && <span>→ {nameOf(people, k.assigned_to) || 'assigned'}</span>}
               </div>
               {(k.serial_number || k.notes) && (
@@ -690,6 +762,37 @@ function KitSection({ job, kit, equipmentList, people, isAdmin, reload, showToas
           </div>
         </div>
       ))}
+
+      {conflictModal && (
+        <div className="modal-overlay" onClick={() => setConflictModal(null)}>
+          <div className="modal jc-modal wf-gate-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Allocation conflicts</h2>
+            <p className="wf-gate-modal-sub">Some kit items overlap other jobs:</p>
+            <ul className="wf-reasons">
+              {conflictModal.map((c, i) => (
+                <li key={i}>{c.equipment_name} — overlaps <strong>{c.code}</strong> ({fmtDateShort(c.from)}–{fmtDateShort(c.to)})</li>
+              ))}
+            </ul>
+            <div className="form-group">
+              <label>Override reason (required — recorded on the job, admins notified)</label>
+              <textarea
+                rows={2}
+                value={overrideReason}
+                placeholder="e.g. Split kit — Mavic returns before T2 departs"
+                onChange={(e) => setOverrideReason(e.target.value)}
+              />
+            </div>
+            <div className="jc-form-actions">
+              <button className="btn" onClick={() => setConflictModal(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                disabled={!overrideReason.trim() || confirming}
+                onClick={() => confirmAllocation(overrideReason.trim())}
+              >{confirming ? '…' : 'Confirm anyway'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Section>
   );
 }

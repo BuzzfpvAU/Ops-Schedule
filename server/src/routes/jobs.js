@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { requireAdmin } from '../middleware/auth.js';
 import { computeReadiness, TRANSITION_GATES } from '../services/readiness.js';
 import { notifyAdmins, notifyCrew } from '../services/notify.js';
+import { findConflicts } from '../services/conflicts.js';
 
 const router = Router();
 
@@ -257,7 +258,8 @@ router.get('/:id', (req, res) => {
   `).all(req.params.id);
 
   const equipment = db.prepare(`
-    SELECT je.id, je.job_id, je.equipment_id, je.assigned_to, je.notes,
+    SELECT je.id, je.job_id, je.equipment_id, je.assigned_to, je.notes, je.status,
+           je.pad_before, je.pad_after,
            (SELECT MIN(se.date) FROM schedule_entries se
              WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_from,
            (SELECT MAX(se.date) FROM schedule_entries se
@@ -271,6 +273,13 @@ router.get('/:id', (req, res) => {
     WHERE je.job_id = ?
     ORDER BY COALESCE(NULLIF(tm.equipment_category, ''), 'zz'), tm.name
   `).all(req.params.id);
+
+  // Allocation conflicts for each booked item (overlaps with other jobs)
+  for (const row of equipment) {
+    row.conflicts = row.booked_from
+      ? findConflicts(db, row.equipment_id, row.booked_from, row.booked_to, req.params.id)
+      : [];
+  }
 
   res.json({ job, crew, checklist, flights, accommodation, rentals, equipment });
 });
@@ -354,6 +363,19 @@ router.get('/:id/planner', (req, res) => {
   });
   const people = rows.filter(r => !r.is_equipment).map(withEntries);
   const equipment = rows.filter(r => r.is_equipment).map(withEntries);
+
+  // Allocation info (status + pads) for the equipment rows — powers the
+  // planner's status chips and padded-day shading.
+  const jeRows = db.prepare(
+    'SELECT equipment_id, status, pad_before, pad_after FROM job_equipment WHERE job_id = ?'
+  ).all(req.params.id);
+  const jeById = new Map(jeRows.map(r => [r.equipment_id, r]));
+  for (const e of equipment) {
+    const je = jeById.get(e.id);
+    e.allocation_status = je ? (je.status || 'tentative') : '';
+    e.pad_before = je ? (je.pad_before || 0) : 0;
+    e.pad_after = je ? (je.pad_after || 0) : 0;
+  }
 
   // Kit assigned to the job but with no booked days yet
   const kit = db.prepare(`
@@ -797,7 +819,7 @@ function ensureBookingDay(db, jobId, equipmentId, date) {
 // ── Equipment kit / owned vehicles ──────────────────────────────────────────
 
 router.post('/:id/equipment', requireAdmin, (req, res) => {
-  const { equipment_id, assigned_to, notes } = req.body;
+  const { equipment_id, assigned_to, notes, pad_before, pad_after } = req.body || {};
   if (!equipment_id) return res.status(400).json({ error: 'equipment_id is required' });
   const job = req.db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -809,26 +831,35 @@ router.post('/:id/equipment', requireAdmin, (req, res) => {
   ).get(req.params.id, equipment_id);
   if (existing) return res.status(409).json({ error: 'Already assigned to this job' });
 
+  const padB = Number.isInteger(pad_before) ? Math.max(0, pad_before) : 1;
+  const padA = Number.isInteger(pad_after) ? Math.max(0, pad_after) : 1;
+
   const id = uuidv4();
   req.db.prepare(`
-    INSERT INTO job_equipment (id, job_id, equipment_id, assigned_to, notes)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(id, req.params.id, equipment_id, assigned_to || '', notes || '');
+    INSERT INTO job_equipment (id, job_id, equipment_id, assigned_to, notes, pad_before, pad_after)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.params.id, equipment_id, assigned_to || '', notes || '', padB, padA);
 
-  // Adopt the job's timeframe: book the equipment for every rostered date.
-  // (No roster yet → no booking; the + control can start one later.)
+  // Adopt the job's timeframe with buffer pads: book the span ± pads for
+  // pack-out, transport and turnaround (per the planned workflow design).
   const range = jobRange(req.db, req.params.id);
-  let booked = 0;
   if (range.from_date) {
-    for (const d of dateRange(range.from_date, range.to_date)) {
-      if (ensureBookingDay(req.db, req.params.id, equipment_id, d)) booked++;
+    for (const d of dateRange(addDays(range.from_date, -padB), addDays(range.to_date, padA))) {
+      ensureBookingDay(req.db, req.params.id, equipment_id, d);
     }
   }
+  const after = bookingRange(req.db, req.params.id, equipment_id);
+  const conflicts = after.from_date
+    ? findConflicts(req.db, equipment_id, after.from_date, after.to_date, req.params.id)
+    : [];
   res.status(201).json({
     id,
-    booked_from: range.from_date || null,
-    booked_to: range.to_date || null,
-    booked_days: booked,
+    booked_from: after.from_date || null,
+    booked_to: after.to_date || null,
+    booked_days: after.days || 0,
+    pad_before: padB,
+    pad_after: padA,
+    conflicts,
   });
 });
 
@@ -857,16 +888,19 @@ router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'delta must be 1 or -1' });
   }
   const a = req.db.prepare(
-    'SELECT job_id, equipment_id FROM job_equipment WHERE id = ?'
+    'SELECT job_id, equipment_id, pad_before, pad_after FROM job_equipment WHERE id = ?'
   ).get(req.params.id);
   if (!a) return res.status(404).json({ error: 'Assignment not found' });
 
   let cur = bookingRange(req.db, a.job_id, a.equipment_id);
   if (!cur.from_date) {
-    // No booking yet: adopt the job range first, else start from today.
+    // No booking yet: adopt the job range (with pads) first, else start today.
     const jr = jobRange(req.db, a.job_id);
     if (jr.from_date) {
-      for (const d of dateRange(jr.from_date, jr.to_date)) {
+      for (const d of dateRange(
+        addDays(jr.from_date, -(a.pad_before || 0)),
+        addDays(jr.to_date, a.pad_after || 0)
+      )) {
         ensureBookingDay(req.db, a.job_id, a.equipment_id, d);
       }
     } else {
@@ -888,11 +922,15 @@ router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
   }
 
   const after = bookingRange(req.db, a.job_id, a.equipment_id);
+  const conflicts = after.from_date
+    ? findConflicts(req.db, a.equipment_id, after.from_date, after.to_date, a.job_id)
+    : [];
   res.json({
     success: true,
     booked_from: after.from_date || null,
     booked_to: after.to_date || null,
     booked_days: after.days || 0,
+    conflicts,
   });
 });
 
@@ -923,6 +961,95 @@ router.delete('/requirements/:id', requireAdmin, (req, res) => {
   const result = req.db.prepare('DELETE FROM job_requirements WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Requirement not found' });
   res.json({ success: true });
+});
+
+// ── Allocation confirmation + kits ──────────────────────────────────────────
+
+// Confirm the job's kit allocation (admin). Blocked by cross-job conflicts
+// unless an override reason is given (recorded on the job, admins notified).
+router.post('/:id/equipment/confirm', requireAdmin, (req, res) => {
+  const db = req.db;
+  const job = db.prepare('SELECT id, code FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const rows = db.prepare(`
+    SELECT je.id, je.equipment_id, tm.name,
+           (SELECT MIN(date) FROM schedule_entries WHERE job_id = je.job_id AND team_member_id = je.equipment_id) AS f,
+           (SELECT MAX(date) FROM schedule_entries WHERE job_id = je.job_id AND team_member_id = je.equipment_id) AS t
+    FROM job_equipment je
+    JOIN team_members tm ON tm.id = je.equipment_id
+    WHERE je.job_id = ?
+  `).all(req.params.id);
+  if (!rows.length) return res.status(400).json({ error: 'No equipment assigned to this job' });
+
+  const conflicts = [];
+  for (const item of rows) {
+    if (!item.f) continue;
+    for (const c of findConflicts(db, item.equipment_id, item.f, item.t, req.params.id)) {
+      conflicts.push({ equipment_id: item.equipment_id, equipment_name: item.name, ...c });
+    }
+  }
+
+  const { override_reason } = req.body || {};
+  if (conflicts.length && !override_reason) {
+    return res.status(409).json({ error: 'Allocation conflicts', conflicts, can_override: true });
+  }
+  db.prepare(`UPDATE job_equipment SET status = 'confirmed' WHERE job_id = ?`).run(req.params.id);
+  if (conflicts.length && override_reason) {
+    const stamp = new Date(Date.now() + 10 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    const noteLine = `[${stamp}] Kit allocation confirmed with ${conflicts.length} conflict(s) by ${req.user?.name || 'admin'}: ${override_reason}`;
+    db.prepare(`
+      UPDATE jobs SET notes = CASE WHEN TRIM(COALESCE(notes, '')) = '' THEN ? ELSE notes || char(10) || ? END
+      WHERE id = ?
+    `).run(noteLine, noteLine, req.params.id);
+    notifyAdmins(db, {
+      message: `Override: ${job.code} kit allocation confirmed with conflicts by ${req.user?.name || 'admin'} — ${override_reason}`,
+      jobCode: job.code,
+      excludeMemberId: req.user?.memberId,
+    });
+  }
+  res.json({ confirmed: rows.length, conflicts });
+});
+
+// Apply a kit template to the job: adds every kit item (skips unserviceable /
+// already-assigned) and books each for the job window with 1-day pads.
+router.post('/:id/apply-kit', requireAdmin, (req, res) => {
+  const db = req.db;
+  const { kit_id } = req.body || {};
+  const kit = db.prepare('SELECT * FROM equipment_kits WHERE id = ?').get(kit_id);
+  if (!kit) return res.status(404).json({ error: 'Kit not found' });
+  const job = db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const items = db.prepare(`
+    SELECT tm.id, tm.name, tm.serviceable
+    FROM equipment_kit_items eki
+    JOIN team_members tm ON tm.id = eki.equipment_id
+    WHERE eki.kit_id = ?
+    ORDER BY tm.name
+  `).all(kit_id);
+
+  const added = [];
+  const skipped = [];
+  const range = jobRange(db, req.params.id);
+  const tx = db.transaction(() => {
+    for (const item of items) {
+      const already = db.prepare('SELECT id FROM job_equipment WHERE job_id = ? AND equipment_id = ?').get(req.params.id, item.id);
+      if (already) { skipped.push({ id: item.id, name: item.name, reason: 'already on this job' }); continue; }
+      if (item.serviceable !== 1) { skipped.push({ id: item.id, name: item.name, reason: 'unserviceable' }); continue; }
+      db.prepare(`
+        INSERT INTO job_equipment (id, job_id, equipment_id, assigned_to, notes, pad_before, pad_after)
+        VALUES (?, ?, ?, '', ?, 1, 1)
+      `).run(uuidv4(), req.params.id, item.id, `from kit: ${kit.name}`);
+      if (range.from_date) {
+        for (const d of dateRange(addDays(range.from_date, -1), addDays(range.to_date, 1))) {
+          ensureBookingDay(db, req.params.id, item.id, d);
+        }
+      }
+      added.push({ id: item.id, name: item.name });
+    }
+  });
+  tx();
+  res.status(201).json({ kit: { id: kit.id, name: kit.name }, added, skipped });
 });
 
 export default router;

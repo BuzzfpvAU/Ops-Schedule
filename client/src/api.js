@@ -167,6 +167,37 @@ export async function getJobsAttention() {
   return api('/jobs/attention');
 }
 
+// ── Equipment kits + allocation confirmation ──
+
+export async function getKits() {
+  return api('/equipment/kits');
+}
+
+export async function createKit(data) {
+  return api('/equipment/kits', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function applyKitToJob(jobId, kitId) {
+  return api(`/jobs/${jobId}/apply-kit`, { method: 'POST', body: JSON.stringify({ kit_id: kitId }) });
+}
+
+export async function confirmJobKit(jobId, overrideReason) {
+  const res = await fetch(`${API}/jobs/${jobId}/equipment/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ override_reason: overrideReason || undefined }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || `API error ${res.status}`);
+    err.status = res.status;
+    err.gates = body;
+    throw err;
+  }
+  return body;
+}
+
 export async function getMyJobs() {
   return api('/jobs/mine');
 }

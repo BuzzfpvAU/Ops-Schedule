@@ -371,6 +371,36 @@ export function initDb() {
     tierStmt.run(required, stage, label);
   }
 
+  // Equipment allocation: buffer pads + allocation status + kits.
+  const jeAllocCols = db.pragma('table_info(job_equipment)').map(c => c.name);
+  if (!jeAllocCols.includes('status')) {
+    db.exec(`ALTER TABLE job_equipment ADD COLUMN status TEXT DEFAULT 'tentative'`);
+  }
+  if (!jeAllocCols.includes('pad_before')) {
+    db.exec(`ALTER TABLE job_equipment ADD COLUMN pad_before INTEGER DEFAULT 1`);
+  }
+  if (!jeAllocCols.includes('pad_after')) {
+    db.exec(`ALTER TABLE job_equipment ADD COLUMN pad_after INTEGER DEFAULT 1`);
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS equipment_kits (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+10 hours'))
+    );
+    CREATE TABLE IF NOT EXISTS equipment_kit_items (
+      id TEXT PRIMARY KEY,
+      kit_id TEXT NOT NULL,
+      equipment_id TEXT NOT NULL,
+      UNIQUE(kit_id, equipment_id),
+      FOREIGN KEY (kit_id) REFERENCES equipment_kits(id) ON DELETE CASCADE,
+      FOREIGN KEY (equipment_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+  `);
+
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`
     CREATE TABLE IF NOT EXISTS equipment_locations (

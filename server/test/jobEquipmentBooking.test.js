@@ -60,9 +60,10 @@ test('migration is idempotent: re-init keeps assignments and bookings', async ()
 
   const card = await (await call('GET', '/j1')).json();
   assert.equal(card.equipment.length, 1);
-  assert.equal(card.equipment[0].booked_from, '2026-10-01');
-  assert.equal(card.equipment[0].booked_to, '2026-10-02');
-  assert.deepEqual(bookingDates('j1', 'e1'), ['2026-10-01', '2026-10-02']);
+  // Pads (±1 day) are part of the adopted booking
+  assert.equal(card.equipment[0].booked_from, '2026-09-30');
+  assert.equal(card.equipment[0].booked_to, '2026-10-03');
+  assert.deepEqual(bookingDates('j1', 'e1'), ['2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03']);
 });
 
 const seedRoster = (jobId, memberId, dates) => {
@@ -76,17 +77,19 @@ const bookingDates = (jobId, memberId) => db.prepare(
   'SELECT date FROM schedule_entries WHERE job_id = ? AND team_member_id = ? ORDER BY date'
 ).all(jobId, memberId).map(r => r.date);
 
-test('assigning equipment adopts the job timeframe', async () => {
+test('assigning equipment adopts the job timeframe plus buffer pads', async () => {
   seedRoster('j1', 'm1', ['2026-10-01', '2026-10-02', '2026-10-03']);
   const a = await assign();
   assert.equal(a.status, 201);
-  assert.equal(a.body.booked_days, 3);
-  assert.deepEqual(bookingDates('j1', 'e1'), ['2026-10-01', '2026-10-02', '2026-10-03']);
+  // Default pads are 1/1 → the 3-day span becomes a 5-day booking
+  assert.equal(a.body.booked_days, 5);
+  assert.deepEqual(bookingDates('j1', 'e1'),
+    ['2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']);
 
   const card = await (await call('GET', '/j1')).json();
-  assert.equal(card.equipment[0].booked_from, '2026-10-01');
-  assert.equal(card.equipment[0].booked_to, '2026-10-03');
-  assert.equal(card.equipment[0].booked_days, 3);
+  assert.equal(card.equipment[0].booked_from, '2026-09-30');
+  assert.equal(card.equipment[0].booked_to, '2026-10-04');
+  assert.equal(card.equipment[0].booked_days, 5);
 });
 
 test('assigning to an unrostered job creates no booking', async () => {
@@ -101,17 +104,18 @@ test('assigning to an unrostered job creates no booking', async () => {
 test('booking + and - extend and trim each edge', async () => {
   seedRoster('j1', 'm1', ['2026-10-02']);
   const a = await assign();
+  // pads: booking starts as 2026-10-01 → 2026-10-03
   const book = (edge, delta) => call('POST', `/equipment/${a.body.id}/booking`, { edge, delta });
 
   let r = await (await book('end', 1)).json();
-  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-02', '2026-10-03']);
+  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-01', '2026-10-04']);
   r = await (await book('start', 1)).json();
-  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-01', '2026-10-03']);
+  assert.deepEqual([r.booked_from, r.booked_to], ['2026-09-30', '2026-10-04']);
   r = await (await book('end', -1)).json();
-  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-01', '2026-10-02']);
+  assert.deepEqual([r.booked_from, r.booked_to], ['2026-09-30', '2026-10-03']);
   r = await (await book('start', -1)).json();
-  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-02', '2026-10-02']);
-  assert.deepEqual(bookingDates('j1', 'e1'), ['2026-10-02']);
+  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-01', '2026-10-03']);
+  assert.deepEqual(bookingDates('j1', 'e1'), ['2026-10-01', '2026-10-02', '2026-10-03']);
 });
 
 test('booking controls seed an empty booking from the job range', async () => {
@@ -120,8 +124,8 @@ test('booking controls seed an empty booking from the job range', async () => {
   // wipe the adopted booking to simulate an empty one
   db.prepare('DELETE FROM schedule_entries WHERE job_id = ? AND team_member_id = ?').run('j1', 'e1');
   const r = await (await call('POST', `/equipment/${a.body.id}/booking`, { edge: 'end', delta: 1 })).json();
-  // job range adopted first, then extended one day past it
-  assert.deepEqual([r.booked_from, r.booked_to], ['2026-10-01', '2026-10-03']);
+  // job range adopted first (with ±1 pads), then extended one day past it
+  assert.deepEqual([r.booked_from, r.booked_to], ['2026-09-30', '2026-10-04']);
 });
 
 test('booking endpoint validates edge, delta, id and admin', async () => {
@@ -140,7 +144,7 @@ test('booking endpoint validates edge, delta, id and admin', async () => {
 test('unassigning equipment clears its booking entries', async () => {
   seedRoster('j1', 'm1', ['2026-10-01', '2026-10-02']);
   const a = await assign();
-  assert.deepEqual(bookingDates('j1', 'e1').length, 2);
+  assert.deepEqual(bookingDates('j1', 'e1').length, 4); // 2-day span + 1-day pads each side
   assert.equal((await call('DELETE', `/equipment/${a.body.id}`)).status, 200);
   assert.deepEqual(bookingDates('j1', 'e1'), []);
   // crew roster untouched

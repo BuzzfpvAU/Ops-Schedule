@@ -6,6 +6,8 @@
 > **Related:** `2026-09-11-airpinpoint-feature-parity.md` (equipment tracking tech: status engine, geofences, QR — Chunk 4 below depends on its Chunk 1)
 >
 > **Stack:** Express + better-sqlite3 + React/Vite + Leaflet. JWT httpOnly cookies; admin/member/viewer roles. Tests: `npm test` (node --test) in `server/`.
+>
+> **Status (18 Sep 2026): Chunks 1–3 implemented** — readiness engine + gated status transitions, workflow UI (stepper, readiness panel, advance/override), allocation upgrade (buffer pads, conflict detection, confirm allocation, kit templates). 52 tests passing. **Chunks 4–6 pending** (custody bridge, maintenance/utilisation, compliance reminders).
 > **Conventions:** additive + idempotent migrations in `server/src/db.js` (pragma table_info pattern); timestamps `datetime('now','+10 hours')`; route order — static paths before `/:id`; mirror code changes into `deploy/` per repo convention; back up prod DB (`~/data/ops-schedule.db`) before deploy; deploy = push → Hostinger flow per `.agent-status.md`.
 
 ---

@@ -163,4 +163,63 @@ router.delete('/locations/:memberId', requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true, deleted: result.changes });
 });
 
+// ── Kits (named gear bundles, applied to jobs via /api/jobs/:id/apply-kit) ──
+
+// GET all kits with their items
+router.get('/kits', requireAuth, (req, res) => {
+  const kits = req.db.prepare(`
+    SELECT k.*, (SELECT COUNT(*) FROM equipment_kit_items i WHERE i.kit_id = k.id) AS item_count
+    FROM equipment_kits k ORDER BY k.name
+  `).all();
+  const items = req.db.prepare(`
+    SELECT eki.kit_id, tm.id, tm.name, tm.equipment_category, tm.serviceable
+    FROM equipment_kit_items eki
+    JOIN team_members tm ON tm.id = eki.equipment_id
+    ORDER BY tm.name
+  `).all();
+  for (const k of kits) k.items = items.filter(i => i.kit_id === k.id);
+  res.json(kits);
+});
+
+// POST create a kit (admin) — body: { name, notes?, items: [equipment_id] }
+router.post('/kits', requireAuth, requireAdmin, (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const items = Array.isArray(req.body?.items) ? req.body.items.filter(x => typeof x === 'string' && x) : [];
+  const id = uuidv4();
+  const tx = req.db.transaction(() => {
+    req.db.prepare('INSERT INTO equipment_kits (id, name, notes) VALUES (?, ?, ?)').run(id, name, req.body?.notes || '');
+    const ins = req.db.prepare('INSERT OR IGNORE INTO equipment_kit_items (id, kit_id, equipment_id) VALUES (?, ?, ?)');
+    for (const eq of items) ins.run(uuidv4(), id, eq);
+  });
+  tx();
+  res.status(201).json(req.db.prepare('SELECT * FROM equipment_kits WHERE id = ?').get(id));
+});
+
+// PUT update a kit (admin) — name/notes and/or a full items replacement
+router.put('/kits/:id', requireAuth, requireAdmin, (req, res) => {
+  const kit = req.db.prepare('SELECT * FROM equipment_kits WHERE id = ?').get(req.params.id);
+  if (!kit) return res.status(404).json({ error: 'Kit not found' });
+  const b = req.body || {};
+  const items = Array.isArray(b.items) ? b.items.filter(x => typeof x === 'string' && x) : null;
+  const tx = req.db.transaction(() => {
+    req.db.prepare(`UPDATE equipment_kits SET name = ?, notes = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?`)
+      .run(b.name ?? kit.name, b.notes ?? kit.notes, req.params.id);
+    if (items) {
+      req.db.prepare('DELETE FROM equipment_kit_items WHERE kit_id = ?').run(req.params.id);
+      const ins = req.db.prepare('INSERT OR IGNORE INTO equipment_kit_items (id, kit_id, equipment_id) VALUES (?, ?, ?)');
+      for (const eq of items) ins.run(uuidv4(), req.params.id, eq);
+    }
+  });
+  tx();
+  res.json(req.db.prepare('SELECT * FROM equipment_kits WHERE id = ?').get(req.params.id));
+});
+
+// DELETE a kit (admin)
+router.delete('/kits/:id', requireAuth, requireAdmin, (req, res) => {
+  const result = req.db.prepare('DELETE FROM equipment_kits WHERE id = ?').run(req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Kit not found' });
+  res.json({ success: true });
+});
+
 export default router;
