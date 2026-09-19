@@ -6,13 +6,14 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "postinstall": "cd client && npm install && cd ../server && npm install",
-    "build": "cd client && npm run build",
+    "postinstall": "cd client && npm install && cd ../client-v2 && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build && cd ../client-v2 && npm run build",
     "start": "node index.js",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
+    "dev:v2": "cd client-v2 && npm run dev",
     "dev": "npm run dev:server & npm run dev:client",
-    "test": "node --test client/test/*.test.js server/test/*.test.js"
+    "test": "node --test client/test/*.test.js client-v2/test/*.test.js server/test/*.test.js"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -163,6 +163,40 @@ router.delete('/locations/:memberId', requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true, deleted: result.changes });
 });
 
+// ── Booking index (V2 equipment timeline) ────────────────────────────
+// The equipment timeline needs the reverse of the job card: given a date
+// window, which job_equipment assignment owns each item's booked days. The
+// pads travel with the row so travel time can be adjusted from the timeline
+// without first opening the job.
+router.get('/bookings', requireAuth, (req, res) => {
+  const { start, end } = req.query;
+  if (!start || !end) {
+    return res.status(400).json({ error: 'start and end dates are required (YYYY-MM-DD)' });
+  }
+
+  const rows = req.db.prepare(`
+    SELECT je.id, je.job_id, je.equipment_id, je.status, je.pad_before, je.pad_after,
+           je.assigned_to, je.notes,
+           j.code AS job_code, j.name AS job_name, j.color AS job_color, j.state AS job_state,
+           (SELECT MIN(se.date) FROM schedule_entries se
+             WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_from,
+           (SELECT MAX(se.date) FROM schedule_entries se
+             WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_to,
+           (SELECT COUNT(DISTINCT se.date) FROM schedule_entries se
+             WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_days
+    FROM job_equipment je
+    JOIN jobs j ON j.id = je.job_id
+    WHERE j.active = 1
+  `).all();
+
+  // Keep only assignments whose booked span overlaps the requested window.
+  // Unbooked assignments are dropped — they have no bar to draw.
+  const inWindow = rows.filter(
+    (r) => r.booked_from && r.booked_from <= end && r.booked_to >= start
+  );
+  res.json(inWindow);
+});
+
 // ── Kits (named gear bundles, applied to jobs via /api/jobs/:id/apply-kit) ──
 
 // GET all kits with their items

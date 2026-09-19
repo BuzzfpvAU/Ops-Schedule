@@ -68,8 +68,20 @@ app.use('/api/equipment', equipmentRoutes);
 // token-management endpoints enforce auth inside the router.
 app.use('/api/calendar', calendarRoutes);
 
-// Serve static frontend
+// Serve static frontends. The V2 UI is a second, independent build against
+// the same API; it mounts at /v2 and must be registered before the v1 SPA
+// fallback, or the catch-all would swallow its routes.
 const clientDist = path.join(__dirname, 'client', 'dist');
+const clientV2Dist = path.join(__dirname, 'client-v2', 'dist');
+
+app.use('/v2', express.static(clientV2Dist));
+app.get('/v2/*', (req, res, next) => {
+  res.sendFile(path.join(clientV2Dist, 'index.html'), (err) => {
+    // Not built yet — fall through rather than serving a blank page.
+    if (err) next();
+  });
+});
+
 app.use(express.static(clientDist));
 
 // SPA fallback
