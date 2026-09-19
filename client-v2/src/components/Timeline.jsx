@@ -81,7 +81,9 @@ export default function Timeline({
                 if (dayLabels === 'full') {
                   label = (
                     <>
-                      <span className="tl-dow">{DOW[d.getDay()][0]}</span>
+                      {/* Full weekday name: there is room for it now that
+                          the narrowest level using this mode is 39px. */}
+                      <span className="tl-dow">{DOW[d.getDay()]}</span>
                       <span className="tl-dom">{d.getDate()}</span>
                     </>
                   );

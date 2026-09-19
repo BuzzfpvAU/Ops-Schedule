@@ -81,15 +81,14 @@ export function rangeOf(startIso, endIso) {
 // Columns are always one day wide in the data model — zoom only changes how
 // many pixels a day gets, so bar geometry stays identical at every level.
 
-// Widths are the readability budget. Week and month were 13px and 4px, which
-// is narrower than a two-digit date and turned bars into slivers. Month now
-// gets the full 3x it can take; week gets as much as it can while staying
-// below day, since a week column wider than a day column would invert the
-// zoom order. Spans shrink alongside so the scroll canvas stays comparable.
+// Widths are the readability budget: every level is 3x its original width,
+// which is what made the compressed levels legible. Day leading at 102px is
+// what lets week take its full 3x (39px) without overtaking it — at day's
+// original 34px, a 3x week would have inverted the zoom control.
 export const ZOOMS = {
-  day:   { key: 'day',   label: 'Day',   colW: 34, before: 14, after: 75,  dayLabels: 'full' },
-  week:  { key: 'week',  label: 'Week',  colW: 21, before: 21, after: 130, dayLabels: 'dom' },
-  month: { key: 'month', label: 'Month', colW: 12, before: 40, after: 240, dayLabels: 'mondays' },
+  day:   { key: 'day',   label: 'Day',   colW: 102, before: 10, after: 50,  dayLabels: 'full' },
+  week:  { key: 'week',  label: 'Week',  colW: 39,  before: 21, after: 130, dayLabels: 'full' },
+  month: { key: 'month', label: 'Month', colW: 12,  before: 40, after: 240, dayLabels: 'mondays' },
 };
 
 export const ZOOM_ORDER = ['day', 'week', 'month'];
