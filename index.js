@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDb } from './server/src/db.js';
@@ -53,7 +54,16 @@ app.use('/api/auth/passkey', passkeyRoutes);
 
 // Health check (no auth)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' }) });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' }),
+    // Which front ends this server can actually serve. `v2` present at all
+    // means the running code knows about /v2; false means it is not built.
+    frontends: {
+      v1: fs.existsSync(path.join(clientDist, 'index.html')),
+      v2: hasV2Build(),
+    },
+  });
 });
 
 // Protected API routes
@@ -74,12 +84,32 @@ app.use('/api/calendar', calendarRoutes);
 const clientDist = path.join(__dirname, 'client', 'dist');
 const clientV2Dist = path.join(__dirname, 'client-v2', 'dist');
 
+const v2Index = path.join(clientV2Dist, 'index.html');
+const hasV2Build = () => fs.existsSync(v2Index);
+
 app.use('/v2', express.static(clientV2Dist));
-app.get('/v2/*', (req, res, next) => {
-  res.sendFile(path.join(clientV2Dist, 'index.html'), (err) => {
-    // Not built yet — fall through rather than serving a blank page.
-    if (err) next();
-  });
+
+// Both paths are registered: '/v2/*' does not match a bare '/v2', and when the
+// build is missing express.static is not there to redirect it either.
+app.get(['/v2', '/v2/*'], (req, res) => {
+  // Never fall through to the v1 catch-all. Doing so answers 200 with the v1
+  // app, which is indistinguishable from "/v2 redirected me back to v1" and
+  // hides the real cause — that the V2 bundle was never built here.
+  if (!hasV2Build()) {
+    return res.status(503).type('html').send(`<!doctype html>
+<meta charset="utf-8"><title>V2 not built</title>
+<style>body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+max-width:38rem;margin:14vh auto;padding:0 1.5rem;background:#0e1117;color:#e6edf6}
+code{background:#1a212c;padding:.15em .4em;border-radius:4px;font-size:.92em}
+a{color:#4c8dff}</style>
+<h1>V2 UI is not built on this server</h1>
+<p>The server is running current code — this route exists — but
+<code>client-v2/dist</code> is missing, so there is nothing to serve.</p>
+<p>Build it where the app is deployed:</p>
+<p><code>npm install &amp;&amp; npm run build</code></p>
+<p>The v1 UI is unaffected: <a href="/">open it</a>.</p>`);
+  }
+  res.sendFile(v2Index);
 });
 
 app.use(express.static(clientDist));
