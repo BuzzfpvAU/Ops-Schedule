@@ -52,7 +52,11 @@ function buildClient(name) {
   // signal than the node_modules directory existing.
   if (!existsSync(join(cwd, 'node_modules', 'vite'))) {
     console.log(`build: ${name} dependencies missing — installing`);
-    run(npm, ['install', '--no-audit', '--no-fund'], cwd);
+    // --include=dev because the deploy host installs production-only (it runs
+    // with NODE_ENV=production), which silently skips devDependencies and
+    // leaves the build with no bundler. Build tooling is a build-time need
+    // regardless of which section of package.json it is listed under.
+    run(npm, ['install', '--no-audit', '--no-fund', '--include=dev'], cwd);
   }
   console.log(`build: ${name}`);
   run(npm, ['run', 'build'], cwd);
