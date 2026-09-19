@@ -161,7 +161,10 @@ export default function EquipmentView({
 
   const renderBar = (bar) => {
     const job = bar.run.sample;
-    const label = `${job.job_code}${bar.span > 6 ? ` · ${job.job_name}` : ''}`;
+    // Always the full text, truncated by CSS. Gating on day count was wrong:
+    // the same span is 204px at day zoom and 72px at month zoom, so it hid
+    // names that fit and showed names that did not.
+    const label = `${job.job_code} · ${job.job_name}`;
     return (
       <div
         className={`bar${bar.conflict ? ' is-conflict' : ''}${bar.assignment?.status === 'confirmed' ? '' : ' is-tentative'}`}

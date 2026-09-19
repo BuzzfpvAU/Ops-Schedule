@@ -267,7 +267,7 @@ export default function TeamView({
     const background = nonWork ? meta.color : (e.job_color || '#3b82f6');
     const label = nonWork
       ? (status === 'note' ? (e.notes || e.job_name || 'Note') : meta.label)
-      : `${e.job_code}${bar.span > 6 ? ` · ${e.job_name}` : ''}`;
+      : `${e.job_code} · ${e.job_name}`;
 
     return (
       <div

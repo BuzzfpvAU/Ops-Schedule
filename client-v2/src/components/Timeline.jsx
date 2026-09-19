@@ -85,6 +85,10 @@ export default function Timeline({
                       <span className="tl-dom">{d.getDate()}</span>
                     </>
                   );
+                } else if (dayLabels === 'dom') {
+                  // Date only: the weekday letter does not fit, but weekend
+                  // shading still shows where the weeks break.
+                  label = <span className="tl-dom">{d.getDate()}</span>;
                 } else if (dayLabels === 'mondays' && monday) {
                   label = <span className="tl-dom">{d.getDate()}</span>;
                 }

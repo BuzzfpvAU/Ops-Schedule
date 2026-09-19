@@ -4,7 +4,7 @@ import {
   buildBars, layoutLanes, bucketBy, conflictDays, groupByEntity, groupByJob, isWork, isQuickJob,
 } from '../src/lib/model.js';
 import {
-  addDays, diffDays, rangeOf, monthBands, windowFor, isWeekend, parseISO, isoOf, fmtRange, ZOOMS,
+  addDays, diffDays, rangeOf, monthBands, windowFor, isWeekend, parseISO, isoOf, fmtRange, ZOOMS, ZOOM_ORDER,
 } from '../src/lib/dates.js';
 
 const entry = (over) => ({
@@ -323,4 +323,39 @@ test('a window spanning a year boundary shows both years', () => {
 test('fmtRange is blank without both ends', () => {
   assert.equal(fmtRange('', '2026-01-01'), '');
   assert.equal(fmtRange('2026-01-01', null), '');
+});
+
+// ── zoom hierarchy ──
+//
+// Regression: widening the compressed levels for readability can quietly push
+// a coarser level past a finer one, which inverts the zoom control — picking
+// "Week" would show fewer days than "Day".
+
+test('each zoom level is strictly denser than the one before it', () => {
+  const order = ZOOM_ORDER.map((k) => ZOOMS[k]);
+  for (let i = 1; i < order.length; i++) {
+    assert.ok(
+      order[i].colW < order[i - 1].colW,
+      `${order[i].key} (${order[i].colW}px) must be narrower than ${order[i - 1].key} (${order[i - 1].colW}px)`
+    );
+  }
+});
+
+test('each zoom level spans more days than the one before it', () => {
+  const span = (z) => z.before + z.after;
+  const order = ZOOM_ORDER.map((k) => ZOOMS[k]);
+  for (let i = 1; i < order.length; i++) {
+    assert.ok(
+      span(order[i]) > span(order[i - 1]),
+      `${order[i].key} must cover a longer window than ${order[i - 1].key}`
+    );
+  }
+});
+
+test('every zoom column is wide enough for a two-digit date', () => {
+  // Below roughly 10px a date cannot render, which is what made the old
+  // 4px month view unreadable.
+  for (const key of ZOOM_ORDER) {
+    assert.ok(ZOOMS[key].colW >= 10, `${key} colW ${ZOOMS[key].colW}px is too narrow to label`);
+  }
 });
