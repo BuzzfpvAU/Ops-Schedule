@@ -6,7 +6,7 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "postinstall": "cd client && npm install && cd ../client-v2 && npm install && cd ../server && npm install",
+    "postinstall": "cd client && npm install && cd ../server && npm install",
     "build": "node scripts/build-clients.mjs",
     "start": "node index.js",
     "dev:server": "cd server && npm run dev",
