@@ -16,3 +16,6 @@ tracker/.venv/
 # Local agent state
 .claude/
 .superpowers/
+
+# Generated at build time on the deploy host
+client-v2/.build-error.log

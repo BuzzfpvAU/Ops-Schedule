@@ -85,6 +85,7 @@ const clientDist = path.join(__dirname, 'client', 'dist');
 const clientV2Dist = path.join(__dirname, 'client-v2', 'dist');
 
 const v2Index = path.join(clientV2Dist, 'index.html');
+const v2BuildError = path.join(clientV2Dist, '..', '.build-error.log');
 const hasV2Build = () => fs.existsSync(v2Index);
 
 app.use('/v2', express.static(clientV2Dist));
@@ -96,17 +97,41 @@ app.get(['/v2', '/v2/*'], (req, res) => {
   // app, which is indistinguishable from "/v2 redirected me back to v1" and
   // hides the real cause — that the V2 bundle was never built here.
   if (!hasV2Build()) {
+    // The host's build log is not reachable from here, so the build script
+    // leaves its error next to the client and it is shown below. Whether that
+    // file exists is itself the diagnosis: present means the build ran and
+    // failed; absent means it never ran, which points at the host invoking a
+    // different build command rather than at the code.
+    let detail = '';
+    try {
+      detail = fs.readFileSync(v2BuildError, 'utf8');
+    } catch {
+      detail = '';
+    }
+    const escape = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const diagnosis = detail
+      ? `<h2>The build ran and failed</h2>
+         <p>This is the error from the last deploy:</p>
+         <pre>${escape(detail.slice(0, 4000))}</pre>`
+      : `<h2>The build never ran here</h2>
+         <p>No build error was recorded, so <code>scripts/build-clients.mjs</code>
+         did not run on this server. The deploy is most likely invoking a build
+         command other than <code>npm run build</code> — check the build command
+         configured for the app.</p>`;
     return res.status(503).type('html').send(`<!doctype html>
 <meta charset="utf-8"><title>V2 not built</title>
 <style>body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-max-width:38rem;margin:14vh auto;padding:0 1.5rem;background:#0e1117;color:#e6edf6}
+max-width:52rem;margin:8vh auto;padding:0 1.5rem;background:#0e1117;color:#e6edf6}
 code{background:#1a212c;padding:.15em .4em;border-radius:4px;font-size:.92em}
-a{color:#4c8dff}</style>
+pre{background:#0a0d12;border:1px solid #232c3a;border-radius:7px;padding:1rem;
+overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+h1{font-size:1.3rem}h2{font-size:1rem;margin-top:1.8rem}a{color:#4c8dff}</style>
 <h1>V2 UI is not built on this server</h1>
 <p>The server is running current code — this route exists — but
 <code>client-v2/dist</code> is missing, so there is nothing to serve.</p>
-<p>Build it where the app is deployed:</p>
-<p><code>npm install &amp;&amp; npm run build</code></p>
+${diagnosis}
+<h2>To build it manually</h2>
+<p><code>cd ~/domains/taskz.id/nodejs &amp;&amp; npm run build</code></p>
 <p>The v1 UI is unaffected: <a href="/">open it</a>.</p>`);
   }
   res.sendFile(v2Index);
