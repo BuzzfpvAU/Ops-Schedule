@@ -24,6 +24,9 @@ export default function TeamView({
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [search, setSearch] = useState('');
+  // Empty means every state, so the view opens showing everyone rather than
+  // silently hiding people behind a filter nobody set.
+  const [stateFilter, setStateFilter] = useState([]);
   const [dayPanel, setDayPanel] = useState(null); // { member, date, entries }
   const [busy, setBusy] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -31,6 +34,21 @@ export default function TeamView({
   const isAdmin = !!currentUser?.isAdmin;
   const isViewer = !!currentUser?.isViewer;
   const today = todayIso();
+
+  const me = useMemo(
+    () => members.find((m) => m.id === currentUser?.memberId) || null,
+    [members, currentUser]
+  );
+  const myState = me?.location || null;
+
+  const teamSize = useMemo(() => {
+    const counts = new Map();
+    for (const m of members) {
+      const key = m.location || '';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [members]);
 
   const dayIndex = useMemo(() => {
     const m = new Map();
@@ -57,6 +75,7 @@ export default function TeamView({
     const out = [];
     for (const job of jobs) {
       if (job.archived || !job.active || isQuickJob(job)) continue;
+      if (stateFilter.length && !stateFilter.includes(job.state || 'No state')) continue;
       if (['complete', 'cancelled'].includes(job.status)) continue;
       if ((job.crew_count || 0) >= (job.crew_size || 1)) continue;
 
@@ -75,12 +94,13 @@ export default function TeamView({
     }
     return out.sort((a, z) =>
       (a.job.planned_start || '9999').localeCompare(z.job.planned_start || '9999'));
-  }, [jobs, dayIndex, windowStart, windowEnd]);
+  }, [jobs, stateFilter, dayIndex, windowStart, windowEnd]);
 
   const groups = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     const rows = members
+      .filter((m) => !stateFilter.length || stateFilter.includes(m.location || 'No state'))
       .filter((m) => !term || m.name?.toLowerCase().includes(term) || m.role?.toLowerCase().includes(term))
       .map((member) => {
         const entries = entriesByMember.get(member.id) || [];
@@ -104,14 +124,26 @@ export default function TeamView({
         return { id: member.id, member, bars: laid.bars, lanes: laid.lanes, workDays };
       });
 
-    const buckets = bucketBy(rows, (r) => r.member.location, STATES, 'No state').map((b) => ({
+    // Your own state leads, so you and the people you work with are what the
+    // tab opens on; the rest follow in the usual order.
+    const order = myState ? [myState, ...STATES.filter((st) => st !== myState)] : STATES;
+
+    const buckets = bucketBy(rows, (r) => r.member.location, order, 'No state').map((b) => ({
       key: b.key,
       label: b.key,
-      rows: b.rows.sort((a, z) => (a.member.name || '').localeCompare(z.member.name || '')),
+      rows: b.rows.sort((a, z) => {
+        // You first inside your own group — everyone else alphabetical.
+        if (a.member.id === currentUser?.memberId) return -1;
+        if (z.member.id === currentUser?.memberId) return 1;
+        return (a.member.name || '').localeCompare(z.member.name || '');
+      }),
     }));
 
     if (unallocatedRows.length) {
-      buckets.unshift({
+      // Sits after your team rather than above it, so you are genuinely the
+      // first line, while work needing crew stays high enough to notice.
+      const at = myState && buckets[0]?.key === myState ? 1 : 0;
+      buckets.splice(at, 0, {
         key: UNALLOCATED,
         label: 'Unallocated work',
         rows: unallocatedRows,
@@ -119,7 +151,7 @@ export default function TeamView({
       });
     }
     return buckets;
-  }, [members, entriesByMember, unallocatedRows, search]);
+  }, [members, entriesByMember, unallocatedRows, search, stateFilter, myState, currentUser]);
 
   const canEdit = (memberId) => !isViewer && (isAdmin || memberId === currentUser?.memberId);
 
@@ -191,15 +223,24 @@ export default function TeamView({
       );
     }
     const m = row.member;
+    const isMe = m.id === currentUser?.memberId;
+    // Your own row names the team you are in and how big it is; everyone
+    // else's state is already the heading they sit under.
+    let sub = m.role || m.location;
+    if (isMe) {
+      const state = m.location || 'No state';
+      const n = teamSize.get(m.location || '') || 1;
+      sub = [m.role, `${state} · ${n} ${n === 1 ? 'person' : 'people'}`].filter(Boolean).join(' · ');
+    }
     return (
       <>
         <Avatar name={m.name} color={m.color} />
         <span className="rl">
           <span className="rl-top">
             <span className="rl-name">{m.name}</span>
-            {m.id === currentUser?.memberId && <span className="tag tag-mute">you</span>}
+            {isMe && <span className="tag tag-mute">you</span>}
           </span>
-          <span className="rl-sub">{m.role || m.location}</span>
+          <span className="rl-sub">{sub}</span>
         </span>
         <span className="rl-sub" style={{ flex: 'none' }}>{row.workDays ? `${row.workDays}d` : ''}</span>
       </>
@@ -242,6 +283,20 @@ export default function TeamView({
 
   const peopleCount = groups.reduce((n, g) => n + (g.key === UNALLOCATED ? 0 : g.rows.length), 0);
 
+  const availableStates = useMemo(() => {
+    const present = new Set(members.map((m) => m.location || 'No state'));
+    for (const j of jobs || []) {
+      if (j.archived || !j.active || isQuickJob(j)) continue;
+      if ((j.crew_count || 0) < (j.crew_size || 1)) present.add(j.state || 'No state');
+    }
+    const known = STATES.filter((st) => present.has(st));
+    const rest = [...present].filter((st) => !STATES.includes(st)).sort();
+    return [...known, ...rest];
+  }, [members, jobs]);
+
+  const toggleState = (st) =>
+    setStateFilter((cur) => (cur.includes(st) ? cur.filter((x) => x !== st) : [...cur, st]));
+
   return (
     <>
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
@@ -253,6 +308,29 @@ export default function TeamView({
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
+
+        <div className="chips" role="group" aria-label="Filter by state">
+          <button
+            type="button"
+            className={`chip${stateFilter.length === 0 ? ' is-active' : ''}`}
+            onClick={() => setStateFilter([])}
+          >
+            All
+          </button>
+          {availableStates.map((st) => (
+            <button
+              key={st}
+              type="button"
+              className={`chip${stateFilter.includes(st) ? ' is-active' : ''}${st === myState ? ' is-mine' : ''}`}
+              onClick={() => toggleState(st)}
+              title={st === myState ? `${st} — your state` : st}
+              aria-pressed={stateFilter.includes(st)}
+            >
+              {st}
+            </button>
+          ))}
+        </div>
+
         <div className="toolbar-spacer" />
         <div className="legend">
           {['confirmed', 'tentative', 'leave', 'toil', 'unavailable'].map((k) => (

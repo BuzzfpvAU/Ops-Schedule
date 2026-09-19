@@ -819,3 +819,43 @@ input, select, textarea { font: inherit; }
   .tab .tab-text { display: none; }
   .legend { display: none; }
 }
+
+/* ── Filter chips ────────────────────────────────────────────────────── */
+
+.chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.chip:hover { background: var(--line-soft); color: var(--text); }
+.chip.is-active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Your own state stays identifiable even when it is not the active filter. */
+.chip.is-mine::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 5px;
+  vertical-align: middle;
+  opacity: 0.65;
+}
