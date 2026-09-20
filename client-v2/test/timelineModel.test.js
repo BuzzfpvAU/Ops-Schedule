@@ -4,7 +4,9 @@ import {
   buildBars, layoutLanes, bucketBy, conflictDays, groupByEntity, groupByJob, isWork, isQuickJob, orderStatesFor,
 } from '../src/lib/model.js';
 import {
-  addDays, diffDays, rangeOf, monthBands, windowFor, isWeekend, parseISO, isoOf, fmtRange, ZOOMS, ZOOM_ORDER, PAST_DAYS,
+  addDays, diffDays, rangeOf, monthBands, isWeekend, parseISO, isoOf, fmtRange,
+  ZOOMS, ZOOM_ORDER, PAST_DAYS, INITIAL_BACK_DAYS, initialWindow, extendWindow,
+  clampColW, zoomIn, zoomOut, labelModeFor, MIN_COL_W, MAX_COL_W,
 } from '../src/lib/dates.js';
 
 const entry = (over) => ({
@@ -58,13 +60,6 @@ test('isWeekend flags Saturday and Sunday only', () => {
   assert.equal(isWeekend('2026-09-21'), false);
 });
 
-test('every zoom level produces a window containing its anchor', () => {
-  for (const key of Object.keys(ZOOMS)) {
-    const w = windowFor(key, '2026-09-19');
-    assert.ok(w.start < '2026-09-19', `${key} starts before anchor`);
-    assert.ok(w.end > '2026-09-19', `${key} ends after anchor`);
-  }
-});
 
 // ── bars ──
 
@@ -341,16 +336,6 @@ test('each zoom level is strictly denser than the one before it', () => {
   }
 });
 
-test('each zoom level spans more days than the one before it', () => {
-  const span = (z) => z.before + z.after;
-  const order = ZOOM_ORDER.map((k) => ZOOMS[k]);
-  for (let i = 1; i < order.length; i++) {
-    assert.ok(
-      span(order[i]) > span(order[i - 1]),
-      `${order[i].key} must cover a longer window than ${order[i - 1].key}`
-    );
-  }
-});
 
 test('every zoom column is wide enough for a two-digit date', () => {
   // Below roughly 10px a date cannot render, which is what made the old
@@ -395,31 +380,106 @@ test('ordering feeds bucketBy so your state group comes first', () => {
 
 // ── window leans future ──
 
-test('every zoom carries only a few days of history', () => {
-  for (const key of ZOOM_ORDER) {
-    assert.equal(ZOOMS[key].before, PAST_DAYS, `${key} should start ${PAST_DAYS} days back`);
-    assert.ok(PAST_DAYS <= 7, 'the past window should stay small');
+
+
+
+
+// ── zoom is density only ──
+
+test('presets stay strictly ordered by width', () => {
+  const widths = ZOOM_ORDER.map((k) => ZOOMS[k].colW);
+  for (let i = 1; i < widths.length; i++) {
+    assert.ok(widths[i] < widths[i - 1], `${ZOOM_ORDER[i]} must be narrower than ${ZOOM_ORDER[i - 1]}`);
   }
 });
 
-test('every zoom spends far more of its window on the future', () => {
+test('zoom steps move, and stop at the limits', () => {
+  assert.ok(zoomIn(50) > 50);
+  assert.ok(zoomOut(50) < 50);
+  assert.equal(clampColW(MAX_COL_W + 500), MAX_COL_W);
+  assert.equal(clampColW(-10), MIN_COL_W);
+  assert.equal(zoomIn(MAX_COL_W), MAX_COL_W, 'zooming in at the limit stays put');
+  assert.equal(zoomOut(MIN_COL_W), MIN_COL_W, 'zooming out at the limit stays put');
+});
+
+test('repeated zooming terminates at the bounds rather than drifting', () => {
+  let w = 40;
+  for (let i = 0; i < 100; i++) w = zoomIn(w);
+  assert.equal(w, MAX_COL_W);
+  for (let i = 0; i < 100; i++) w = zoomOut(w);
+  assert.equal(w, MIN_COL_W);
+});
+
+test('label density follows width, not a preset name', () => {
+  assert.equal(labelModeFor(ZOOMS.day.colW), 'full');
+  assert.equal(labelModeFor(ZOOMS.week.colW), 'full');
+  assert.equal(labelModeFor(ZOOMS.month.colW), 'mondays');
+  assert.equal(labelModeFor(20), 'dom');
+  assert.equal(labelModeFor(MIN_COL_W), 'none');
+});
+
+test('every preset is wide enough to carry a label', () => {
   for (const key of ZOOM_ORDER) {
-    const z = ZOOMS[key];
-    assert.ok(z.after > z.before * 10, `${key} should lean future (${z.before} back, ${z.after} forward)`);
+    assert.notEqual(labelModeFor(ZOOMS[key].colW), 'none', `${key} would show no dates at all`);
   }
 });
 
-test('a column index means the same date at every zoom', () => {
-  // This is what lets a zoom change hold its position instead of jumping.
-  const anchor = '2026-09-20';
-  const starts = ZOOM_ORDER.map((k) => windowFor(k, anchor).start);
-  assert.equal(new Set(starts).size, 1, `windows start on different dates: ${starts.join(', ')}`);
+// ── the window is independent of zoom ──
+
+test('more history is loaded than is shown, so back-scroll can trigger', () => {
+  assert.ok(
+    INITIAL_BACK_DAYS > PAST_DAYS,
+    'a window starting at the visible edge fires no scroll event to extend from'
+  );
 });
 
-test('today sits PAST_DAYS columns into the window', () => {
-  const anchor = '2026-09-20';
-  for (const key of ZOOM_ORDER) {
-    const days = rangeOf(windowFor(key, anchor).start, windowFor(key, anchor).end);
-    assert.equal(days.indexOf(anchor), PAST_DAYS, `${key} puts today at the wrong index`);
+test('the opening window leans towards the future', () => {
+  const w = initialWindow('2026-09-20');
+  const days = rangeOf(w.start, w.end);
+  const idx = days.indexOf('2026-09-20');
+  assert.equal(idx, INITIAL_BACK_DAYS);
+  assert.ok(days.length - idx > idx, 'more of the window should be ahead than behind');
+});
+
+test('extending grows only the edge asked for', () => {
+  const w = initialWindow('2026-09-20');
+  const back = extendWindow(w, -1, '2026-09-20');
+  assert.ok(back.start < w.start, 'start moves earlier');
+  assert.equal(back.end, w.end, 'end is untouched');
+
+  const fwd = extendWindow(w, 1, '2026-09-20');
+  assert.ok(fwd.end > w.end, 'end moves later');
+  assert.equal(fwd.start, w.start, 'start is untouched');
+});
+
+test('extending back repeatedly stops at the cap', () => {
+  const today = '2026-09-20';
+  let w = initialWindow(today);
+  for (let i = 0; i < 500; i++) w = extendWindow(w, -1, today);
+  assert.equal(extendWindow(w, -1, today), w, 'at the cap it returns the same reference');
+  assert.ok(w.start > '2019-01-01', 'the cap actually bounds how far back it goes');
+});
+
+test('extending forward repeatedly stops at its cap', () => {
+  const today = '2026-09-20';
+  let w = initialWindow(today);
+  for (let i = 0; i < 500; i++) w = extendWindow(w, 1, today);
+  assert.equal(extendWindow(w, 1, today), w);
+});
+
+test('a window extended both ways still contains today', () => {
+  const today = '2026-09-20';
+  let w = initialWindow(today);
+  for (let i = 0; i < 5; i++) {
+    w = extendWindow(w, -1, today);
+    w = extendWindow(w, 1, today);
   }
+  assert.ok(w.start <= today && today <= w.end);
+});
+
+test('extending reaches years out, which the old fixed window could not', () => {
+  const today = '2026-09-20';
+  let w = initialWindow(today);
+  for (let i = 0; i < 8; i++) w = extendWindow(w, 1, today);
+  assert.ok(w.end > '2028-01-01', `only reached ${w.end}`);
 });

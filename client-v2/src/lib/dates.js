@@ -81,30 +81,83 @@ export function rangeOf(startIso, endIso) {
 // Columns are always one day wide in the data model — zoom only changes how
 // many pixels a day gets, so bar geometry stays identical at every level.
 
-// Widths are the readability budget: every level is 3x its original width,
-// which is what made the compressed levels legible. Day leading at 102px is
-// what lets week take its full 3x (39px) without overtaking it — at day's
-// original 34px, a 3x week would have inverted the zoom control.
-//
-// `before` is deliberately the same tiny number at every level. A schedule is
-// about what is coming, so the window carries just enough history for context
-// and spends the rest on the future. Keeping it identical across levels also
-// means column index 0 is the same date at every zoom, which is what lets a
-// zoom change hold its position instead of jumping.
-export const PAST_DAYS = 3;
+// ── Zoom ────────────────────────────────────────────────────────────────
+// Zoom is density only: how many pixels one day gets. It deliberately says
+// nothing about which dates are loaded — that is the window's job, and the two
+// used to be welded together, which is why changing zoom moved you in time and
+// why you could not scroll past the edges.
 
+export const MIN_COL_W = 5;
+export const MAX_COL_W = 160;
+const ZOOM_STEP = 1.35;
+
+export function clampColW(w) {
+  return Math.min(MAX_COL_W, Math.max(MIN_COL_W, Math.round(w)));
+}
+
+export const zoomIn = (w) => clampColW(w * ZOOM_STEP);
+export const zoomOut = (w) => clampColW(w / ZOOM_STEP);
+
+/** Named presets. These are shortcuts to a width, not modes. */
 export const ZOOMS = {
-  day:   { key: 'day',   label: 'Day',   colW: 102, before: PAST_DAYS, after: 60,  dayLabels: 'full' },
-  week:  { key: 'week',  label: 'Week',  colW: 39,  before: PAST_DAYS, after: 150, dayLabels: 'full' },
-  month: { key: 'month', label: 'Month', colW: 12,  before: PAST_DAYS, after: 280, dayLabels: 'mondays' },
+  day:   { key: 'day',   label: 'Day',   colW: 102 },
+  week:  { key: 'week',  label: 'Week',  colW: 39 },
+  month: { key: 'month', label: 'Month', colW: 12 },
 };
 
 export const ZOOM_ORDER = ['day', 'week', 'month'];
 
-/** The visible window for a zoom level, anchored on a date. */
-export function windowFor(zoomKey, anchorIso) {
-  const z = ZOOMS[zoomKey] || ZOOMS.day;
-  return { start: addDays(anchorIso, -z.before), end: addDays(anchorIso, z.after) };
+/**
+ * How much of a date a column can carry, decided by its real width rather
+ * than by which preset happens to be selected — the width is now continuous,
+ * so a preset name no longer describes it.
+ */
+export function labelModeFor(colW) {
+  if (colW >= 34) return 'full';    // weekday name over the date
+  if (colW >= 16) return 'dom';     // date on every column
+  if (colW >= 6) return 'mondays';  // date on Mondays only
+  return 'none';
+}
+
+// ── Window ──────────────────────────────────────────────────────────────
+// A schedule is about what is coming, so the window opens with just enough
+// history for context. It then grows in both directions as you scroll, up to
+// a cap that only exists to stop runaway memory.
+
+// What you SEE before today when a view opens.
+export const PAST_DAYS = 3;
+// What is LOADED before today. Deliberately more than is shown: if the window
+// began exactly at the left edge of the viewport, scrolling further back would
+// fire no scroll event, so the timeline could never ask for more history.
+export const INITIAL_BACK_DAYS = 45;
+export const INITIAL_FORWARD_DAYS = 120;
+export const EXTEND_DAYS = 90;
+export const MAX_BACK_DAYS = 365 * 5;
+export const MAX_FORWARD_DAYS = 365 * 5;
+
+export function initialWindow(anchorIso) {
+  return {
+    start: addDays(anchorIso, -INITIAL_BACK_DAYS),
+    end: addDays(anchorIso, INITIAL_FORWARD_DAYS),
+  };
+}
+
+/**
+ * Grow the window one chunk in `dir` (-1 past, +1 future), stopping at the
+ * cap. Returns the same object when there is nowhere left to go, so callers
+ * can treat an unchanged reference as "already at the limit".
+ */
+export function extendWindow(win, dir, todayIso) {
+  if (dir < 0) {
+    const limit = addDays(todayIso, -MAX_BACK_DAYS);
+    if (win.start <= limit) return win;
+    const next = addDays(win.start, -EXTEND_DAYS);
+    return { ...win, start: next < limit ? limit : next };
+  }
+  const limit = addDays(todayIso, MAX_FORWARD_DAYS);
+  if (win.end >= limit) return win;
+  const next = addDays(win.end, EXTEND_DAYS);
+  return { ...win, end: next > limit ? limit : next };
 }
 
 /**

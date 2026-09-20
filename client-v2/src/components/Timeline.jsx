@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { DOW, PAST_DAYS, monthBands, isWeekend, parseISO, today as todayIso } from '../lib/dates.js';
+import { DOW, PAST_DAYS, diffDays, monthBands, isWeekend, parseISO, today as todayIso } from '../lib/dates.js';
 
 // ── Timeline ────────────────────────────────────────────────────────────
 // The Gantt engine shared by all three views. One scroll container holds
@@ -32,7 +32,8 @@ export default function Timeline({
   dayLabels = 'full',
   emptyMessage = 'Nothing to show in this window.',
   scrollRef,
-  todayTick = 0,
+  scrollCmd,
+  onReachEdge,
 }) {
   const innerRef = useRef(null);
   const ref = scrollRef || innerRef;
@@ -46,49 +47,83 @@ export default function Timeline({
   const posRef = useRef({ todayIdx, colW });
   posRef.current = { todayIdx, colW };
 
-  // Open with only a few days of history on screen: a schedule is about what
-  // is coming, and the old centring spent a third of the viewport on the past.
+  // The day index sitting at the left edge. Tracked as an index rather than a
+  // pixel offset because pixels stop meaning the same thing the moment colW
+  // changes — and because the browser clamps scrollLeft when the content
+  // shrinks, so by the time a layout effect runs the pixel value has already
+  // lost the information we needed.
+  const leadRef = useRef(0);
+
+  const scrollToIndex = (idx) => {
+    const el = ref.current;
+    if (!el) return;
+    leadRef.current = Math.max(0, idx);
+    el.scrollLeft = Math.max(0, idx * posRef.current.colW);
+  };
+
+  // Open with only a few days of history on screen. More than that is loaded,
+  // so there is somewhere to scroll back to.
   useEffect(() => {
     if (centeredRef.current || todayIdx < 0 || !ref.current) return;
-    ref.current.scrollLeft = Math.max(0, (todayIdx - PAST_DAYS) * colW);
+    scrollToIndex(todayIdx - PAST_DAYS);
     centeredRef.current = true;
   }, [todayIdx, colW, ref]);
 
-  // "Today" puts today in the leftmost column. Driven by a counter rather than
-  // the anchor date, because pressing it when the anchor is already today
-  // changes no state and would otherwise do nothing.
-  // Seeded with the current value so switching tabs does not replay the last
-  // Today press: a freshly mounted view should open on its own terms, showing
-  // the few past days, not jump to wherever Today last put another tab.
-  const lastTickRef = useRef(todayTick);
+  // Today and the paging arrows arrive as commands rather than state, because
+  // pressing them may change nothing else and still has to move the view.
+  // Seeded with the current nonce so switching tabs does not replay the last
+  // one: a freshly mounted view should open on its own terms.
+  const lastCmdRef = useRef(scrollCmd?.nonce || 0);
   useEffect(() => {
-    if (todayTick === lastTickRef.current) return;
-    lastTickRef.current = todayTick;
-    const { todayIdx: idx, colW: w } = posRef.current;
-    if (idx < 0 || !ref.current) return;
-    ref.current.scrollLeft = Math.max(0, idx * w);
-  }, [todayTick, ref]);
-
-  // Hold the date under the left edge when the zoom changes. Without this the
-  // pixel offset is kept as-is, so switching day to month jumps months away.
-  // Safe because every zoom starts the same number of days before today, so a
-  // column index means the same date at all of them.
-  const prevColW = useRef(colW);
-  useLayoutEffect(() => {
+    const cmd = scrollCmd;
+    if (!cmd || cmd.nonce === lastCmdRef.current) return;
+    lastCmdRef.current = cmd.nonce;
     const el = ref.current;
-    if (!el || prevColW.current === colW) {
-      prevColW.current = colW;
-      return;
+    if (!el) return;
+    if (cmd.type === 'today') {
+      if (posRef.current.todayIdx >= 0) scrollToIndex(posRef.current.todayIdx);
+    } else if (cmd.type === 'page') {
+      // Just under a screenful, so a little context carries across the turn.
+      const stride = ((el.clientWidth - labelWidth) * 0.85) / posRef.current.colW;
+      scrollToIndex(leadRef.current + cmd.dir * stride);
     }
-    const leftDay = el.scrollLeft / prevColW.current;
-    prevColW.current = colW;
-    el.scrollLeft = leftDay * colW;
-  }, [colW, ref]);
+  }, [scrollCmd, ref, labelWidth]);
+
+  // Keep the same date under the left edge when the geometry changes: the
+  // window grows at the left as you scroll back, and zooming changes what a
+  // day is worth in pixels. Both are re-applied from the tracked index.
+  const prevGeomRef = useRef({ colW, first: days[0] });
+  useLayoutEffect(() => {
+    const prev = prevGeomRef.current;
+    const first = days[0];
+    const grew = prev.first && first && first !== prev.first;
+    const zoomed = prev.colW !== colW;
+    prevGeomRef.current = { colW, first };
+    if (!ref.current || (!grew && !zoomed)) return;
+
+    let lead = leadRef.current;
+    if (grew) {
+      const prepended = diffDays(first, prev.first);
+      if (prepended > 0) lead += prepended;
+    }
+    scrollToIndex(lead);
+  }, [colW, days, ref]);
+
+  // Ask for more dates when the scroll nears either end, and keep the leading
+  // index current for the geometry effect above.
+  const EDGE_PX = 320;
+  const handleScroll = (e) => {
+    const el = e.currentTarget;
+    leadRef.current = el.scrollLeft / posRef.current.colW;
+    if (!onReachEdge) return;
+    if (el.scrollLeft < EDGE_PX) onReachEdge(-1);
+    else if (el.scrollLeft + el.clientWidth > el.scrollWidth - EDGE_PX) onReachEdge(1);
+  };
 
   const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
 
   return (
-    <div className="tl" ref={ref} style={{ '--label-w': `${labelWidth}px`, '--col-w': `${colW}px` }}>
+    <div className="tl" ref={ref} onScroll={handleScroll} style={{ '--label-w': `${labelWidth}px`, '--col-w': `${colW}px` }}>
       <div className="tl-inner" style={{ width: labelWidth + gridW }}>
 
         {/* Header: month band over day cells */}
