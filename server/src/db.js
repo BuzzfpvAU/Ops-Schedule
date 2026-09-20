@@ -401,6 +401,30 @@ export function initDb() {
     );
   `);
 
+  // Per-day notes on a job, against one person or equipment item.
+  //
+  // Deliberately separate from schedule_entries.notes: this is an append-only
+  // log ("dispatched to KTA, tracking 12345" then "arrived KTA"), so a day can
+  // carry several entries, each keeps who wrote it and when, and nothing is
+  // overwritten. It is also independent of bookings, so a day the kit is not
+  // rostered on can still be annotated.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS job_day_notes (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      text TEXT NOT NULL,
+      author_id TEXT DEFAULT '',
+      author_name TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+      FOREIGN KEY (entity_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_day_notes_job ON job_day_notes(job_id, date);
+    CREATE INDEX IF NOT EXISTS idx_job_day_notes_cell ON job_day_notes(job_id, entity_id, date);
+  `);
+
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`
     CREATE TABLE IF NOT EXISTS equipment_locations (

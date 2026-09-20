@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
-import { Drawer, Section, KV } from './ui.jsx';
-import { JOB_STATUSES, STATES, getJobCard } from '../api.js';
+import { JOB_STATUSES, STATES } from '../api.js';
 import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor } from '../lib/model.js';
-import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js';
+import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
 
 // ── View 1: jobs on a timeline, grouped by the state managing them ──────
 //
@@ -12,10 +11,8 @@ import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js'
 // really booked — draws solid on top. Where they disagree, the gap is the
 // point of the view.
 
-export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, showToast }) {
+export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, showToast }) {
   const [collapsed, setCollapsed] = useState({});
-  const [openJob, setOpenJob] = useState(null);
-  const [card, setCard] = useState(null);
   const [statusFilter, setStatusFilter] = useState('open');
 
   const dayIndex = useMemo(() => {
@@ -97,15 +94,9 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     }));
   }, [jobs, entriesByJob, statusFilter, myState, dayIndex, windowStart, windowEnd]);
 
-  const openCard = async (job) => {
-    setOpenJob(job);
-    setCard(null);
-    try {
-      setCard(await getJobCard(job.id));
-    } catch (e) {
-      showToast?.(e.message, 'error');
-    }
-  };
+  // Drill into the single-project view; the old summary drawer is superseded
+  // by it, since that view shows the same crew and kit plus the day log.
+  const openCard = (job) => onOpenProject?.(job.id);
 
   const renderLabel = (row) => {
     const job = row.job;
@@ -209,59 +200,6 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         emptyMessage="No jobs fall inside this date window."
       />
 
-      {openJob && (
-        <Drawer
-          title={`${openJob.code} — ${openJob.name}`}
-          subtitle={openJob.client || (JOB_STATUSES[openJob.status] || {}).label}
-          onClose={() => { setOpenJob(null); setCard(null); }}
-        >
-          <Section title="Overview">
-            <KV label="Status">{(JOB_STATUSES[openJob.status] || {}).label || openJob.status}</KV>
-            <KV label="State">{openJob.state || '—'}</KV>
-            <KV label="Lead">{openJob.lead_name || '—'}</KV>
-            <KV label="Planned">
-              {openJob.planned_start
-                ? `${fmtShort(openJob.planned_start)} → ${fmtShort(openJob.planned_end || openJob.planned_start)}`
-                : 'Not set'}
-            </KV>
-            <KV label="Rostered">
-              {openJob.roster_start
-                ? `${fmtShort(openJob.roster_start)} → ${fmtShort(openJob.roster_end)}`
-                : 'Nobody booked'}
-            </KV>
-            <KV label="Crew">{`${openJob.crew_count || 0} of ${openJob.crew_size || 1}`}</KV>
-            <KV label="Site">{openJob.site_address}</KV>
-            <KV label="Description">{openJob.description}</KV>
-          </Section>
-
-          {card === null && <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>Loading crew and kit…</div>}
-
-          {card && (
-            <>
-              <Section title={`Crew (${(card.crew || []).length})`}>
-                {(card.crew || []).length === 0 && <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>Nobody rostered yet.</div>}
-                {(card.crew || []).map((c) => (
-                  <div className="entry-row" key={c.id || c.member_id || c.name}>
-                    <span className="opt-dot" style={{ background: c.color || '#475569' }} />
-                    <span className="entry-name">{c.name}</span>
-                    <span className="rl-sub">{c.days ? `${c.days}d` : ''}</span>
-                  </div>
-                ))}
-              </Section>
-
-              <Section title={`Equipment (${(card.equipment || []).length})`}>
-                {(card.equipment || []).length === 0 && <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>No kit allocated.</div>}
-                {(card.equipment || []).map((eq) => (
-                  <div className="entry-row" key={eq.id}>
-                    <span className="entry-name">{eq.equipment_name}</span>
-                    <span className={`tag ${eq.status === 'confirmed' ? 'tag-ok' : 'tag-mute'}`}>{eq.status || 'tentative'}</span>
-                  </div>
-                ))}
-              </Section>
-            </>
-          )}
-        </Drawer>
-      )}
     </>
   );
 }

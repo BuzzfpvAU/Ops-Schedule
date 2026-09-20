@@ -396,7 +396,66 @@ router.get('/:id/planner', (req, res) => {
     ORDER BY e.date, tm.name
   `).all(req.params.id);
 
-  res.json({ job, span: span_start ? { start: span_start, end: span_end } : null, window: win_start && win_end ? { start: win_start, end: win_end } : null, people, equipment, unbooked, notes });
+  // Append-only per-day log, keyed by entity + date. Independent of the
+  // roster, so a day with no booking can still carry a dispatch note.
+  const day_notes = db.prepare(`
+    SELECT n.id, n.entity_id, n.date, n.text, n.author_name, n.created_at,
+           tm.name AS entity_name, tm.is_equipment
+    FROM job_day_notes n
+    LEFT JOIN team_members tm ON tm.id = n.entity_id
+    WHERE n.job_id = ?
+    ORDER BY n.date, n.created_at
+  `).all(req.params.id);
+
+  res.json({ job, span: span_start ? { start: span_start, end: span_end } : null, window: win_start && win_end ? { start: win_start, end: win_end } : null, people, equipment, unbooked, notes, day_notes });
+});
+
+// ── Per-day job notes (append-only log) ─────────────────────────────────
+
+router.post('/:id/day-notes', (req, res) => {
+  const { entity_id, date, text } = req.body;
+  if (!entity_id || !date || !String(text || '').trim()) {
+    return res.status(400).json({ error: 'entity_id, date and text are required' });
+  }
+  if (req.user.isViewer) {
+    return res.status(403).json({ error: 'Viewers cannot add notes' });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
+  if (!req.db.prepare('SELECT 1 FROM jobs WHERE id = ?').get(req.params.id)) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  if (!req.db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(entity_id)) {
+    return res.status(404).json({ error: 'Person or equipment not found' });
+  }
+
+  const author = req.db.prepare('SELECT name FROM team_members WHERE id = ?').get(req.user.memberId);
+  const id = uuidv4();
+  req.db.prepare(`
+    INSERT INTO job_day_notes (id, job_id, entity_id, date, text, author_id, author_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, req.params.id, entity_id, date, String(text).trim(), req.user.memberId || '', author?.name || '');
+
+  res.json(req.db.prepare(`
+    SELECT n.id, n.entity_id, n.date, n.text, n.author_name, n.created_at,
+           tm.name AS entity_name, tm.is_equipment
+    FROM job_day_notes n
+    LEFT JOIN team_members tm ON tm.id = n.entity_id
+    WHERE n.id = ?
+  `).get(id));
+});
+
+// Authors can remove their own notes; admins can remove any. The log is
+// otherwise append-only — editing would defeat the point of keeping history.
+router.delete('/day-notes/:noteId', (req, res) => {
+  const note = req.db.prepare('SELECT * FROM job_day_notes WHERE id = ?').get(req.params.noteId);
+  if (!note) return res.status(404).json({ error: 'Note not found' });
+  if (!req.user.isAdmin && note.author_id !== req.user.memberId) {
+    return res.status(403).json({ error: 'You can only remove your own notes' });
+  }
+  req.db.prepare('DELETE FROM job_day_notes WHERE id = ?').run(req.params.noteId);
+  res.json({ success: true });
 });
 
 // GET readiness — per-gate workflow status for the job card

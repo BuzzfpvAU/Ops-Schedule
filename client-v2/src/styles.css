@@ -478,7 +478,10 @@ input, select, textarea { font: inherit; }
   align-items: center;
   gap: 6px;
   padding: 0 7px;
-  overflow: hidden;
+  /* clip-path rather than overflow:hidden: overflow would make this a scroll
+     container and kill the sticky label below, which is what keeps a bar
+     readable once it runs off the left of the viewport. */
+  clip-path: inset(0 round 5px);
   white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
@@ -490,7 +493,18 @@ input, select, textarea { font: inherit; }
   min-width: 0;
 }
 .bar:hover { filter: brightness(1.14); }
-.bar-text { overflow: hidden; text-overflow: ellipsis; }
+/* Sticks to the left of the viewport while its bar is still on screen, so a
+   booking that started before what you are looking at still says what it is.
+   It cannot leave the bar: a sticky element stays inside its containing box. */
+.bar-text {
+  position: sticky;
+  /* Pins just past the label column, not to the scrollport edge — sticky
+     resolves against .tl, and the label column is sitting over that edge. */
+  left: calc(var(--label-w, 0px) + 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .bar-sub { opacity: 0.75; font-weight: 500; }
 
 /* Tentative work reads as provisional: hatched rather than solid. */
@@ -858,4 +872,39 @@ input, select, textarea { font: inherit; }
   margin-right: 5px;
   vertical-align: middle;
   opacity: 0.65;
+}
+
+/* ── Day log (single project view) ───────────────────────────────────── */
+
+/* A day carrying log entries, marked under the bars so it reads without
+   opening anything. */
+.note-mark {
+  position: absolute;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--warn);
+  opacity: 0.85;
+  cursor: pointer;
+  z-index: 2;
+}
+.note-mark:hover { opacity: 1; height: 5px; }
+
+.log-entry {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 9px 11px;
+  margin-bottom: 8px;
+}
+.log-text { font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.log-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 10.5px;
+  color: var(--text-mute);
 }

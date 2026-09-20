@@ -4,6 +4,7 @@ import Login from './components/Login.jsx';
 import ProjectsView from './components/ProjectsView.jsx';
 import EquipmentView from './components/EquipmentView.jsx';
 import TeamView from './components/TeamView.jsx';
+import ProjectView from './components/ProjectView.jsx';
 import { ButtonGroup, Toasts } from './components/ui.jsx';
 import useLabelWidth from './lib/useLabelWidth.js';
 import {
@@ -26,6 +27,8 @@ export default function App() {
   const labelWidth = useLabelWidth();
 
   const [view, setView] = useState('projects');
+  // Set when drilling into a single project from the Projects view.
+  const [openProjectId, setOpenProjectId] = useState(null);
   // Density and date range are independent: zooming changes how wide a day is
   // and nothing else, and the window grows as you scroll rather than being
   // whatever the zoom level implied.
@@ -157,6 +160,15 @@ export default function App() {
     setTimeout(() => { extendingRef.current = false; }, 250);
   }, []);
 
+  // Widen the window to cover a range that is not loaded yet — used when
+  // opening a project whose dates sit outside the current view.
+  const onEnsureRange = useCallback((start, end) => {
+    setWin((w) => {
+      const next = { start: start < w.start ? start : w.start, end: end > w.end ? end : w.end };
+      return next.start === w.start && next.end === w.end ? w : next;
+    });
+  }, []);
+
   const scroll = (type, dir = 0) =>
     setScrollCmd((c) => ({ nonce: c.nonce + 1, type, dir }));
 
@@ -190,7 +202,7 @@ export default function App() {
           <button
             key={v.key}
             className={`tab${view === v.key ? ' is-active' : ''}`}
-            onClick={() => setView(v.key)}
+            onClick={() => { setView(v.key); setOpenProjectId(null); }}
           >
             <svg width="16" height="16" viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
               <path d={v.icon} />
@@ -241,8 +253,22 @@ export default function App() {
         </div>
       </div>
 
-      {view === 'projects' && (
-        <ProjectsView jobs={jobs} schedule={schedule} {...common} />
+      {view === 'projects' && !openProjectId && (
+        <ProjectsView
+          jobs={jobs}
+          schedule={schedule}
+          onOpenProject={setOpenProjectId}
+          {...common}
+        />
+      )}
+      {view === 'projects' && openProjectId && (
+        <ProjectView
+          jobId={openProjectId}
+          onBack={() => setOpenProjectId(null)}
+          currentUser={user}
+          onEnsureRange={onEnsureRange}
+          {...common}
+        />
       )}
       {view === 'equipment' && (
         <EquipmentView

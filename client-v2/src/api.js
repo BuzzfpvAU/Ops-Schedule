@@ -68,6 +68,18 @@ export const deleteScheduleEntry = (id) =>
 export const updateScheduleStatus = (entryId, status) =>
   api('/schedule/status', { method: 'PUT', body: JSON.stringify({ entry_id: entryId, status }) });
 
+// ── Single project ──
+export const getJobPlanner = (id, from, to) => {
+  const q = from && to ? `?from=${from}&to=${to}` : '';
+  return api(`/jobs/${id}/planner${q}`);
+};
+
+export const addJobDayNote = (jobId, data) =>
+  api(`/jobs/${jobId}/day-notes`, { method: 'POST', body: JSON.stringify(data) });
+
+export const deleteJobDayNote = (noteId) =>
+  api(`/jobs/day-notes/${noteId}`, { method: 'DELETE' });
+
 // ── Equipment allocation ──
 // The booking index is the one endpoint V2 adds: it maps an equipment item's
 // booked days back to the job_equipment assignment that owns them, which is

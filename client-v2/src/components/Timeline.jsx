@@ -28,12 +28,14 @@ export default function Timeline({
   onToggleGroup,
   renderLabel,
   renderBar,
+  renderOverlay,
   onCellClick,
   dayLabels = 'full',
   emptyMessage = 'Nothing to show in this window.',
   scrollRef,
   scrollCmd,
   onReachEdge,
+  focusDate,
 }) {
   const innerRef = useRef(null);
   const ref = scrollRef || innerRef;
@@ -88,6 +90,18 @@ export default function Timeline({
       scrollToIndex(leadRef.current + cmd.dir * stride);
     }
   }, [scrollCmd, ref, labelWidth]);
+
+  // Jump to a specific date once, when a caller names one — opening a single
+  // project should land on that project's dates, not wherever the shared
+  // window happened to be scrolled.
+  const lastFocusRef = useRef(null);
+  useEffect(() => {
+    if (!focusDate || focusDate === lastFocusRef.current) return;
+    const idx = days.indexOf(focusDate);
+    if (idx < 0) return;
+    lastFocusRef.current = focusDate;
+    scrollToIndex(Math.max(0, idx - PAST_DAYS));
+  }, [focusDate, days, colW]);
 
   // Keep the same date under the left edge when the geometry changes: the
   // window grows at the left as you scroll back, and zooming changes what a
@@ -240,6 +254,7 @@ export default function Timeline({
                             : undefined
                         }
                       >
+                        {renderOverlay?.(row)}
                         {(row.bars || []).map((bar, bi) => {
                           const startIdx = bar.startIdx;
                           const span = bar.span;
