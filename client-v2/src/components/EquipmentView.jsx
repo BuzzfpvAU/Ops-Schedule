@@ -16,7 +16,7 @@ const CATEGORY_ORDER = ['Drones', 'Payloads', 'Batteries', 'Survey Equip', 'Acce
 // what makes the item unavailable to another job while it is in transit.
 
 export default function EquipmentView({
-  equipment, schedule, bookings, days, zoom, labelWidth, myState, isAdmin, showToast, onChanged,
+  equipment, schedule, bookings, days, zoom, labelWidth, myState, todayTick, isAdmin, showToast, onChanged,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [byHomeBase, setByHomeBase] = useState(true);
@@ -222,6 +222,7 @@ export default function EquipmentView({
         colW={zoom.colW}
         dayLabels={zoom.dayLabels}
         labelWidth={labelWidth}
+        todayTick={todayTick}
         groups={groups}
         collapsed={collapsed}
         onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}

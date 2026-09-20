@@ -4,7 +4,7 @@ import {
   buildBars, layoutLanes, bucketBy, conflictDays, groupByEntity, groupByJob, isWork, isQuickJob, orderStatesFor,
 } from '../src/lib/model.js';
 import {
-  addDays, diffDays, rangeOf, monthBands, windowFor, isWeekend, parseISO, isoOf, fmtRange, ZOOMS, ZOOM_ORDER,
+  addDays, diffDays, rangeOf, monthBands, windowFor, isWeekend, parseISO, isoOf, fmtRange, ZOOMS, ZOOM_ORDER, PAST_DAYS,
 } from '../src/lib/dates.js';
 
 const entry = (over) => ({
@@ -391,4 +391,35 @@ test('ordering feeds bucketBy so your state group comes first', () => {
   const rows = [{ s: 'NSW' }, { s: 'WA' }, { s: 'VIC' }];
   const out = bucketBy(rows, (r) => r.s, orderStatesFor('WA', ['NSW', 'VIC', 'WA']), 'No state');
   assert.equal(out[0].key, 'WA');
+});
+
+// ── window leans future ──
+
+test('every zoom carries only a few days of history', () => {
+  for (const key of ZOOM_ORDER) {
+    assert.equal(ZOOMS[key].before, PAST_DAYS, `${key} should start ${PAST_DAYS} days back`);
+    assert.ok(PAST_DAYS <= 7, 'the past window should stay small');
+  }
+});
+
+test('every zoom spends far more of its window on the future', () => {
+  for (const key of ZOOM_ORDER) {
+    const z = ZOOMS[key];
+    assert.ok(z.after > z.before * 10, `${key} should lean future (${z.before} back, ${z.after} forward)`);
+  }
+});
+
+test('a column index means the same date at every zoom', () => {
+  // This is what lets a zoom change hold its position instead of jumping.
+  const anchor = '2026-09-20';
+  const starts = ZOOM_ORDER.map((k) => windowFor(k, anchor).start);
+  assert.equal(new Set(starts).size, 1, `windows start on different dates: ${starts.join(', ')}`);
+});
+
+test('today sits PAST_DAYS columns into the window', () => {
+  const anchor = '2026-09-20';
+  for (const key of ZOOM_ORDER) {
+    const days = rangeOf(windowFor(key, anchor).start, windowFor(key, anchor).end);
+    assert.equal(days.indexOf(anchor), PAST_DAYS, `${key} puts today at the wrong index`);
+  }
 });

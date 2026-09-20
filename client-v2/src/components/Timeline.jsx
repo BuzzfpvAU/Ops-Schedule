@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { DOW, monthBands, isWeekend, parseISO, today as todayIso } from '../lib/dates.js';
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { DOW, PAST_DAYS, monthBands, isWeekend, parseISO, today as todayIso } from '../lib/dates.js';
 
 // ── Timeline ────────────────────────────────────────────────────────────
 // The Gantt engine shared by all three views. One scroll container holds
@@ -32,6 +32,7 @@ export default function Timeline({
   dayLabels = 'full',
   emptyMessage = 'Nothing to show in this window.',
   scrollRef,
+  todayTick = 0,
 }) {
   const innerRef = useRef(null);
   const ref = scrollRef || innerRef;
@@ -41,13 +42,48 @@ export default function Timeline({
   const todayIdx = days.indexOf(today);
   const centeredRef = useRef(false);
 
-  // Bring today into view once, rather than every re-render.
+  // Read inside effects that must not re-run when these change.
+  const posRef = useRef({ todayIdx, colW });
+  posRef.current = { todayIdx, colW };
+
+  // Open with only a few days of history on screen: a schedule is about what
+  // is coming, and the old centring spent a third of the viewport on the past.
   useEffect(() => {
     if (centeredRef.current || todayIdx < 0 || !ref.current) return;
-    const el = ref.current;
-    el.scrollLeft = Math.max(0, todayIdx * colW - el.clientWidth / 3);
+    ref.current.scrollLeft = Math.max(0, (todayIdx - PAST_DAYS) * colW);
     centeredRef.current = true;
   }, [todayIdx, colW, ref]);
+
+  // "Today" puts today in the leftmost column. Driven by a counter rather than
+  // the anchor date, because pressing it when the anchor is already today
+  // changes no state and would otherwise do nothing.
+  // Seeded with the current value so switching tabs does not replay the last
+  // Today press: a freshly mounted view should open on its own terms, showing
+  // the few past days, not jump to wherever Today last put another tab.
+  const lastTickRef = useRef(todayTick);
+  useEffect(() => {
+    if (todayTick === lastTickRef.current) return;
+    lastTickRef.current = todayTick;
+    const { todayIdx: idx, colW: w } = posRef.current;
+    if (idx < 0 || !ref.current) return;
+    ref.current.scrollLeft = Math.max(0, idx * w);
+  }, [todayTick, ref]);
+
+  // Hold the date under the left edge when the zoom changes. Without this the
+  // pixel offset is kept as-is, so switching day to month jumps months away.
+  // Safe because every zoom starts the same number of days before today, so a
+  // column index means the same date at all of them.
+  const prevColW = useRef(colW);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || prevColW.current === colW) {
+      prevColW.current = colW;
+      return;
+    }
+    const leftDay = el.scrollLeft / prevColW.current;
+    prevColW.current = colW;
+    el.scrollLeft = leftDay * colW;
+  }, [colW, ref]);
 
   const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
 

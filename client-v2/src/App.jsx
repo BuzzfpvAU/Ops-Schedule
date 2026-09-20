@@ -26,6 +26,9 @@ export default function App() {
   const [view, setView] = useState('projects');
   const [zoomKey, setZoomKey] = useState('day');
   const [anchor, setAnchor] = useState(() => todayIso());
+  // Bumped on every Today press so the timeline re-scrolls even when the
+  // anchor is already today and no other state changes.
+  const [todayTick, setTodayTick] = useState(0);
 
   const [members, setMembers] = useState([]);
   const [equipment, setEquipment] = useState([]);
@@ -107,7 +110,7 @@ export default function App() {
   if (loading) return <div className="loading-screen">Loading…</div>;
   if (!user) return <Login />;
 
-  const common = { days, zoom, labelWidth, myState, showToast, onChanged: refresh };
+  const common = { days, zoom, labelWidth, myState, todayTick, showToast, onChanged: refresh };
 
   return (
     <div className="app">
@@ -145,7 +148,12 @@ export default function App() {
       <div className="toolbar">
         <div className="tgroup">
           <button onClick={() => page(-1)} title="Earlier">‹</button>
-          <button onClick={() => setAnchor(todayIso())} title="Jump back to today">Today</button>
+          <button
+            onClick={() => { setAnchor(todayIso()); setTodayTick((t) => t + 1); }}
+            title="Scroll so today is the first column"
+          >
+            Today
+          </button>
           <button onClick={() => page(1)} title="Later">›</button>
         </div>
 

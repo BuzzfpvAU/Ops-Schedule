@@ -20,7 +20,7 @@ const UNALLOCATED = '__unallocated__';
 const QUICK_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
 export default function TeamView({
-  members, jobs, schedule, days, zoom, labelWidth, myState, currentUser, showToast, onChanged,
+  members, jobs, schedule, days, zoom, labelWidth, myState, todayTick, currentUser, showToast, onChanged,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [search, setSearch] = useState('');
@@ -345,6 +345,7 @@ export default function TeamView({
         colW={zoom.colW}
         dayLabels={zoom.dayLabels}
         labelWidth={labelWidth}
+        todayTick={todayTick}
         groups={groups}
         collapsed={collapsed}
         onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}

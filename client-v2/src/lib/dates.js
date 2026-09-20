@@ -85,10 +85,18 @@ export function rangeOf(startIso, endIso) {
 // which is what made the compressed levels legible. Day leading at 102px is
 // what lets week take its full 3x (39px) without overtaking it — at day's
 // original 34px, a 3x week would have inverted the zoom control.
+//
+// `before` is deliberately the same tiny number at every level. A schedule is
+// about what is coming, so the window carries just enough history for context
+// and spends the rest on the future. Keeping it identical across levels also
+// means column index 0 is the same date at every zoom, which is what lets a
+// zoom change hold its position instead of jumping.
+export const PAST_DAYS = 3;
+
 export const ZOOMS = {
-  day:   { key: 'day',   label: 'Day',   colW: 102, before: 10, after: 50,  dayLabels: 'full' },
-  week:  { key: 'week',  label: 'Week',  colW: 39,  before: 21, after: 130, dayLabels: 'full' },
-  month: { key: 'month', label: 'Month', colW: 12,  before: 40, after: 240, dayLabels: 'mondays' },
+  day:   { key: 'day',   label: 'Day',   colW: 102, before: PAST_DAYS, after: 60,  dayLabels: 'full' },
+  week:  { key: 'week',  label: 'Week',  colW: 39,  before: PAST_DAYS, after: 150, dayLabels: 'full' },
+  month: { key: 'month', label: 'Month', colW: 12,  before: PAST_DAYS, after: 280, dayLabels: 'mondays' },
 };
 
 export const ZOOM_ORDER = ['day', 'week', 'month'];

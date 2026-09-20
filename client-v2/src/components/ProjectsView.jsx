@@ -12,7 +12,7 @@ import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js'
 // really booked — draws solid on top. Where they disagree, the gap is the
 // point of the view.
 
-export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, showToast }) {
+export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, todayTick, showToast }) {
   const [collapsed, setCollapsed] = useState({});
   const [openJob, setOpenJob] = useState(null);
   const [card, setCard] = useState(null);
@@ -199,6 +199,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         colW={zoom.colW}
         dayLabels={zoom.dayLabels}
         labelWidth={labelWidth}
+        todayTick={todayTick}
         groups={groups}
         collapsed={collapsed}
         onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}
