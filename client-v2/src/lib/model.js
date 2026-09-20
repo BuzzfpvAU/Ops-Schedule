@@ -139,6 +139,19 @@ export function isQuickJob(job) {
   return QUICK_JOB_CODES.has(code) || code.startsWith('NOTE-');
 }
 
+/**
+ * State order with the signed-in user's own state first.
+ *
+ * Every grouped view leads with the region you actually work in rather than
+ * whichever one sorts first, so the rows you care about are on screen without
+ * scrolling. Works for a state outside the known list too, since bucketBy only
+ * keeps the entries that have rows.
+ */
+export function orderStatesFor(myState, states) {
+  if (!myState) return states;
+  return [myState, ...states.filter((s) => s !== myState)];
+}
+
 /** Non-job statuses — leave, TOIL and friends are not "work". */
 export const NON_WORK = new Set(['leave', 'toil', 'unavailable', 'note']);
 

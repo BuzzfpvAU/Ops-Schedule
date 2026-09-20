@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildBars, layoutLanes, bucketBy, conflictDays, groupByEntity, groupByJob, isWork, isQuickJob,
+  buildBars, layoutLanes, bucketBy, conflictDays, groupByEntity, groupByJob, isWork, isQuickJob, orderStatesFor,
 } from '../src/lib/model.js';
 import {
   addDays, diffDays, rangeOf, monthBands, windowFor, isWeekend, parseISO, isoOf, fmtRange, ZOOMS, ZOOM_ORDER,
@@ -358,4 +358,37 @@ test('every zoom column is wide enough for a two-digit date', () => {
   for (const key of ZOOM_ORDER) {
     assert.ok(ZOOMS[key].colW >= 10, `${key} colW ${ZOOMS[key].colW}px is too narrow to label`);
   }
+});
+
+// ── state ordering ──
+
+test('your own state leads the order', () => {
+  assert.deepEqual(
+    orderStatesFor('QLD', ['NSW', 'VIC', 'QLD', 'WA']),
+    ['QLD', 'NSW', 'VIC', 'WA']
+  );
+});
+
+test('no state leaves the order untouched', () => {
+  const states = ['NSW', 'VIC', 'QLD'];
+  assert.deepEqual(orderStatesFor(null, states), states);
+  assert.deepEqual(orderStatesFor('', states), states);
+});
+
+test('a state outside the known list still leads', () => {
+  assert.deepEqual(
+    orderStatesFor('Antarctica', ['NSW', 'VIC']),
+    ['Antarctica', 'NSW', 'VIC']
+  );
+});
+
+test('the leading state is never duplicated', () => {
+  const out = orderStatesFor('WA', ['NSW', 'WA', 'VIC']);
+  assert.equal(out.filter((s) => s === 'WA').length, 1);
+});
+
+test('ordering feeds bucketBy so your state group comes first', () => {
+  const rows = [{ s: 'NSW' }, { s: 'WA' }, { s: 'VIC' }];
+  const out = bucketBy(rows, (r) => r.s, orderStatesFor('WA', ['NSW', 'VIC', 'WA']), 'No state');
+  assert.equal(out[0].key, 'WA');
 });

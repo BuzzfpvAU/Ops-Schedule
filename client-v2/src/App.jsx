@@ -35,6 +35,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState([]);
 
+  // The signed-in user's home state. Derived once here so all three views
+  // lead with the same region rather than each working it out separately.
+  const myState = useMemo(() => {
+    const me = members.find((m) => m.id === user?.memberId);
+    return me?.location || null;
+  }, [members, user]);
+
   const zoom = ZOOMS[zoomKey];
   const win = useMemo(() => windowFor(zoomKey, anchor), [zoomKey, anchor]);
   const days = useMemo(() => rangeOf(win.start, win.end), [win.start, win.end]);
@@ -100,7 +107,7 @@ export default function App() {
   if (loading) return <div className="loading-screen">Loading…</div>;
   if (!user) return <Login />;
 
-  const common = { days, zoom, labelWidth, showToast, onChanged: refresh };
+  const common = { days, zoom, labelWidth, myState, showToast, onChanged: refresh };
 
   return (
     <div className="app">

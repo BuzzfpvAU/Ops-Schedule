@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Toggle } from './ui.jsx';
 import { STATES, adjustBooking } from '../api.js';
-import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays } from '../lib/model.js';
+import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor } from '../lib/model.js';
 import { diffDays, fmtShort, fmtLong, addDays } from '../lib/dates.js';
 
 const CATEGORY_ORDER = ['Drones', 'Payloads', 'Batteries', 'Survey Equip', 'Accessories', 'Spare Parts', 'Vehicles'];
@@ -16,7 +16,7 @@ const CATEGORY_ORDER = ['Drones', 'Payloads', 'Batteries', 'Survey Equip', 'Acce
 // what makes the item unavailable to another job while it is in transit.
 
 export default function EquipmentView({
-  equipment, schedule, bookings, days, zoom, labelWidth, isAdmin, showToast, onChanged,
+  equipment, schedule, bookings, days, zoom, labelWidth, myState, isAdmin, showToast, onChanged,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [byHomeBase, setByHomeBase] = useState(true);
@@ -99,7 +99,9 @@ export default function EquipmentView({
       .filter(Boolean);
 
     const keyOf = byHomeBase ? (r) => r.item.location : (r) => r.item.equipment_category;
-    const order = byHomeBase ? STATES : CATEGORY_ORDER;
+    // Only the home-base grouping is state-based; the category grouping keeps
+    // its own fixed order, which has nothing to do with where you are.
+    const order = byHomeBase ? orderStatesFor(myState, STATES) : CATEGORY_ORDER;
     const fallback = byHomeBase ? 'No home base' : 'Uncategorised';
 
     return bucketBy(rows, keyOf, order, fallback).map((b) => ({
@@ -107,7 +109,7 @@ export default function EquipmentView({
       label: b.key,
       rows: b.rows.sort((a, z) => (a.item.name || '').localeCompare(z.item.name || '')),
     }));
-  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, dayIndex, windowStart, windowEnd]);
+  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, myState, dayIndex, windowStart, windowEnd]);
 
   const adjust = async (edge, delta) => {
     const assignment = selected?.bar?.assignment;

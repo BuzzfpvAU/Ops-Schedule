@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV } from './ui.jsx';
 import { JOB_STATUSES, STATES, getJobCard } from '../api.js';
-import { buildBars, groupByJob, bucketBy, isQuickJob } from '../lib/model.js';
+import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor } from '../lib/model.js';
 import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js';
 
 // ── View 1: jobs on a timeline, grouped by the state managing them ──────
@@ -12,7 +12,7 @@ import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js'
 // really booked — draws solid on top. Where they disagree, the gap is the
 // point of the view.
 
-export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, showToast }) {
+export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, showToast }) {
   const [collapsed, setCollapsed] = useState({});
   const [openJob, setOpenJob] = useState(null);
   const [card, setCard] = useState(null);
@@ -86,7 +86,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, s
 
     // A job's managing state — explicit on the job, else inherited from the
     // lead's base location, which is what the server already does.
-    return bucketBy(rows, (r) => r.job.state, STATES, 'No state').map((b) => ({
+    return bucketBy(rows, (r) => r.job.state, orderStatesFor(myState, STATES), 'No state').map((b) => ({
       key: b.key,
       label: b.key,
       rows: b.rows.sort((a, z) => {
@@ -95,7 +95,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, s
         return as.localeCompare(zs) || (a.job.code || '').localeCompare(z.job.code || '');
       }),
     }));
-  }, [jobs, entriesByJob, statusFilter, dayIndex, windowStart, windowEnd]);
+  }, [jobs, entriesByJob, statusFilter, myState, dayIndex, windowStart, windowEnd]);
 
   const openCard = async (job) => {
     setOpenJob(job);

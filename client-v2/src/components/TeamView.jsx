@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Avatar } from './ui.jsx';
 import { STATES, STATUSES, quickEntry, deleteScheduleEntry } from '../api.js';
-import { buildBars, layoutLanes, groupByEntity, bucketBy, isWork, isQuickJob, NON_WORK } from '../lib/model.js';
+import { buildBars, layoutLanes, groupByEntity, bucketBy, isWork, isQuickJob, orderStatesFor, NON_WORK } from '../lib/model.js';
 import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js';
 
 // ── View 3: who is working where ────────────────────────────────────────
@@ -20,7 +20,7 @@ const UNALLOCATED = '__unallocated__';
 const QUICK_STATUSES = ['note', 'toil', 'leave', 'unavailable'];
 
 export default function TeamView({
-  members, jobs, schedule, days, zoom, labelWidth, currentUser, showToast, onChanged,
+  members, jobs, schedule, days, zoom, labelWidth, myState, currentUser, showToast, onChanged,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [search, setSearch] = useState('');
@@ -34,12 +34,6 @@ export default function TeamView({
   const isAdmin = !!currentUser?.isAdmin;
   const isViewer = !!currentUser?.isViewer;
   const today = todayIso();
-
-  const me = useMemo(
-    () => members.find((m) => m.id === currentUser?.memberId) || null,
-    [members, currentUser]
-  );
-  const myState = me?.location || null;
 
   const teamSize = useMemo(() => {
     const counts = new Map();
@@ -126,7 +120,7 @@ export default function TeamView({
 
     // Your own state leads, so you and the people you work with are what the
     // tab opens on; the rest follow in the usual order.
-    const order = myState ? [myState, ...STATES.filter((st) => st !== myState)] : STATES;
+    const order = orderStatesFor(myState, STATES);
 
     const buckets = bucketBy(rows, (r) => r.member.location, order, 'No state').map((b) => ({
       key: b.key,
