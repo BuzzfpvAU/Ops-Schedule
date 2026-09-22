@@ -14,10 +14,15 @@ router.get('/', (req, res) => {
   res.json(members);
 });
 
-// GET all equipment
+// GET all equipment. Deactivated items are hidden by default, but must be
+// reachable somehow or deactivating one would strand it: nothing could list it
+// again to turn it back on.
 router.get('/equipment', (req, res) => {
+  const includeInactive = req.query.include_inactive === '1' || req.query.include_inactive === 'true';
   const equipment = req.db
-    .prepare('SELECT * FROM team_members WHERE active = 1 AND is_equipment = 1 ORDER BY sort_order, name')
+    .prepare(`SELECT * FROM team_members
+              WHERE is_equipment = 1 ${includeInactive ? '' : 'AND active = 1'}
+              ORDER BY sort_order, name`)
     .all();
   res.json(equipment);
 });
@@ -67,7 +72,7 @@ router.post('/', requireAdmin, async (req, res) => {
 // PUT update team member (admin only)
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
-    const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category } = req.body;
+    const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category, active } = req.body;
     const existing = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Team member not found' });
 
@@ -75,7 +80,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
       UPDATE team_members
       SET name = ?, role = ?, location = ?, timezone = ?, color = ?, sort_order = ?, info_url = ?,
           serial_number = ?, dimensions = ?, weight = ?, serviceable = ?, sds_url = ?, airtag_name = ?,
-          equipment_category = ?,
+          equipment_category = ?, active = ?,
           updated_at = datetime('now', '+10 hours')
       WHERE id = ?
     `).run(
@@ -93,6 +98,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
       sds_url ?? existing.sds_url ?? '',
       airtag_name ?? existing.airtag_name ?? '',
       equipment_category ?? existing.equipment_category ?? '',
+      active !== undefined ? (active ? 1 : 0) : (existing.active ?? 1),
       req.params.id
     );
 

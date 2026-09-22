@@ -22,6 +22,10 @@ export const JOB_STATUSES = {
 
 export const STATES = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'NT', 'ACT', 'Processing', 'Other'];
 
+export const EQUIPMENT_CATEGORIES = [
+  'Drones', 'Payloads', 'Batteries', 'Survey Equip', 'Accessories', 'Spare Parts', 'Vehicles',
+];
+
 async function api(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
@@ -45,7 +49,11 @@ export const authLogout = () => api('/auth/logout', { method: 'POST' });
 
 // ── Reference data ──
 export const getTeamMembers = () => api('/team-members');
-export const getEquipment = () => api('/team-members/equipment');
+export const getEquipment = (includeInactive = false) =>
+  api(`/team-members/equipment${includeInactive ? '?include_inactive=1' : ''}`);
+
+export const updateEquipment = (id, data) =>
+  api(`/team-members/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const getJobs = () => api('/jobs');
 export const getJobCard = (id) => api(`/jobs/${id}`);
 

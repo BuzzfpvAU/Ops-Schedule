@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Toggle } from './ui.jsx';
-import { STATES, adjustBooking } from '../api.js';
+import { STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment } from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor } from '../lib/model.js';
 import { diffDays, fmtShort, fmtLong, addDays } from '../lib/dates.js';
 
-const CATEGORY_ORDER = ['Drones', 'Payloads', 'Batteries', 'Survey Equip', 'Accessories', 'Spare Parts', 'Vehicles'];
+const CATEGORY_ORDER = EQUIPMENT_CATEGORIES;
 
 // ── View 2: equipment availability and bookings ─────────────────────────
 //
@@ -16,13 +16,16 @@ const CATEGORY_ORDER = ['Drones', 'Payloads', 'Batteries', 'Survey Equip', 'Acce
 // what makes the item unavailable to another job while it is in transit.
 
 export default function EquipmentView({
-  equipment, schedule, bookings, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, isAdmin, showToast, onChanged,
+  equipment, schedule, bookings, days, zoom, labelWidth, myState, scrollCmd, onReachEdge,
+  isAdmin, activeFilter, onActiveFilter, showToast, onChanged,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [byHomeBase, setByHomeBase] = useState(true);
   const [onlyBooked, setOnlyBooked] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null); // { item, bar }
+  const [editing, setEditing] = useState(null); // the item whose details are open
+  const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const dayIndex = useMemo(() => {
@@ -57,6 +60,11 @@ export default function EquipmentView({
     const term = search.trim().toLowerCase();
 
     const rows = equipment
+      .filter((item) => {
+        if (activeFilter === 'active') return item.active !== 0;
+        if (activeFilter === 'inactive') return item.active === 0;
+        return true;
+      })
       .filter((item) => {
         if (!term) return true;
         return (
@@ -109,7 +117,7 @@ export default function EquipmentView({
       label: b.key,
       rows: b.rows.sort((a, z) => (a.item.name || '').localeCompare(z.item.name || '')),
     }));
-  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, myState, dayIndex, windowStart, windowEnd]);
+  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, activeFilter, myState, dayIndex, windowStart, windowEnd]);
 
   const adjust = async (edge, delta) => {
     const assignment = selected?.bar?.assignment;
@@ -137,14 +145,90 @@ export default function EquipmentView({
     }
   };
 
+  const openEditor = (item) => {
+    setEditing(item);
+    setForm({
+      name: item.name || '',
+      equipment_category: item.equipment_category || '',
+      location: item.location || '',
+      serial_number: item.serial_number || '',
+      dimensions: item.dimensions || '',
+      weight: item.weight || '',
+      info_url: item.info_url || '',
+      sds_url: item.sds_url || '',
+      airtag_name: item.airtag_name || '',
+      serviceable: item.serviceable !== 0,
+      active: item.active !== 0,
+    });
+  };
+
+  const saveEditor = async () => {
+    if (!form.name.trim()) {
+      showToast?.('A name is required', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateEquipment(editing.id, { ...form, name: form.name.trim() });
+      setEditing(null);
+      await onChanged?.();
+      showToast?.('Equipment updated', 'success');
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Deactivating from the list is the common case, so it does not require
+  // opening the editor — but it does warn when the item still has bookings,
+  // since those do not disappear with it.
+  const setActive = async (item, next, bookedDays) => {
+    if (!next && bookedDays > 0) {
+      const ok = window.confirm(
+        `${item.name} is booked on ${bookedDays} day${bookedDays === 1 ? '' : 's'} in this window.\n\n` +
+        'Marking it inactive hides it from the list but leaves those bookings in place. Continue?'
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await updateEquipment(item.id, { active: next });
+      await onChanged?.();
+      showToast?.(next ? `${item.name} reactivated` : `${item.name} marked inactive`, 'success');
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = (key, label, props = {}) => (
+    <label className="form-row" key={key}>
+      <span className="form-label">{label}</span>
+      <input
+        value={form[key]}
+        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        {...props}
+      />
+    </label>
+  );
+
   const renderLabel = (row) => {
     const item = row.item;
+    const inactive = item.active === 0;
     return (
       <>
         <span className="swatch" style={{ background: item.color || '#475569' }} />
-        <span className="rl">
+        <button
+          type="button"
+          className={`rl rl-button${inactive ? ' is-inactive' : ''}`}
+          onClick={() => openEditor(item)}
+          title="Edit this item"
+        >
           <span className="rl-top">
             <span className="rl-name">{item.name}</span>
+            {inactive && <span className="tag tag-mute">inactive</span>}
             {row.clash && <span className="tag tag-danger" title="Booked to more than one job on the same day">Clash</span>}
             {item.serviceable === 0 && <span className="tag tag-warn" title="Marked unserviceable">U/S</span>}
           </span>
@@ -153,7 +237,7 @@ export default function EquipmentView({
               .filter(Boolean)
               .join(' · ') || item.role}
           </span>
-        </span>
+        </button>
         <span className="rl-sub" style={{ flex: 'none' }}>
           {row.bookedDays ? `${row.bookedDays}d` : 'free'}
         </span>
@@ -186,6 +270,20 @@ export default function EquipmentView({
   return (
     <>
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
+        <div className="chips" role="group" aria-label="Filter by status">
+          {[['active', 'Active'], ['inactive', 'Inactive'], ['all', 'All']].map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              className={`chip${activeFilter === v ? ' is-active' : ''}`}
+              onClick={() => onActiveFilter?.(v)}
+              title={v === 'all' ? 'Everything, including items marked inactive' : `${l} equipment only`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
         <Toggle checked={byHomeBase} onChange={setByHomeBase}>Group by home base</Toggle>
         <Toggle checked={onlyBooked} onChange={setOnlyBooked}>Booked only</Toggle>
         <label className="field">
@@ -232,6 +330,91 @@ export default function EquipmentView({
         emptyMessage="No equipment matches these filters."
       />
 
+      {editing && form && (
+        <Drawer
+          title={editing.name}
+          subtitle={editing.active === 0 ? 'Inactive — hidden from the default list' : 'Equipment details'}
+          onClose={() => setEditing(null)}
+          footer={
+            <>
+              <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={busy || !isAdmin} onClick={saveEditor}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          }
+        >
+          {!isAdmin && <div className="banner banner-warn">Only admins can change equipment.</div>}
+
+          <fieldset className="form-set" disabled={!isAdmin || busy}>
+            <Section title="Identity">
+              {field('name', 'Name', { required: true })}
+              <label className="form-row">
+                <span className="form-label">Category</span>
+                <select
+                  value={form.equipment_category}
+                  onChange={(e) => setForm((f) => ({ ...f, equipment_category: e.target.value }))}
+                >
+                  <option value="">Uncategorised</option>
+                  {EQUIPMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+              <label className="form-row">
+                <span className="form-label">Home base</span>
+                <select
+                  value={form.location}
+                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                >
+                  <option value="">No home base</option>
+                  {STATES.map((st) => <option key={st} value={st}>{st}</option>)}
+                </select>
+              </label>
+              {field('serial_number', 'Serial')}
+            </Section>
+
+            <Section title="Physical">
+              {field('dimensions', 'Dimensions', { placeholder: 'e.g. 60 × 40 × 30 cm' })}
+              {field('weight', 'Weight', { placeholder: 'e.g. 12 kg' })}
+              {field('airtag_name', 'AirTag name', { placeholder: 'as it appears in Find My' })}
+            </Section>
+
+            <Section title="Links">
+              {field('info_url', 'Info / manual', { type: 'url', placeholder: 'https://…' })}
+              {field('sds_url', 'Safety data sheet', { type: 'url', placeholder: 'https://…' })}
+            </Section>
+
+            <Section title="Status">
+              <div className="opt-list">
+                <label className="opt" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.serviceable}
+                    onChange={(e) => setForm((f) => ({ ...f, serviceable: e.target.checked }))}
+                  />
+                  <span className="opt-name">Serviceable</span>
+                  <span className="opt-hint">usable right now</span>
+                </label>
+                <label className="opt" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.active}
+                    onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+                  />
+                  <span className="opt-name">Active</span>
+                  <span className="opt-hint">in the register</span>
+                </label>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-mute)', marginTop: 10, lineHeight: 1.5 }}>
+                Unserviceable kit stays in the list — it is still yours, just not
+                usable. Inactive kit leaves the default list entirely; find it
+                again with the Inactive or All filter. Existing bookings are left
+                alone either way.
+              </div>
+            </Section>
+          </fieldset>
+        </Drawer>
+      )}
+
       {selected && (
         <Drawer
           title={selected.item.name}
@@ -244,6 +427,22 @@ export default function EquipmentView({
               booking or swap in a different item.
             </div>
           )}
+
+          <Section title="Item">
+            <div className="entry-row">
+              <span className="entry-name">{selected.item.name}</span>
+              <button className="btn" disabled={busy} onClick={() => openEditor(selected.item)}>Edit</button>
+              {isAdmin && (
+                <button
+                  className={selected.item.active === 0 ? 'btn' : 'btn btn-danger'}
+                  disabled={busy}
+                  onClick={() => setActive(selected.item, selected.item.active === 0, selected.bar ? 1 : 0)}
+                >
+                  {selected.item.active === 0 ? 'Reactivate' : 'Mark inactive'}
+                </button>
+              )}
+            </div>
+          </Section>
 
           <Section title="Booking">
             <KV label="Job">{`${selected.bar.run.sample.job_code} — ${selected.bar.run.sample.job_name}`}</KV>

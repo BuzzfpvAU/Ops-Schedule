@@ -31,6 +31,9 @@ export default function App() {
   const [view, setView] = useState('projects');
   // Set when drilling into a single project from the Projects view.
   const [openProjectId, setOpenProjectId] = useState(null);
+  // Active / Inactive / All. Deactivated kit must stay reachable — otherwise
+  // turning something off would strand it with no way to list it again.
+  const [equipFilter, setEquipFilter] = useState('active');
   // Density and date range are independent: zooming changes how wide a day is
   // and nothing else, and the window grows as you scroll rather than being
   // whatever the zoom level implied.
@@ -69,11 +72,13 @@ export default function App() {
 
   // Reference data — changes rarely, loaded once per session and after edits.
   const loadReference = useCallback(async () => {
-    const [m, e, j] = await Promise.all([getTeamMembers(), getEquipment(), getJobs()]);
+    const [m, e, j] = await Promise.all([
+      getTeamMembers(), getEquipment(equipFilter !== 'active'), getJobs(),
+    ]);
     setMembers(m);
     setEquipment(e);
     setJobs(j);
-  }, []);
+  }, [equipFilter]);
 
   // What has already been fetched. The window only ever grows, so a scroll to
   // the edge needs the new slice, not the whole range again.
@@ -284,6 +289,8 @@ export default function App() {
           schedule={schedule}
           bookings={bookings}
           isAdmin={!!user.isAdmin}
+          activeFilter={equipFilter}
+          onActiveFilter={setEquipFilter}
           {...common}
         />
       )}
