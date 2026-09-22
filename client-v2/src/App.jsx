@@ -5,6 +5,7 @@ import ProjectsView from './components/ProjectsView.jsx';
 import EquipmentView from './components/EquipmentView.jsx';
 import TeamView from './components/TeamView.jsx';
 import ProjectView from './components/ProjectView.jsx';
+import Settings from './components/Settings.jsx';
 import { ButtonGroup, Toasts } from './components/ui.jsx';
 import useLabelWidth from './lib/useLabelWidth.js';
 import useHoldToSwitch from './lib/useHoldToSwitch.js';
@@ -31,6 +32,7 @@ export default function App() {
   const [view, setView] = useState('projects');
   // Set when drilling into a single project from the Projects view.
   const [openProjectId, setOpenProjectId] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
   // Active / Inactive / All. Deactivated kit must stay reachable — otherwise
   // turning something off would strand it with no way to list it again.
   const [equipFilter, setEquipFilter] = useState('active');
@@ -206,10 +208,28 @@ export default function App() {
             {user.isAdmin ? 'Admin' : user.isViewer ? 'Viewer' : 'User'}
           </span>
         </div>
+        {user.isAdmin && (
+          <button
+            className={`icon-btn${showSettings ? ' is-active' : ''}`}
+            onClick={() => setShowSettings((v) => !v)}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        )}
         <a className="icon-btn" href="/" title="Back to the classic UI" style={{ textDecoration: 'none' }}>↩</a>
         <button className="icon-btn" onClick={logout} title="Sign out">⏻</button>
       </header>
 
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} showToast={showToast} />
+      )}
+
+      {!showSettings && <>
       <nav className="tabs">
         {VIEWS.map((v) => (
           <button
@@ -303,6 +323,8 @@ export default function App() {
           {...common}
         />
       )}
+
+      </>}
 
       <Toasts toasts={toasts} />
     </div>

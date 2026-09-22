@@ -76,6 +76,10 @@ export const deleteScheduleEntry = (id) =>
 export const updateScheduleStatus = (entryId, status) =>
   api('/schedule/status', { method: 'PUT', body: JSON.stringify({ entry_id: entryId, status }) });
 
+// ── Equipment tracking (Find My) ──
+export const getEquipmentLocations = () => api('/equipment/locations');
+export const getTrackingStatus = () => api('/equipment/tracking-status');
+
 // ── Single project ──
 export const getJobPlanner = (id, from, to) => {
   const q = from && to ? `?from=${from}&to=${to}` : '';

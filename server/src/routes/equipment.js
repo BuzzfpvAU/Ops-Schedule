@@ -60,6 +60,35 @@ function resolveMember(db, { member_id, airtag_name }) {
   return null;
 }
 
+// ── GET /api/equipment/tracking-status ───────────────────────────────
+// Diagnostics for the Find My pipeline, for the settings screen. Reports
+// whether the server holds an ingest key WITHOUT ever returning it — a
+// tracker that pushes to a server with no key set gets a 401 and fails
+// silently, and that is invisible from the browser otherwise.
+router.get('/tracking-status', requireAuth, requireAdmin, (req, res) => {
+  const counts = req.db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN TRIM(COALESCE(airtag_name, '')) != '' THEN 1 ELSE 0 END) AS with_tag
+    FROM team_members WHERE is_equipment = 1 AND active = 1
+  `).get();
+
+  const pings = req.db.prepare(`
+    SELECT COUNT(*) AS total, MAX(seen_at) AS last_seen_at,
+           COUNT(DISTINCT team_member_id) AS reporting_items
+    FROM equipment_locations
+  `).get();
+
+  res.json({
+    ingest_key_configured: !!process.env.TRACKER_INGEST_KEY,
+    equipment_total: counts.total || 0,
+    equipment_with_tag: counts.with_tag || 0,
+    pings_total: pings.total || 0,
+    reporting_items: pings.reporting_items || 0,
+    last_seen_at: pings.last_seen_at || null,
+  });
+});
+
 // ── GET /api/equipment/locations ─────────────────────────────────────
 // Latest known position for every piece of equipment (nulls included).
 router.get('/locations', requireAuth, (req, res) => {
