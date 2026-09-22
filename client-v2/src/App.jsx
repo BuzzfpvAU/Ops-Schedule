@@ -7,6 +7,7 @@ import TeamView from './components/TeamView.jsx';
 import ProjectView from './components/ProjectView.jsx';
 import { ButtonGroup, Toasts } from './components/ui.jsx';
 import useLabelWidth from './lib/useLabelWidth.js';
+import useHoldToSwitch from './lib/useHoldToSwitch.js';
 import {
   getTeamMembers, getEquipment, getJobs, getSchedule, getEquipmentBookings,
 } from './api.js';
@@ -25,6 +26,7 @@ const VIEWS = [
 export default function App() {
   const { user, loading, logout } = useAuth();
   const labelWidth = useLabelWidth();
+  const hold = useHoldToSwitch(useCallback(() => { window.location.href = '/'; }, []));
 
   const [view, setView] = useState('projects');
   // Set when drilling into a single project from the Projects view.
@@ -182,8 +184,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="appbar">
-        <div className="brand">
-          Ops Schedule <span className="v2">V2</span>
+        <div
+          className="brand hold-switch"
+          ref={hold.ref}
+          {...hold.handlers}
+          title="Hold for 3 seconds to switch to the classic interface"
+        >
+          <span className="hold-label">Ops Schedule <span className="v2">V2</span></span>
+          <span className="hold-hint">Hold to switch to V1…</span>
         </div>
         <div className="appbar-spacer" />
         {busy && <span className="rl-sub">Loading…</span>}

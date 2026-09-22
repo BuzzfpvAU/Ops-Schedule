@@ -18,6 +18,7 @@ import PasskeyManager from './components/PasskeyManager.jsx';
 import { getTeamMembers, getEquipment, getJobs, getSchedule, downloadIcalMember, seedDatabase, getSeedStatus, getMyCalendarToken, calendarFeedUrl } from './api.js';
 import { generateDateRange, getInitialDateRange, extendDateRange } from './utils/dates.js';
 import useIsNarrow from './hooks/useIsNarrow.js';
+import useHoldToSwitch from './hooks/useHoldToSwitch.js';
 
 // Parse reset token once, outside component
 const initialResetToken = new URLSearchParams(window.location.search).get('token');
@@ -25,6 +26,7 @@ const initialResetToken = new URLSearchParams(window.location.search).get('token
 export default function App() {
   const { user, loading, needsSetup, logout } = useAuth();
   const isNarrow = useIsNarrow();
+  const holdToV2 = useHoldToSwitch(useCallback(() => { window.location.href = '/v2/'; }, []));
   const [authView, setAuthView] = useState('login');
 
   const [activeTab, setActiveTab] = useState('schedule');
@@ -152,7 +154,15 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Ops Schedule</h1>
+        <h1
+          className="hold-switch"
+          ref={holdToV2.ref}
+          {...holdToV2.handlers}
+          title="Hold for 3 seconds to switch to the V2 interface"
+        >
+          <span className="hold-label">Ops Schedule</span>
+          <span className="hold-hint">Hold to switch to V2…</span>
+        </h1>
         <div className="header-actions">
           {currentUser && !user.isViewer && (
             <button

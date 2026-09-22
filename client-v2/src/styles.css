@@ -908,3 +908,62 @@ input, select, textarea { font: inherit; }
   font-size: 10.5px;
   color: var(--text-mute);
 }
+
+/* ── Hold-to-switch (long-press the logo to swap interfaces) ─────────── */
+
+.hold-switch {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* Negative margin keeps the header layout unchanged while giving the
+     gesture a comfortable target. */
+  padding: 4px 9px;
+  margin: 0 -9px;
+  border-radius: 7px;
+  touch-action: manipulation;
+}
+
+/* Tint deepens as the hold progresses. */
+.hold-switch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: currentColor;
+  opacity: calc(var(--hold, 0) * 0.14);
+  pointer-events: none;
+  transition: opacity 0.12s linear;
+}
+
+/* The bar that fills over the three seconds. */
+.hold-switch::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: calc(var(--hold, 0) * 100%);
+  background: currentColor;
+  opacity: calc(var(--hold, 0) * 0.9);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.hold-label { position: relative; }
+
+/* Appears once the hold is clearly deliberate, so a normal tap stays silent.
+   Values outside 0..1 are clamped, so no JS is needed to gate it. */
+.hold-hint {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: calc((var(--hold, 0) - 0.18) * 2.2);
+  pointer-events: none;
+}
