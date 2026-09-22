@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
+import { SearchBox } from './ui.jsx';
 import { JOB_STATUSES, STATES } from '../api.js';
 import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor } from '../lib/model.js';
+import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
 
 // ── View 1: jobs on a timeline, grouped by the state managing them ──────
@@ -14,6 +16,7 @@ import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
 export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, showToast }) {
   const [collapsed, setCollapsed] = useState({});
   const [statusFilter, setStatusFilter] = useState('open');
+  const [search, setSearch] = useState('');
 
   const dayIndex = useMemo(() => {
     const m = new Map();
@@ -39,8 +42,10 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
   const entriesByJob = useMemo(() => groupByJob(schedule), [schedule]);
 
   const groups = useMemo(() => {
+    const match = makeMatcher(search);
     const visible = jobs.filter((j) => {
       if (j.archived || isQuickJob(j)) return false;
+      if (!match(j.code, j.name, j.description, j.client, j.lead_name, j.state, j.job_number)) return false;
       if (statusFilter === 'open') return !['complete', 'cancelled'].includes(j.status);
       if (statusFilter === 'all') return true;
       return j.status === statusFilter;
@@ -92,7 +97,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         return as.localeCompare(zs) || (a.job.code || '').localeCompare(z.job.code || '');
       }),
     }));
-  }, [jobs, entriesByJob, statusFilter, myState, dayIndex, windowStart, windowEnd]);
+  }, [jobs, entriesByJob, statusFilter, search, myState, dayIndex, windowStart, windowEnd]);
 
   // Drill into the single-project view; the old summary drawer is superseded
   // by it, since that view shows the same crew and kit plus the day log.
@@ -157,9 +162,19 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     );
   };
 
+  const shownCount = groups.reduce((n, g) => n + g.rows.length, 0);
+  const totalCount = jobs.filter((j) => !j.archived && !isQuickJob(j)).length;
+
   return (
     <>
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
+        <SearchBox
+          value={search}
+          onChange={setSearch}
+          placeholder="Search projects…"
+          found={shownCount}
+          total={totalCount}
+        />
         <div className="tgroup">
           {[
             ['open', 'Open'],
@@ -182,7 +197,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
             <span className="legend-key" style={{ background: 'transparent', border: '1px dashed var(--text-mute)' }} /> Planned
           </span>
         </div>
-        <span className="count-pill">{groups.reduce((n, g) => n + g.rows.length, 0)} jobs</span>
+        <span className="count-pill">{shownCount} jobs</span>
       </div>
 
       <Timeline

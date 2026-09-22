@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
-import { Drawer, Section, KV, Toggle } from './ui.jsx';
+import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
 import { STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment } from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor } from '../lib/model.js';
+import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtShort, fmtLong, addDays } from '../lib/dates.js';
 
 const CATEGORY_ORDER = EQUIPMENT_CATEGORIES;
@@ -57,7 +58,7 @@ export default function EquipmentView({
   const entriesByItem = useMemo(() => groupByEntity(schedule), [schedule]);
 
   const groups = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const match = makeMatcher(search);
 
     const rows = equipment
       .filter((item) => {
@@ -65,14 +66,10 @@ export default function EquipmentView({
         if (activeFilter === 'inactive') return item.active === 0;
         return true;
       })
-      .filter((item) => {
-        if (!term) return true;
-        return (
-          item.name?.toLowerCase().includes(term) ||
-          item.serial_number?.toLowerCase().includes(term) ||
-          item.role?.toLowerCase().includes(term)
-        );
-      })
+      .filter((item) => match(
+        item.name, item.serial_number, item.role,
+        item.equipment_category, item.location, item.airtag_name,
+      ))
       .map((item) => {
         const entries = entriesByItem.get(item.id) || [];
         // Split on job only — an item's booking is one continuous commitment
@@ -286,14 +283,13 @@ export default function EquipmentView({
 
         <Toggle checked={byHomeBase} onChange={setByHomeBase}>Group by home base</Toggle>
         <Toggle checked={onlyBooked} onChange={setOnlyBooked}>Booked only</Toggle>
-        <label className="field">
-          <input
-            type="search"
-            placeholder="Filter equipment…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
+        <SearchBox
+          value={search}
+          onChange={setSearch}
+          placeholder="Search equipment…"
+          found={totalRows}
+          total={equipment.length}
+        />
         <div className="toolbar-spacer" />
         <div className="legend">
           <span className="legend-item">

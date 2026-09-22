@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Timeline from './Timeline.jsx';
-import { Drawer, Section, KV, Avatar } from './ui.jsx';
+import { Drawer, Section, KV, Avatar, SearchBox } from './ui.jsx';
 import { STATES, STATUSES, quickEntry, deleteScheduleEntry } from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, isWork, isQuickJob, orderStatesFor, NON_WORK } from '../lib/model.js';
+import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js';
 
 // ── View 3: who is working where ────────────────────────────────────────
@@ -65,7 +66,12 @@ export default function TeamView({
   const entriesByMember = useMemo(() => groupByEntity(schedule), [schedule]);
 
   // Jobs that are planned but short of crew — the work with nobody on it.
+  // Counted before the search is applied, so the "shown of total" badge has an
+  // honest denominator.
+  const unallocatedTotalRef = useRef(0);
   const unallocatedRows = useMemo(() => {
+    const unallocatedMatch = makeMatcher(search);
+    let unallocatedTotal = 0;
     const out = [];
     for (const job of jobs) {
       if (job.archived || !job.active || isQuickJob(job)) continue;
@@ -78,6 +84,12 @@ export default function TeamView({
       const geo = clip(start, end);
       if (!geo) continue;
 
+      // Counted here, after every test that decides whether the row exists at
+      // all but before the search — so the badge's denominator is the number
+      // of rows you would see with the query cleared, not the job table.
+      unallocatedTotal += 1;
+      if (!unallocatedMatch(job.code, job.name, job.state, job.lead_name)) continue;
+
       out.push({
         id: `un-${job.id}`,
         unallocated: true,
@@ -86,16 +98,17 @@ export default function TeamView({
         bars: [{ ...geo, key: `un-${job.id}`, job, unallocated: true, lane: 0, start, end }],
       });
     }
+    unallocatedTotalRef.current = unallocatedTotal;
     return out.sort((a, z) =>
       (a.job.planned_start || '9999').localeCompare(z.job.planned_start || '9999'));
-  }, [jobs, stateFilter, dayIndex, windowStart, windowEnd]);
+  }, [jobs, stateFilter, search, dayIndex, windowStart, windowEnd]);
 
   const groups = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const match = makeMatcher(search);
 
     const rows = members
       .filter((m) => !stateFilter.length || stateFilter.includes(m.location || 'No state'))
-      .filter((m) => !term || m.name?.toLowerCase().includes(term) || m.role?.toLowerCase().includes(term))
+      .filter((m) => match(m.name, m.role, m.location))
       .map((member) => {
         const entries = entriesByMember.get(member.id) || [];
         const runs = buildBars(entries, (e) => `${e.job_id}|${e.status || 'tentative'}`);
@@ -294,14 +307,13 @@ export default function TeamView({
   return (
     <>
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
-        <label className="field">
-          <input
-            type="search"
-            placeholder="Filter people…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
+        <SearchBox
+          value={search}
+          onChange={setSearch}
+          placeholder="Search team…"
+          found={peopleCount + unallocatedRows.length}
+          total={members.length + unallocatedTotalRef.current}
+        />
 
         <div className="chips" role="group" aria-label="Filter by state">
           <button

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export function Drawer({ title, subtitle, onClose, children, footer }) {
   useEffect(() => {
@@ -89,6 +89,68 @@ export function Toasts({ toasts }) {
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.type || ''}`}>{t.message}</div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The search field used by every view, so they look and behave alike.
+ * `found` / `total` render a count only while a query is active — a count on
+ * an empty box is noise, and its absence is what makes "no matches" obvious.
+ */
+export function SearchBox({ value, onChange, placeholder, found, total, autoFocusKey }) {
+  const ref = useRef(null);
+
+  // Focus on "/" the way most list UIs do, unless you are already typing
+  // somewhere else.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      e.preventDefault();
+      ref.current?.focus();
+      ref.current?.select();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [autoFocusKey]);
+
+  const active = !!value;
+  const none = active && found === 0;
+
+  return (
+    <div className={`searchbox${none ? ' is-empty' : ''}`}>
+      <svg className="searchbox-icon" width="13" height="13" viewBox="0 0 16 16" fill="none"
+           stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14" strokeLinecap="round" />
+      </svg>
+      <input
+        ref={ref}
+        type="search"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape' && value) { e.stopPropagation(); onChange(''); } }}
+        aria-label={placeholder}
+      />
+      {active && (
+        <>
+          <span className="searchbox-count">
+            {found === 0 ? 'none' : `${found}/${total}`}
+          </span>
+          <button
+            type="button"
+            className="searchbox-clear"
+            onClick={() => { onChange(''); ref.current?.focus(); }}
+            aria-label="Clear search"
+            title="Clear (Esc)"
+          >
+            ✕
+          </button>
+        </>
+      )}
     </div>
   );
 }

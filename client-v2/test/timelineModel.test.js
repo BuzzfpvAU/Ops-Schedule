@@ -8,6 +8,7 @@ import {
   ZOOMS, ZOOM_ORDER, PAST_DAYS, INITIAL_BACK_DAYS, initialWindow, extendWindow,
   clampColW, zoomIn, zoomOut, labelModeFor, MIN_COL_W, MAX_COL_W,
 } from '../src/lib/dates.js';
+import { makeMatcher, normalise } from '../src/lib/search.js';
 
 const entry = (over) => ({
   id: 'e', team_member_id: 'm1', job_id: 'j1', date: '2026-09-10', status: 'confirmed', ...over,
@@ -482,4 +483,59 @@ test('extending reaches years out, which the old fixed window could not', () => 
   let w = initialWindow(today);
   for (let i = 0; i < 8; i++) w = extendWindow(w, 1, today);
   assert.ok(w.end > '2028-01-01', `only reached ${w.end}`);
+});
+
+// ── search ──
+
+test('an empty query matches everything', () => {
+  const match = makeMatcher('');
+  assert.equal(match('anything'), true);
+  assert.equal(match(''), true);
+  assert.equal(makeMatcher('   ')('x'), true);
+});
+
+test('matching is case and position insensitive', () => {
+  const match = makeMatcher('HUNTER');
+  assert.equal(match('Hunter Valley Corridor'), true);
+  assert.equal(match('the hunter'), true);
+  assert.equal(match('Pilbara'), false);
+});
+
+test('a query searches across every field it is given', () => {
+  const match = makeMatcher('powerlink');
+  assert.equal(match('AU-2601', 'Hunter Valley', 'Powerlink'), true);
+  assert.equal(match('AU-2601', 'Hunter Valley'), false, 'not in the fields passed');
+});
+
+test('extra words narrow rather than widen', () => {
+  const job = ['AU-2601', 'Hunter Valley Corridor', 'LiDAR corridor capture'];
+  assert.equal(makeMatcher('hunter')(...job), true);
+  assert.equal(makeMatcher('hunter lidar')(...job), true, 'both terms present, in different fields');
+  assert.equal(makeMatcher('hunter thermal')(...job), false, 'one term missing');
+});
+
+test('term order does not matter', () => {
+  const job = ['AU-2601', 'Hunter Valley Corridor'];
+  assert.equal(makeMatcher('valley hunter')(...job), true);
+  assert.equal(makeMatcher('hunter valley')(...job), true);
+});
+
+test('null and undefined fields are skipped, not stringified', () => {
+  const match = makeMatcher('alpha');
+  assert.equal(match(null, undefined, 'Alpha'), true);
+  assert.equal(makeMatcher('null')(null, 'Alpha'), false, '"null" must not become searchable text');
+  assert.equal(makeMatcher('undefined')(undefined, 'Alpha'), false);
+});
+
+test('numbers are searchable', () => {
+  assert.equal(makeMatcher('2601')('AU-2601'), true);
+  assert.equal(makeMatcher('12')(12, 'crew'), true);
+});
+
+test('surrounding whitespace in the query is ignored', () => {
+  assert.equal(makeMatcher('  hunter  ')('Hunter Valley'), true);
+});
+
+test('a query matching nothing returns false rather than throwing', () => {
+  assert.equal(makeMatcher('zzzz')('Hunter Valley', null, 42), false);
 });

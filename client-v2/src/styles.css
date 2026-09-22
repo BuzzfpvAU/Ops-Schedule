@@ -1098,3 +1098,63 @@ input, select, textarea { font: inherit; }
 @media (max-width: 760px) {
   .settings-body { padding: 16px 14px 48px; }
 }
+
+/* ── Search box ──────────────────────────────────────────────────────── */
+
+.searchbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 8px;
+  height: 28px;
+  min-width: 210px;
+  transition: border-color 0.12s ease;
+}
+.searchbox:focus-within { border-color: var(--accent); }
+
+/* A query that matches nothing should be obvious without reading the count. */
+.searchbox.is-empty { border-color: var(--warn); }
+.searchbox.is-empty .searchbox-count { color: var(--warn); }
+
+.searchbox-icon { flex: none; color: var(--text-mute); }
+
+.searchbox input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font-size: 12px;
+  padding: 0;
+}
+.searchbox input::placeholder { color: var(--text-mute); }
+/* The native clear affordance duplicates ours and sits in the wrong place. */
+.searchbox input::-webkit-search-cancel-button { display: none; }
+
+.searchbox-count {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.searchbox-clear {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--text-mute);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px;
+  border-radius: 4px;
+}
+.searchbox-clear:hover { color: var(--text); background: var(--line-soft); }
+
+@media (max-width: 760px) {
+  .searchbox { min-width: 0; flex: 1; }
+}
