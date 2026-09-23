@@ -47,23 +47,55 @@ export function buildBars(entries, keyOf = (e) => `${e.job_id}|${e.status || 'te
 }
 
 /**
+ * The stretch a bar occupies, as a comparable [from, to] pair.
+ *
+ * Column geometry is preferred because every clipped bar carries it and it is
+ * numeric; ISO dates are the fallback for bars built straight from buildBars.
+ * Returning null for a bar with neither is deliberate: comparing against
+ * undefined is always false, so such a bar used to be handed a lane of its
+ * own every time. That is exactly what happened in the single-project view,
+ * whose bars carry geometry but no dates — so a person's row grew a lane for
+ * every booking they had, overlapping or not.
+ */
+function spanOf(bar) {
+  if (Number.isFinite(bar.startIdx) && Number.isFinite(bar.span)) {
+    return [bar.startIdx, bar.startIdx + bar.span - 1];
+  }
+  if (bar.start != null && bar.end != null) return [bar.start, bar.end];
+  return null;
+}
+
+/**
  * Assign bars to lanes so overlapping bars stack instead of colliding.
  * Returns the same bar objects with a `lane` index, plus the lane count.
+ * A row only grows past one lane where bars genuinely overlap in time.
  */
 export function layoutLanes(bars) {
-  const sorted = [...bars].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  const measured = bars.map((bar) => ({ bar, at: spanOf(bar) }));
+  measured.sort((a, b) => {
+    if (!a.at || !b.at) return 0;
+    return a.at[0] < b.at[0] ? -1 : a.at[0] > b.at[0] ? 1 : 0;
+  });
+
   const laneEnds = [];
-  for (const bar of sorted) {
-    let lane = laneEnds.findIndex((end) => end < bar.start);
+  for (const { bar, at } of measured) {
+    if (!at) {
+      // Unplaceable against the others — share the first lane rather than
+      // each inventing one.
+      bar.lane = 0;
+      continue;
+    }
+    const [from, to] = at;
+    let lane = laneEnds.findIndex((end) => end < from);
     if (lane === -1) {
       lane = laneEnds.length;
-      laneEnds.push(bar.end);
+      laneEnds.push(to);
     } else {
-      laneEnds[lane] = bar.end;
+      laneEnds[lane] = to;
     }
     bar.lane = lane;
   }
-  return { bars: sorted, lanes: Math.max(1, laneEnds.length) };
+  return { bars: measured.map((m) => m.bar), lanes: Math.max(1, laneEnds.length) };
 }
 
 /** Group entries by the entity they belong to. */

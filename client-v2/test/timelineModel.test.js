@@ -539,3 +539,65 @@ test('surrounding whitespace in the query is ignored', () => {
 test('a query matching nothing returns false rather than throwing', () => {
   assert.equal(makeMatcher('zzzz')('Hunter Valley', null, 42), false);
 });
+
+// ── lanes from column geometry ──
+//
+// Regression: layoutLanes compared bar.start, but the single-project view's
+// bars carry only column geometry. Every comparison against undefined was
+// false, so each bar was handed its own lane and a person's row grew taller
+// with every booking, whether or not anything overlapped.
+
+const geoBar = (startIdx, span) => ({ startIdx, span });
+
+test('bars with geometry but no dates still share a lane when they do not overlap', () => {
+  const bars = [geoBar(0, 5), geoBar(10, 3), geoBar(20, 2)];
+  const laid = layoutLanes(bars);
+  assert.equal(laid.lanes, 1, 'three separate bookings, one lane');
+  assert.deepEqual(laid.bars.map((b) => b.lane), [0, 0, 0]);
+});
+
+test('bars with geometry stack only where they genuinely overlap', () => {
+  //  0..6 and 4..8 overlap; 10..12 does not.
+  const laid = layoutLanes([geoBar(0, 7), geoBar(4, 5), geoBar(10, 3)]);
+  assert.equal(laid.lanes, 2);
+  const byStart = Object.fromEntries(laid.bars.map((b) => [b.startIdx, b.lane]));
+  assert.equal(byStart[0], 0);
+  assert.equal(byStart[4], 1, 'the overlapping bar moves down');
+  assert.equal(byStart[10], 0, 'the later bar reuses the freed lane');
+});
+
+test('bars touching end to end do not stack', () => {
+  // 0..4 then 5..9 — adjacent days, no shared day.
+  const laid = layoutLanes([geoBar(0, 5), geoBar(5, 5)]);
+  assert.equal(laid.lanes, 1);
+});
+
+test('bars sharing a single day do stack', () => {
+  // 0..4 and 4..8 share column 4.
+  const laid = layoutLanes([geoBar(0, 5), geoBar(4, 5)]);
+  assert.equal(laid.lanes, 2);
+});
+
+test('a single-column bar inside a longer one stacks', () => {
+  const laid = layoutLanes([geoBar(0, 10), geoBar(5, 1)]);
+  assert.equal(laid.lanes, 2);
+});
+
+test('date-shaped bars still work, so the other views are unaffected', () => {
+  const bars = buildBars([
+    entry({ date: '2026-09-10', job_id: 'A' }),
+    entry({ date: '2026-09-11', job_id: 'A' }),
+    entry({ date: '2026-09-20', job_id: 'B' }),
+  ], (e) => e.job_id);
+  assert.equal(layoutLanes(bars).lanes, 1, 'no overlap, one lane');
+});
+
+test('a bar with neither geometry nor dates shares lane 0 rather than claiming its own', () => {
+  const laid = layoutLanes([{ key: 'a' }, { key: 'b' }, { key: 'c' }]);
+  assert.equal(laid.lanes, 1);
+  assert.deepEqual(laid.bars.map((b) => b.lane), [0, 0, 0]);
+});
+
+test('lane count never drops below one, even with no bars', () => {
+  assert.equal(layoutLanes([]).lanes, 1);
+});
