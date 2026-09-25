@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Avatar } from './ui.jsx';
+import JobCard from './JobCard.jsx';
 import {
   JOB_STATUSES, STATUSES, getJobPlanner, addJobDayNote, deleteJobDayNote,
+  getJobCard, getJobReadiness,
 } from '../api.js';
 import { buildBars, layoutLanes } from '../lib/model.js';
 import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
@@ -20,9 +22,12 @@ import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
 
 export default function ProjectView({
   jobId, onBack, days, zoom, labelWidth, scrollCmd, onReachEdge,
-  currentUser, onEnsureRange, showToast,
+  currentUser, members, equipment, onEnsureRange, onChanged, showToast,
 }) {
   const [data, setData] = useState(null);
+  const [pane, setPane] = useState('timeline');
+  const [card, setCard] = useState(null);
+  const [readiness, setReadiness] = useState(null);
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState({});
   const [cell, setCell] = useState(null); // { row, date }
@@ -45,7 +50,27 @@ export default function ProjectView({
     }
   }, [jobId, windowStart, windowEnd]);
 
+  const loadCard = useCallback(async () => {
+    try {
+      const [c, r] = await Promise.all([
+        getJobCard(jobId),
+        getJobReadiness(jobId).catch(() => null),
+      ]);
+      setCard(c);
+      setReadiness(r);
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    }
+  }, [jobId, showToast]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadCard(); }, [loadCard]);
+
+  // An edit on the card can move the job's dates or its crew, so the timeline
+  // and the app's own job list have to catch up too.
+  const refreshAll = useCallback(async () => {
+    await Promise.all([load(), loadCard(), onChanged?.()]);
+  }, [load, loadCard, onChanged]);
 
   // Bring the job's own dates into the loaded window, so opening a project
   // that sits outside the current view does not show an empty grid.
@@ -265,14 +290,19 @@ export default function ProjectView({
           </>
         )}
         <div className="toolbar-spacer" />
-        <span className="rl-sub">Click any day to log a note</span>
-        {data && <span className="count-pill">{(data.day_notes || []).length} notes</span>}
+        <div className="tgroup">
+          <button className={pane === 'timeline' ? 'is-active' : ''} onClick={() => setPane('timeline')}>Timeline</button>
+          <button className={pane === 'card' ? 'is-active' : ''} onClick={() => setPane('card')}>Job card</button>
+        </div>
+        {pane === 'timeline' && data && (
+          <span className="count-pill">{(data.day_notes || []).length} notes</span>
+        )}
       </div>
 
       {error && <div className="banner banner-danger" style={{ margin: 12 }}>{error}</div>}
       {!data && !error && <div className="loading-screen">Loading project…</div>}
 
-      {data && (
+      {pane === 'timeline' && data && (
         <Timeline
           days={days}
           colW={zoom.colW}
@@ -290,6 +320,21 @@ export default function ProjectView({
           onCellClick={(row, date) => openCell(row, date)}
           emptyMessage="Nobody and nothing is booked on this project yet."
         />
+      )}
+
+      {pane === 'card' && (
+        <div className="card-pane">
+          <JobCard
+            jobId={jobId}
+            card={card}
+            readiness={readiness}
+            members={members}
+            equipment={equipment}
+            isAdmin={!!currentUser?.isAdmin}
+            onChanged={refreshAll}
+            showToast={showToast}
+          />
+        </div>
       )}
 
       {cell && (

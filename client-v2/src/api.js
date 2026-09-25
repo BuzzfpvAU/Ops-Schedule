@@ -76,6 +76,50 @@ export const deleteScheduleEntry = (id) =>
 export const updateScheduleStatus = (entryId, status) =>
   api('/schedule/status', { method: 'PUT', body: JSON.stringify({ entry_id: entryId, status }) });
 
+// ── Job card ──
+export const updateJob = (id, data) =>
+  api(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export const getJobReadiness = (id) => api(`/jobs/${id}/readiness`);
+
+export const setJobStatus = (id, status, overrideReason) =>
+  api(`/jobs/${id}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status, override_reason: overrideReason }),
+  });
+
+export const addChecklistItem = (jobId, data) =>
+  api(`/jobs/${jobId}/checklist`, { method: 'POST', body: JSON.stringify(data) });
+
+export const updateChecklistItem = (itemId, data) =>
+  api(`/jobs/checklist/${itemId}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export const deleteChecklistItem = (itemId) =>
+  api(`/jobs/checklist/${itemId}`, { method: 'DELETE' });
+
+export const applyChecklistTemplate = (jobId) =>
+  api(`/jobs/${jobId}/checklist/template`, { method: 'POST' });
+
+export const assignJobEquipment = (jobId, data) =>
+  api(`/jobs/${jobId}/equipment`, { method: 'POST', body: JSON.stringify(data) });
+
+export const removeJobEquipment = (assignmentId) =>
+  api(`/jobs/equipment/${assignmentId}`, { method: 'DELETE' });
+
+export const confirmJobKit = (jobId, overrideReason) =>
+  api(`/jobs/${jobId}/equipment/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ override_reason: overrideReason }),
+  });
+
+export const getKits = () => api('/equipment/kits');
+
+export const applyKitToJob = (jobId, kitId) =>
+  api(`/jobs/${jobId}/apply-kit`, { method: 'POST', body: JSON.stringify({ kit_id: kitId }) });
+
+export const clearMemberDay = (memberId, date) =>
+  api(`/schedule/member/${memberId}/date/${date}`, { method: 'DELETE' });
+
 // ── Equipment tracking (Find My) ──
 export const getEquipmentLocations = () => api('/equipment/locations');
 export const getTrackingStatus = () => api('/equipment/tracking-status');

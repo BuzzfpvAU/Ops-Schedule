@@ -299,6 +299,8 @@ export default function App() {
           jobId={openProjectId}
           onBack={() => setOpenProjectId(null)}
           currentUser={user}
+          members={members}
+          equipment={equipment}
           onEnsureRange={onEnsureRange}
           {...common}
         />

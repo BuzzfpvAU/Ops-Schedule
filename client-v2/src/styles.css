@@ -1158,3 +1158,145 @@ input, select, textarea { font: inherit; }
 @media (max-width: 760px) {
   .searchbox { min-width: 0; flex: 1; }
 }
+
+/* ── Job card ────────────────────────────────────────────────────────── */
+
+.card-pane { flex: 1; min-height: 0; overflow: auto; }
+.jobcard { max-width: 900px; padding: 20px 24px 60px; }
+
+/* Workflow stepper */
+.wf { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.wf-step {
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  border-radius: 20px;
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wf-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.wf-step.is-past { color: var(--ok); border-color: rgba(34, 197, 94, 0.35); }
+.wf-step.is-here {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  cursor: default;
+}
+.wf-step:disabled:not(.is-here) { opacity: 0.5; cursor: not-allowed; }
+.wf-cancel:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+/* Readiness gates */
+.gates { display: flex; flex-direction: column; gap: 5px; }
+.gate {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 8px 11px;
+}
+.gate.is-danger { border-color: rgba(239, 68, 68, 0.35); }
+.gate.is-warn { border-color: rgba(234, 179, 8, 0.3); }
+.gate summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+}
+.gate summary::-webkit-details-marker { display: none; }
+.gate-title { font-weight: 600; flex: 1; }
+.gate-checks { margin: 8px 0 0; padding-left: 18px; font-size: 11.5px; line-height: 1.7; }
+.gate-checks li.is-ok { color: var(--text-mute); }
+.gate-checks li.is-bad { color: var(--text); }
+.gate-checks li.is-bad strong { color: var(--danger); }
+
+/* Assign rows */
+.assign-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.assign-row select {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 6px 9px;
+  min-width: 190px;
+  outline: none;
+}
+.assign-row select:focus { border-color: var(--accent); }
+
+.kit-search {
+  width: 100%;
+  margin-top: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  outline: none;
+}
+.kit-search:focus { border-color: var(--accent); }
+.kit-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* Checklist */
+.cl-group { margin-bottom: 14px; }
+.cl-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  margin-bottom: 5px;
+}
+.cl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+}
+.cl-item:hover { background: var(--bg-raised); }
+.cl-item input[type='checkbox'] { accent-color: var(--accent); width: 14px; height: 14px; flex: none; }
+.cl-label { flex: 1; min-width: 0; }
+.cl-item.is-done .cl-label { text-decoration: line-through; color: var(--text-mute); }
+.cl-del {
+  border: 0;
+  background: none;
+  color: var(--text-mute);
+  font-size: 11px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  opacity: 0;
+}
+.cl-item:hover .cl-del { opacity: 1; }
+.cl-del:hover { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
+.cl-add {
+  width: 100%;
+  margin-top: 4px;
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 6px 9px;
+  font-size: 12px;
+  outline: none;
+}
+.cl-add:focus { border-style: solid; border-color: var(--accent); }
+
+@media (max-width: 760px) {
+  .jobcard { padding: 14px 14px 48px; }
+  .form-label { width: 96px; }
+}
