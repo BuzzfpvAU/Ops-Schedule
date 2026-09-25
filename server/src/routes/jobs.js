@@ -557,14 +557,18 @@ router.put('/:id', requireAdmin, (req, res) => {
     ? derivedState
     : (state !== undefined ? String(state ?? '') : existing.state);
 
-  req.db.prepare(`
+  const nextStart = planned_start ?? existing.planned_start;
+  const nextEnd = planned_end ?? existing.planned_end;
+
+  const update = req.db.prepare(`
     UPDATE jobs
     SET code = ?, name = ?, description = ?, color = ?, client = ?, file_url = ?,
         job_number = ?, sharepoint_url = ?, job_type = ?, status = ?, site_address = ?, site_contact = ?, notes = ?,
         rental_required = ?, state = ?, crew_size = ?, planned_start = ?, planned_end = ?, lead_id = ?,
         updated_at = datetime('now', '+10 hours')
     WHERE id = ?
-  `).run(
+  `);
+  const params = [
     code || existing.code,
     name || existing.name,
     description ?? existing.description,
@@ -581,14 +585,25 @@ router.put('/:id', requireAdmin, (req, res) => {
     rental_required !== undefined ? (rental_required ? 1 : 0) : existing.rental_required,
     nextState,
     crew_size !== undefined ? Math.max(1, parseInt(crew_size, 10) || 1) : existing.crew_size,
-    planned_start ?? existing.planned_start,
-    planned_end ?? existing.planned_end,
+    nextStart,
+    nextEnd,
     nextLeadId,
-    req.params.id
-  );
+    req.params.id,
+  ];
+
+  // Moving the planned window moves the bookings with it, so the roster and
+  // the job card cannot drift apart. Both happen in one transaction.
+  const rebooked = req.db.transaction(() => {
+    update.run(...params);
+    return shiftBookings(
+      req.db, req.params.id,
+      { start: existing.planned_start, end: existing.planned_end },
+      { start: nextStart, end: nextEnd },
+    );
+  })();
 
   const job = req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(req.params.id);
-  res.json(job);
+  res.json(rebooked ? { ...job, rebooked } : job);
 });
 
 // DELETE (soft delete) job (admin only)
@@ -873,6 +888,75 @@ function ensureBookingDay(db, jobId, equipmentId, date) {
     VALUES (?, ?, ?, ?, 'tentative')
   `).run(uuidv4(), equipmentId, jobId, date);
   return true;
+}
+
+// Move a job's bookings (crew and kit alike — both are schedule_entries) when
+// its planned window changes. Days up to the old end move with the start;
+// days after it (kit's trailing pad) move with the end. A shorter window
+// drops the days that no longer fit; a longer one extends anyone who was
+// booked through to the old end. Returns null when nothing had to move.
+function shiftBookings(db, jobId, prev, next) {
+  const valid = (w) => w.start && w.end && w.end >= w.start;
+  if (!valid(prev) || !valid(next)) return null;
+  if (prev.start === next.start && prev.end === next.end) return null;
+
+  const dayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+  const startDelta = dayDiff(prev.start, next.start);
+  const endDelta = dayDiff(prev.end, next.end);
+
+  const entries = db.prepare(
+    'SELECT id, team_member_id, date, status FROM schedule_entries WHERE job_id = ?'
+  ).all(jobId);
+  if (!entries.length) return null;
+
+  const move = db.prepare(
+    "UPDATE schedule_entries SET date = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?"
+  );
+  const drop = db.prepare('DELETE FROM schedule_entries WHERE id = ?');
+  const touched = new Set();
+  const lastDay = new Map(); // member → status of their entry on the old end
+
+  for (const e of entries) {
+    touched.add(e.team_member_id);
+    if (e.date === prev.end) lastDay.set(e.team_member_id, e.status);
+    if (e.date > prev.end) {
+      move.run(addDays(e.date, endDelta), e.id);
+      continue;
+    }
+    const d = addDays(e.date, startDelta);
+    if (d > next.end) drop.run(e.id);
+    else if (d !== e.date) move.run(d, e.id);
+  }
+
+  if (endDelta > startDelta) {
+    const insert = db.prepare(`
+      INSERT INTO schedule_entries (id, team_member_id, job_id, date, status)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const has = db.prepare(
+      'SELECT 1 FROM schedule_entries WHERE job_id = ? AND team_member_id = ? AND date = ? LIMIT 1'
+    );
+    for (const [memberId, status] of lastDay) {
+      for (const d of dateRange(addDays(prev.end, startDelta + 1), next.end)) {
+        if (!has.get(jobId, memberId, d)) insert.run(uuidv4(), memberId, jobId, d, status || 'tentative');
+      }
+    }
+  }
+
+  // Moved anyway, clashes reported: the caller decides what to do about them.
+  const clashes = [];
+  for (const memberId of touched) {
+    const range = bookingRange(db, jobId, memberId);
+    if (!range?.from_date) continue;
+    const member = db.prepare('SELECT name, is_equipment FROM team_members WHERE id = ?').get(memberId);
+    for (const c of findConflicts(db, memberId, range.from_date, range.to_date, jobId)) {
+      clashes.push({
+        member_id: memberId, name: member?.name || '', is_equipment: !!member?.is_equipment,
+        job_code: c.code, from: c.from, to: c.to,
+      });
+    }
+  }
+  return { members: touched.size, clashes };
 }
 
 // ── Equipment kit / owned vehicles ──────────────────────────────────────────

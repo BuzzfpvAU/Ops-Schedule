@@ -91,10 +91,20 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
   const save = async () => {
     setBusy(true);
     try {
-      await updateJob(jobId, form);
+      const saved = await updateJob(jobId, form);
       setDirty(false);
       await onChanged?.();
-      showToast?.('Job saved', 'success');
+      // New dates move the crew and kit bookings too; say so, and name
+      // anyone who now overlaps another job, since the move goes ahead anyway.
+      const moved = saved?.rebooked;
+      if (moved?.clashes?.length) {
+        const list = moved.clashes.map((c) => `${c.name} (${c.job_code})`).join(', ');
+        showToast?.(`Bookings moved — now clashing: ${list}`, 'error');
+      } else if (moved) {
+        showToast?.(`Job saved — ${moved.members} booking${moved.members === 1 ? '' : 's'} moved to the new dates`, 'success');
+      } else {
+        showToast?.('Job saved', 'success');
+      }
     } catch (e) {
       showToast?.(e.message, 'error');
     } finally {
