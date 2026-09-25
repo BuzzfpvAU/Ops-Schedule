@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Avatar } from './ui.jsx';
 import JobCard from './JobCard.jsx';
@@ -25,7 +25,12 @@ export default function ProjectView({
   currentUser, members, equipment, onEnsureRange, onChanged, showToast,
 }) {
   const [data, setData] = useState(null);
-  const [pane, setPane] = useState('timeline');
+  // The card sits under the timeline rather than replacing it, so a change
+  // on the card can be watched landing on the Gantt. Its height and open
+  // state are remembered per browser.
+  const [cardOpen, setCardOpen] = useState(() => readPref('pv.cardOpen', '1') === '1');
+  const [cardH, setCardH] = useState(() => Number(readPref('pv.cardH', '')) || 360);
+  const splitRef = useRef(null);
   const [card, setCard] = useState(null);
   const [readiness, setReadiness] = useState(null);
   const [error, setError] = useState('');
@@ -269,6 +274,29 @@ export default function ProjectView({
     return marks;
   };
 
+  useEffect(() => { writePref('pv.cardOpen', cardOpen ? '1' : '0'); }, [cardOpen]);
+  useEffect(() => { writePref('pv.cardH', String(Math.round(cardH))); }, [cardH]);
+
+  // Drag the divider to trade timeline height for card height. Both keep a
+  // usable minimum so neither can be dragged out of sight.
+  const startResize = (e) => {
+    e.preventDefault();
+    const box = splitRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const onMove = (ev) => {
+      const h = box.bottom - ev.clientY;
+      setCardH(Math.min(Math.max(h, 160), box.height - 140));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.classList.remove('is-resizing');
+    };
+    document.body.classList.add('is-resizing');
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   const job = data?.job;
   const st = job ? (JOB_STATUSES[job.status] || JOB_STATUSES.planning) : null;
 
@@ -295,11 +323,7 @@ export default function ProjectView({
           </div>
         )}
         <div className="toolbar-spacer" />
-        <div className="tgroup">
-          <button className={pane === 'timeline' ? 'is-active' : ''} onClick={() => setPane('timeline')}>Timeline</button>
-          <button className={pane === 'card' ? 'is-active' : ''} onClick={() => setPane('card')}>Job card</button>
-        </div>
-        {pane === 'timeline' && data && (
+        {data && (
           <span className="count-pill">{(data.day_notes || []).length} notes</span>
         )}
       </div>
@@ -307,40 +331,63 @@ export default function ProjectView({
       {error && <div className="banner banner-danger" style={{ margin: 12 }}>{error}</div>}
       {!data && !error && <div className="loading-screen">Loading project…</div>}
 
-      {pane === 'timeline' && data && (
-        <Timeline
-          days={days}
-          colW={zoom.colW}
-          dayLabels={zoom.dayLabels}
-          labelWidth={labelWidth}
-          scrollCmd={scrollCmd}
-          onReachEdge={onReachEdge}
-          focusDate={data.span?.start || data.job?.planned_start || null}
-          groups={groups}
-          collapsed={collapsed}
-          onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}
-          renderLabel={renderLabel}
-          renderBar={renderBar}
-          renderOverlay={renderOverlay}
-          onCellClick={(row, date) => openCell(row, date)}
-          emptyMessage="Nobody and nothing is booked on this project yet."
-        />
-      )}
-
-      {pane === 'card' && (
-        <div className="card-pane">
-          <JobCard
-            jobId={jobId}
-            card={card}
-            readiness={readiness}
-            members={members}
-            equipment={equipment}
-            isAdmin={!!currentUser?.isAdmin}
-            onChanged={refreshAll}
-            showToast={showToast}
+      <div className="pv-split" ref={splitRef}>
+        {data ? (
+          <Timeline
+            days={days}
+            colW={zoom.colW}
+            dayLabels={zoom.dayLabels}
+            labelWidth={labelWidth}
+            scrollCmd={scrollCmd}
+            onReachEdge={onReachEdge}
+            focusDate={data.span?.start || data.job?.planned_start || null}
+            groups={groups}
+            collapsed={collapsed}
+            onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}
+            renderLabel={renderLabel}
+            renderBar={renderBar}
+            renderOverlay={renderOverlay}
+            onCellClick={(row, date) => openCell(row, date)}
+            emptyMessage="Nobody and nothing is booked on this project yet."
           />
+        ) : <div className="pv-spacer" />}
+
+        {cardOpen && (
+          <div
+            className="pv-divider"
+            role="separator"
+            aria-orientation="horizontal"
+            title="Drag to resize"
+            onPointerDown={startResize}
+          />
+        )}
+        <div className={`pv-card${cardOpen ? '' : ' is-collapsed'}`} style={cardOpen ? { height: cardH } : undefined}>
+          <button
+            type="button"
+            className="pv-card-head"
+            onClick={() => setCardOpen((o) => !o)}
+            aria-expanded={cardOpen}
+          >
+            <span className={`tl-caret${cardOpen ? '' : ' is-collapsed'}`} aria-hidden="true">▾</span>
+            Job card
+            {!cardOpen && <span className="rl-sub">— click to open</span>}
+          </button>
+          {cardOpen && (
+            <div className="card-pane">
+              <JobCard
+                jobId={jobId}
+                card={card}
+                readiness={readiness}
+                members={members}
+                equipment={equipment}
+                isAdmin={!!currentUser?.isAdmin}
+                onChanged={refreshAll}
+                showToast={showToast}
+              />
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {cell && (
         <Drawer
@@ -398,4 +445,12 @@ export default function ProjectView({
       )}
     </>
   );
+}
+
+function readPref(key, fallback) {
+  try { return window.localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+
+function writePref(key, value) {
+  try { window.localStorage.setItem(key, value); } catch { /* storage unavailable */ }
 }

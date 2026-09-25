@@ -1201,6 +1201,58 @@ input, select, textarea { font: inherit; }
 /* ── Job card ────────────────────────────────────────────────────────── */
 
 .card-pane { flex: 1; min-height: 0; overflow: auto; }
+
+/* Project page: timeline on top, job card underneath, a draggable divider
+   between them. */
+.pv-split { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pv-spacer { flex: 1; }
+.pv-divider {
+  flex: none;
+  height: 7px;
+  cursor: row-resize;
+  background: var(--line-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  touch-action: none;
+  position: relative;
+}
+.pv-divider::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 2px;
+  width: 36px; height: 1px;
+  margin-left: -18px;
+  background: var(--text-mute);
+  box-shadow: 0 2px 0 var(--text-mute);
+  opacity: 0.6;
+}
+.pv-divider:hover { background: var(--line); }
+body.is-resizing { cursor: row-resize; user-select: none; }
+.pv-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+.pv-card.is-collapsed { border-top: 1px solid var(--line); }
+.pv-card-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.pv-card.is-collapsed .pv-card-head { border-bottom: 0; }
 .jobcard { max-width: 900px; padding: 20px 24px 60px; }
 
 /* Workflow stepper */
