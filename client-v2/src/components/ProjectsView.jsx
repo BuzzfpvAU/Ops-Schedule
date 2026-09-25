@@ -4,7 +4,7 @@ import { SearchBox } from './ui.jsx';
 import { JOB_STATUSES, STATES } from '../api.js';
 import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
-import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
+import { diffDays, fmtLong } from '../lib/dates.js';
 
 // ── View 1: jobs on a timeline, grouped by the state managing them ──────
 //
@@ -112,17 +112,20 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         <span className="swatch" style={{ background: job.color || '#475569' }} />
         <button
           type="button"
-          className="rl"
-          style={{ border: 0, background: 'none', padding: 0 }}
+          className="rl rl-project"
           onClick={() => openCard(job)}
+          title={[
+            `${job.code} — ${job.name}`,
+            job.client,
+            job.description,
+            job.lead_name ? `Lead: ${job.lead_name}` : null,
+            st.label,
+          ].filter(Boolean).join('\n')}
         >
-          <span className="rl-top">
-            <span className="rl-code">{job.code}</span>
-            <span className="rl-name">{job.name}</span>
-          </span>
+          <span className="rl-name">{job.name}</span>
           <span className="rl-sub">
-            {job.description || job.client || st.label}
-            {job.lead_name ? ` · ${job.lead_name}` : ''}
+            <span className="rl-sub-code">{job.code}</span>
+            {job.client ? ` · ${job.client}` : ''}
           </span>
         </button>
         {understaffed && (
@@ -149,7 +152,6 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
       );
     }
     const crew = new Set(bar.run.entries.map((e) => e.team_member_id)).size;
-    const label = `${job.code} · ${fmtShort(bar.run.start)}–${fmtShort(bar.run.end)}`;
     return (
       <div
         className="bar"
@@ -157,7 +159,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         title={`${job.code} ${job.name}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}\n${crew} rostered`}
         onClick={(e) => { e.stopPropagation(); openCard(job); }}
       >
-        <span className="bar-text">{label}</span>
+        <span className="bar-text">{job.name}</span>
       </div>
     );
   };

@@ -567,6 +567,29 @@ input, select, textarea { font: inherit; }
   flex: none;
 }
 
+/* Projects list: the name is what people scan for, so it leads; the code
+   and client sit quietly underneath for when you know the number. */
+.rl-project {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.rl-project .rl-name,
+.rl-project .rl-sub { max-width: 100%; }
+.rl-project:hover .rl-name { text-decoration: underline; text-underline-offset: 2px; }
+.rl-sub-code {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
 .swatch {
   width: 3px;
   align-self: stretch;
