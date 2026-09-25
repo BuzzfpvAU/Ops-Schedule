@@ -590,6 +590,22 @@ input, select, textarea { font: inherit; }
   font-size: 10px;
 }
 
+/* Single project header: same shape as the list row — name leads, the
+   code, client, state and dates sit underneath. */
+.pv-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.pv-title-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pv-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .swatch {
   width: 3px;
   align-self: stretch;

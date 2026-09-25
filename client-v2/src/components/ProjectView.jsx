@@ -277,17 +277,22 @@ export default function ProjectView({
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
         <button className="btn" onClick={onBack} title="Back to all projects">‹ Projects</button>
         {job && (
-          <>
-            <span className="rl-code">{job.code}</span>
-            <strong style={{ fontSize: 13 }}>{job.name}</strong>
-            <span className="tag" style={{ background: 'var(--line-soft)', color: st.color }}>{st.label}</span>
-            {job.state && <span className="rl-sub">{job.state}</span>}
-            <span className="rl-sub">
-              {job.roster_start
-                ? `${fmtShort(job.roster_start)} – ${fmtShort(job.roster_end)}`
-                : 'nobody booked'}
+          <div className="pv-title">
+            <span className="pv-title-top">
+              <strong className="pv-name">{job.name}</strong>
+              <span className="tag" style={{ background: 'var(--line-soft)', color: st.color }}>{st.label}</span>
             </span>
-          </>
+            <span className="rl-sub">
+              <span className="rl-sub-code">{job.code}</span>
+              {[
+                job.client,
+                job.state,
+                job.roster_start
+                  ? `${fmtShort(job.roster_start)} – ${fmtShort(job.roster_end)}`
+                  : 'nobody booked',
+              ].filter(Boolean).map((t) => ` · ${t}`).join('')}
+            </span>
+          </div>
         )}
         <div className="toolbar-spacer" />
         <div className="tgroup">
