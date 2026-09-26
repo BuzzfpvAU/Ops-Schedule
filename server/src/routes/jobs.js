@@ -466,6 +466,13 @@ router.get('/:id/readiness', (req, res) => {
 });
 
 // POST status — gated transition (admin only). Body: { status, override_reason? }
+// What cancelling would release — the card's confirm prompt quotes it.
+router.get('/:id/future-bookings', requireAdmin, (req, res) => {
+  const job = req.db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(futureBookings(req.db, job.id));
+});
+
 router.post('/:id/status', requireAdmin, (req, res) => {
   const job = req.db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -475,15 +482,23 @@ router.post('/:id/status', requireAdmin, (req, res) => {
   }
   const blocked = validateTransition(req.db, job, status, override_reason, { actor: req.user });
   if (blocked) return res.status(blocked.failing_gates ? 409 : 400).json(blocked);
-  req.db.prepare(`UPDATE jobs SET status = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?`).run(status, job.id);
+  // Crew is found through their bookings, so tell them before a cancel
+  // releases those bookings.
   notifyCrew(req.db, job.id, {
-    message: `${job.code} ${job.name}: now ${status}`,
+    message: status === 'cancelled'
+      ? `${job.code} ${job.name}: cancelled — your upcoming days are released`
+      : `${job.code} ${job.name}: now ${status}`,
     jobCode: job.code,
     excludeMemberId: req.user.memberId,
   });
+  const released = req.db.transaction(() => {
+    req.db.prepare(`UPDATE jobs SET status = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?`).run(status, job.id);
+    return status === 'cancelled' ? releaseFutureBookings(req.db, job.id) : null;
+  })();
   res.json({
     job: req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(job.id),
     readiness: computeReadiness(req.db, job.id),
+    ...(released ? { released } : {}),
   });
 });
 
@@ -593,8 +608,11 @@ router.put('/:id', requireAdmin, (req, res) => {
 
   // Moving the planned window moves the bookings with it, so the roster and
   // the job card cannot drift apart. Both happen in one transaction.
+  const cancelling = nextStatus === 'cancelled' && existing.status !== 'cancelled';
+  let released = null;
   const rebooked = req.db.transaction(() => {
     update.run(...params);
+    if (cancelling) { released = releaseFutureBookings(req.db, req.params.id); return null; }
     return shiftBookings(
       req.db, req.params.id,
       { start: existing.planned_start, end: existing.planned_end },
@@ -603,7 +621,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   })();
 
   const job = req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(req.params.id);
-  res.json(rebooked ? { ...job, rebooked } : job);
+  res.json({ ...job, ...(rebooked ? { rebooked } : {}), ...(released ? { released } : {}) });
 });
 
 // DELETE (soft delete) job (admin only)
@@ -914,6 +932,27 @@ function ensureBookingDay(db, jobId, equipmentId, date) {
     VALUES (?, ?, ?, ?, 'tentative')
   `).run(uuidv4(), equipmentId, jobId, date);
   return true;
+}
+
+// Cancelling frees the crew and kit: bookings from today (AEST) on are
+// deleted so they stop showing as busy and stop counting as clashes. Past
+// days stay as the record of what happened, and the kit list stays on the
+// card (as "not booked") so a reinstated job knows what it had.
+function futureBookings(db, jobId) {
+  const row = db.prepare(`
+    SELECT COUNT(DISTINCT CASE WHEN tm.is_equipment = 0 THEN e.team_member_id END) AS crew,
+           COUNT(DISTINCT CASE WHEN tm.is_equipment = 1 THEN e.team_member_id END) AS equipment,
+           COUNT(*) AS days
+    FROM schedule_entries e JOIN team_members tm ON tm.id = e.team_member_id
+    WHERE e.job_id = ? AND e.date >= ?
+  `).get(jobId, aestToday());
+  return { crew: row.crew || 0, equipment: row.equipment || 0, days: row.days || 0 };
+}
+
+function releaseFutureBookings(db, jobId) {
+  const counts = futureBookings(db, jobId);
+  db.prepare('DELETE FROM schedule_entries WHERE job_id = ? AND date >= ?').run(jobId, aestToday());
+  return counts;
 }
 
 // Move a job's bookings (crew and kit alike — both are schedule_entries) when
