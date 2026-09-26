@@ -17,8 +17,8 @@ const MIN_SPAN = 28;
 
 export default function EquipmentPicker({ jobId, window: win, equipment, assignedIds, onClose, onAdded, showToast }) {
   const [search, setSearch] = useState('');
-  const [padB, setPadB] = useState(1);
-  const [padA, setPadA] = useState(1);
+  const [padB, setPadB] = useState(0);
+  const [padA, setPadA] = useState(0);
   const [picked, setPicked] = useState(() => new Set());
   const [bookings, setBookings] = useState(null);
   const [busy, setBusy] = useState(false);
