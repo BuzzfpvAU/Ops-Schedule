@@ -82,6 +82,9 @@ export const updateJob = (id, data) =>
 
 export const getJobReadiness = (id) => api(`/jobs/${id}/readiness`);
 
+// What cancelling would release: crew, kit and days from today on.
+export const getFutureBookings = (id) => api(`/jobs/${id}/future-bookings`);
+
 export const setJobStatus = (id, status, overrideReason) =>
   api(`/jobs/${id}/status`, {
     method: 'POST',

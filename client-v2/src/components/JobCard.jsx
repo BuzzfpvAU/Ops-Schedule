@@ -3,7 +3,7 @@ import { Section } from './ui.jsx';
 import EquipmentPicker, { PadInput } from './EquipmentPicker.jsx';
 import {
   JOB_STATUSES, STATES, EQUIPMENT_CATEGORIES,
-  updateJob, getJobReadiness, setJobStatus,
+  updateJob, getJobReadiness, setJobStatus, getFutureBookings,
   addChecklistItem, updateChecklistItem, deleteChecklistItem, applyChecklistTemplate,
   removeJobEquipment, setJobEquipmentPads, confirmJobKit, getKits, applyKitToJob,
   bulkAssignSchedule, clearMemberDay,
@@ -32,6 +32,8 @@ const CHECKLIST_CATEGORIES = [
 const STATUS_FLOW = ['planning', 'confirmed', 'active', 'complete'];
 
 const GATE_TONE = { pass: 'ok', warn: 'warn', fail: 'danger' };
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function Field({ label, children }) {
   return (
@@ -114,21 +116,33 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
 
   // A refused transition comes back as a 409 listing the gates that failed, so
   // the message says what is blocking rather than just that it failed.
+  const releasedMsg = (r) => (r?.days
+    ? ` — released ${plural(r.crew, 'person', 'people')} and ${plural(r.equipment, 'item')} of kit`
+    : '');
+
   const moveTo = async (status) => {
+    // Cancelling frees everyone's upcoming days, so say how much first.
+    if (status === 'cancelled') {
+      const f = await getFutureBookings(jobId).catch(() => null);
+      const what = f?.days
+        ? `This releases ${plural(f.crew, 'person', 'people')} and ${plural(f.equipment, 'item')} of kit from today onward (${plural(f.days, 'booked day')}). Past days are kept, and the kit list stays on the card.`
+        : 'Nothing is booked from today onward, so nothing will be released.';
+      if (!window.confirm(`Cancel ${job.code}?\n\n${what}`)) return;
+    }
     setBusy(true);
     try {
-      await setJobStatus(jobId, status);
+      const r = await setJobStatus(jobId, status);
       await onChanged?.();
-      showToast?.(`Now ${status}`, 'success');
+      showToast?.(`Now ${status}${releasedMsg(r?.released)}`, 'success');
     } catch (e) {
       const reason = window.prompt(
         `Cannot move to ${status}:\n\n${e.message}\n\nEnter a reason to override, or cancel.`
       );
       if (!reason) { setBusy(false); return; }
       try {
-        await setJobStatus(jobId, status, reason);
+        const r = await setJobStatus(jobId, status, reason);
         await onChanged?.();
-        showToast?.(`Now ${status} (overridden)`, 'success');
+        showToast?.(`Now ${status} (overridden)${releasedMsg(r?.released)}`, 'success');
       } catch (e2) {
         showToast?.(e2.message, 'error');
       }
