@@ -870,6 +870,29 @@ function jobRange(db, jobId) {
   `).get(jobId);
 }
 
+// The window kit is booked around: the planned dates when set, else the
+// crew's rostered span. Deliberately not jobRange, which includes kit days
+// — adding a second item would then inherit the first item's pads and the
+// buffers would compound with every item added.
+function kitWindow(db, jobId) {
+  const job = db.prepare('SELECT planned_start, planned_end FROM jobs WHERE id = ?').get(jobId);
+  if (job?.planned_start && job?.planned_end && job.planned_end >= job.planned_start) {
+    return { from_date: job.planned_start, to_date: job.planned_end };
+  }
+  const crew = db.prepare(`
+    SELECT MIN(e.date) AS from_date, MAX(e.date) AS to_date
+    FROM schedule_entries e JOIN team_members tm ON tm.id = e.team_member_id
+    WHERE e.job_id = ? AND tm.is_equipment = 0
+  `).get(jobId);
+  if (crew?.from_date) return crew;
+  const any = jobRange(db, jobId);
+  return any?.from_date ? any : null;
+}
+
+const MAX_PAD = 30;
+const parsePad = (v, fallback) =>
+  Number.isInteger(v) ? Math.min(MAX_PAD, Math.max(0, v)) : fallback;
+
 function bookingRange(db, jobId, equipmentId) {
   return db.prepare(`
     SELECT MIN(date) AS from_date, MAX(date) AS to_date,
@@ -974,8 +997,8 @@ router.post('/:id/equipment', requireAdmin, (req, res) => {
   ).get(req.params.id, equipment_id);
   if (existing) return res.status(409).json({ error: 'Already assigned to this job' });
 
-  const padB = Number.isInteger(pad_before) ? Math.max(0, pad_before) : 1;
-  const padA = Number.isInteger(pad_after) ? Math.max(0, pad_after) : 1;
+  const padB = parsePad(pad_before, 1);
+  const padA = parsePad(pad_after, 1);
 
   const id = uuidv4();
   req.db.prepare(`
@@ -985,8 +1008,8 @@ router.post('/:id/equipment', requireAdmin, (req, res) => {
 
   // Adopt the job's timeframe with buffer pads: book the span ± pads for
   // pack-out, transport and turnaround (per the planned workflow design).
-  const range = jobRange(req.db, req.params.id);
-  if (range.from_date) {
+  const range = kitWindow(req.db, req.params.id);
+  if (range) {
     for (const d of dateRange(addDays(range.from_date, -padB), addDays(range.to_date, padA))) {
       ensureBookingDay(req.db, req.params.id, equipment_id, d);
     }
@@ -1038,8 +1061,8 @@ router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
   let cur = bookingRange(req.db, a.job_id, a.equipment_id);
   if (!cur.from_date) {
     // No booking yet: adopt the job range (with pads) first, else start today.
-    const jr = jobRange(req.db, a.job_id);
-    if (jr.from_date) {
+    const jr = kitWindow(req.db, a.job_id);
+    if (jr) {
       for (const d of dateRange(
         addDays(jr.from_date, -(a.pad_before || 0)),
         addDays(jr.to_date, a.pad_after || 0)
@@ -1070,6 +1093,55 @@ router.post('/equipment/:id/booking', requireAdmin, (req, res) => {
     : [];
   res.json({
     success: true,
+    booked_from: after.from_date || null,
+    booked_to: after.to_date || null,
+    booked_days: after.days || 0,
+    conflicts,
+  });
+});
+
+// Change an item's transit buffer. The booking is redrawn as the job's kit
+// window plus the new pads, keeping the days' status; a clash with another
+// job is reported, not refused, like every other kit write.
+// Body: { pad_before, pad_after } — whole days, 0–30.
+router.put('/equipment/:id/pads', requireAdmin, (req, res) => {
+  const a = req.db.prepare(
+    'SELECT job_id, equipment_id, pad_before, pad_after FROM job_equipment WHERE id = ?'
+  ).get(req.params.id);
+  if (!a) return res.status(404).json({ error: 'Assignment not found' });
+  const { pad_before, pad_after } = req.body || {};
+  if ((pad_before !== undefined && !Number.isInteger(pad_before)) ||
+      (pad_after !== undefined && !Number.isInteger(pad_after))) {
+    return res.status(400).json({ error: 'pad_before and pad_after must be whole days' });
+  }
+  const padB = parsePad(pad_before, a.pad_before || 0);
+  const padA = parsePad(pad_after, a.pad_after || 0);
+
+  req.db.transaction(() => {
+    req.db.prepare('UPDATE job_equipment SET pad_before = ?, pad_after = ? WHERE id = ?')
+      .run(padB, padA, req.params.id);
+    const win = kitWindow(req.db, a.job_id);
+    if (!win) return;
+    const status = req.db.prepare(
+      'SELECT status FROM schedule_entries WHERE job_id = ? AND team_member_id = ? LIMIT 1'
+    ).get(a.job_id, a.equipment_id)?.status || 'tentative';
+    req.db.prepare('DELETE FROM schedule_entries WHERE job_id = ? AND team_member_id = ?')
+      .run(a.job_id, a.equipment_id);
+    const insert = req.db.prepare(`
+      INSERT INTO schedule_entries (id, team_member_id, job_id, date, status) VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const d of dateRange(addDays(win.from_date, -padB), addDays(win.to_date, padA))) {
+      insert.run(uuidv4(), a.equipment_id, a.job_id, d, status);
+    }
+  })();
+
+  const after = bookingRange(req.db, a.job_id, a.equipment_id);
+  const conflicts = after.from_date
+    ? findConflicts(req.db, a.equipment_id, after.from_date, after.to_date, a.job_id)
+    : [];
+  res.json({
+    pad_before: padB,
+    pad_after: padA,
     booked_from: after.from_date || null,
     booked_to: after.to_date || null,
     booked_days: after.days || 0,
@@ -1173,7 +1245,7 @@ router.post('/:id/apply-kit', requireAdmin, (req, res) => {
 
   const added = [];
   const skipped = [];
-  const range = jobRange(db, req.params.id);
+  const range = kitWindow(db, req.params.id);
   const tx = db.transaction(() => {
     for (const item of items) {
       const already = db.prepare('SELECT id FROM job_equipment WHERE job_id = ? AND equipment_id = ?').get(req.params.id, item.id);
@@ -1183,7 +1255,7 @@ router.post('/:id/apply-kit', requireAdmin, (req, res) => {
         INSERT INTO job_equipment (id, job_id, equipment_id, assigned_to, notes, pad_before, pad_after)
         VALUES (?, ?, ?, '', ?, 1, 1)
       `).run(uuidv4(), req.params.id, item.id, `from kit: ${kit.name}`);
-      if (range.from_date) {
+      if (range) {
         for (const d of dateRange(addDays(range.from_date, -1), addDays(range.to_date, 1))) {
           ensureBookingDay(db, req.params.id, item.id, d);
         }
