@@ -46,7 +46,9 @@ const call = (method, p, body) => fetch(`${baseUrl}/api/jobs${p}`, {
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 
-const assign = () => call('POST', '/j1/equipment', { equipment_id: 'e1' }).then(async r => ({
+// Explicit 1-day pads: these tests are about how pads shape a booking, so
+// they should not depend on the default (which is 0).
+const assign = () => call('POST', '/j1/equipment', { equipment_id: 'e1', pad_before: 1, pad_after: 1 }).then(async r => ({
   status: r.status, body: await r.json(),
 }));
 
@@ -81,7 +83,7 @@ test('assigning equipment adopts the job timeframe plus buffer pads', async () =
   seedRoster('j1', 'm1', ['2026-10-01', '2026-10-02', '2026-10-03']);
   const a = await assign();
   assert.equal(a.status, 201);
-  // Default pads are 1/1 → the 3-day span becomes a 5-day booking
+  // 1/1 pads → the 3-day span becomes a 5-day booking
   assert.equal(a.body.booked_days, 5);
   assert.deepEqual(bookingDates('j1', 'e1'),
     ['2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']);
@@ -90,6 +92,15 @@ test('assigning equipment adopts the job timeframe plus buffer pads', async () =
   assert.equal(card.equipment[0].booked_from, '2026-09-30');
   assert.equal(card.equipment[0].booked_to, '2026-10-04');
   assert.equal(card.equipment[0].booked_days, 5);
+});
+
+test('with no pads given, equipment books exactly the job days', async () => {
+  seedRoster('j1', 'm1', ['2026-10-01', '2026-10-02']);
+  const res = await call('POST', '/j1/equipment', { equipment_id: 'e1' });
+  const body = await res.json();
+  assert.equal(body.pad_before, 0);
+  assert.equal(body.pad_after, 0);
+  assert.deepEqual(bookingDates('j1', 'e1'), ['2026-10-01', '2026-10-02']);
 });
 
 test('assigning to an unrostered job creates no booking', async () => {

@@ -890,6 +890,9 @@ function kitWindow(db, jobId) {
 }
 
 const MAX_PAD = 30;
+// Transit buffer when none is asked for. Zero: most kit travels with the
+// crew, so a buffer is something you add for freight, not a given.
+const DEFAULT_PAD = 0;
 const parsePad = (v, fallback) =>
   Number.isInteger(v) ? Math.min(MAX_PAD, Math.max(0, v)) : fallback;
 
@@ -997,8 +1000,8 @@ router.post('/:id/equipment', requireAdmin, (req, res) => {
   ).get(req.params.id, equipment_id);
   if (existing) return res.status(409).json({ error: 'Already assigned to this job' });
 
-  const padB = parsePad(pad_before, 1);
-  const padA = parsePad(pad_after, 1);
+  const padB = parsePad(pad_before, DEFAULT_PAD);
+  const padA = parsePad(pad_after, DEFAULT_PAD);
 
   const id = uuidv4();
   req.db.prepare(`
@@ -1226,7 +1229,7 @@ router.post('/:id/equipment/confirm', requireAdmin, (req, res) => {
 });
 
 // Apply a kit template to the job: adds every kit item (skips unserviceable /
-// already-assigned) and books each for the job window with 1-day pads.
+// already-assigned) and books each for the job window with the default transit pads.
 router.post('/:id/apply-kit', requireAdmin, (req, res) => {
   const db = req.db;
   const { kit_id } = req.body || {};
@@ -1253,10 +1256,10 @@ router.post('/:id/apply-kit', requireAdmin, (req, res) => {
       if (item.serviceable !== 1) { skipped.push({ id: item.id, name: item.name, reason: 'unserviceable' }); continue; }
       db.prepare(`
         INSERT INTO job_equipment (id, job_id, equipment_id, assigned_to, notes, pad_before, pad_after)
-        VALUES (?, ?, ?, '', ?, 1, 1)
-      `).run(uuidv4(), req.params.id, item.id, `from kit: ${kit.name}`);
+        VALUES (?, ?, ?, '', ?, ?, ?)
+      `).run(uuidv4(), req.params.id, item.id, `from kit: ${kit.name}`, DEFAULT_PAD, DEFAULT_PAD);
       if (range) {
-        for (const d of dateRange(addDays(range.from_date, -1), addDays(range.to_date, 1))) {
+        for (const d of dateRange(addDays(range.from_date, -DEFAULT_PAD), addDays(range.to_date, DEFAULT_PAD))) {
           ensureBookingDay(db, req.params.id, item.id, d);
         }
       }

@@ -145,7 +145,7 @@ test('confirm-all blocks on conflicts, override confirms + records + notifies', 
   assert.equal(n.c, 1);
 });
 
-test('kits CRUD + apply-kit adds, skips unserviceable, books with pads', async () => {
+test('kits CRUD + apply-kit adds, skips unserviceable, books the job window', async () => {
   // No cookie → 401 on kits
   assert.equal((await callEq('GET', '/kits', undefined, false)).status, 401);
 
@@ -167,7 +167,8 @@ test('kits CRUD + apply-kit adds, skips unserviceable, books with pads', async (
   assert.deepEqual(applied.added.map(a => a.id), ['e1']);
   assert.equal(applied.skipped[0].id, 'e2');
   assert.equal(applied.skipped[0].reason, 'unserviceable');
-  assert.deepEqual(bookingDates('j1', 'e1'), [D(9), D(10), D(11), D(12)]);
+  // Default transit pads are 0, so kit books exactly the job's days
+  assert.deepEqual(bookingDates('j1', 'e1'), [D(10), D(11)]);
 
   // Re-apply — e1 now skipped as already on the job
   res = await call('POST', '/j1/apply-kit', { kit_id: kit.id });
