@@ -1391,3 +1391,121 @@ body.is-resizing { cursor: row-resize; user-select: none; }
   .jobcard { padding: 14px 14px 48px; }
   .form-label { width: 96px; }
 }
+
+/* ── Equipment picker ────────────────────────────────────────────────── */
+
+.picker {
+  position: fixed;
+  z-index: 201;
+  top: 5vh; left: 50%;
+  transform: translateX(-50%);
+  width: min(1100px, calc(100% - 32px));
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  animation: fade 0.13s ease;
+}
+.picker-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.picker-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 12px 16px;
+}
+.picker-controls .searchbox { width: 100%; }
+.picker-pads { display: flex; align-items: center; gap: 10px; }
+
+.picker-grid { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--line-soft); }
+.picker-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 40px;
+  border-bottom: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.picker-row:hover { background: var(--bg); }
+.picker-row.is-picked { background: rgba(59, 130, 246, 0.08); }
+.picker-axis {
+  position: sticky; top: 0; z-index: 2;
+  min-height: 34px;
+  background: var(--bg-raised);
+  cursor: default;
+}
+.picker-axis:hover { background: var(--bg-raised); }
+.picker-name {
+  flex: none;
+  width: 260px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px 4px 16px;
+  min-width: 0;
+}
+.picker-name .rl { flex: 1; display: flex; flex-direction: column; }
+.picker-strip { flex: 1; position: relative; min-width: 240px; margin-right: 12px; }
+.picker-weekend { position: absolute; top: 0; bottom: 0; background: var(--weekend); }
+.picker-band { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.picker-band.is-pad { background: rgba(234, 179, 8, 0.10); }
+.picker-band.is-job { background: rgba(59, 130, 246, 0.16); }
+.picker-axis .picker-band.is-job { border-bottom: 2px solid #3b82f6; }
+.picker-axis .picker-band.is-pad { border-bottom: 2px solid rgba(234, 179, 8, 0.7); }
+.picker-tick {
+  position: absolute; top: 4px;
+  font-size: 10px; color: var(--text-mute);
+  padding-left: 3px;
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+.picker-need {
+  position: absolute; bottom: 4px;
+  font-size: 10px; font-weight: 650; color: var(--text-dim);
+  white-space: nowrap;
+}
+.picker-bar {
+  position: absolute; top: 50%; height: 18px; margin-top: -9px;
+  border-radius: 3px;
+  font-size: 10px; font-weight: 650; color: #fff;
+  padding: 0 5px; line-height: 18px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.picker-bar.is-clash { outline: 1.5px solid var(--danger); outline-offset: 1px; }
+.picker-bar.is-new {
+  background: transparent;
+  border: 1.5px dashed #3b82f6;
+  pointer-events: none;
+}
+.picker-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+.picker-legend { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-mute); }
+.picker-key { width: 12px; height: 10px; border-radius: 2px; display: inline-block; margin-left: 6px; }
+.picker-key.is-job { background: rgba(59, 130, 246, 0.35); }
+.picker-key.is-pad { background: rgba(234, 179, 8, 0.3); }
+
+@media (max-width: 760px) {
+  .picker { top: 0; width: 100%; max-height: 100vh; height: 100%; border-radius: 0; }
+  .picker-name { width: 150px; }
+}
+
+/* − 1d + stepper, used for transit buffers in the picker and on kit rows */
+.pad-input { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
+.pad-step {
+  width: 20px; height: 20px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 4px;
+  font: inherit; line-height: 1;
+  cursor: pointer;
+}
+.pad-step:disabled { opacity: 0.4; cursor: default; }
+.pad-val { min-width: 24px; text-align: center; font-weight: 650; font-variant-numeric: tabular-nums; }
+.pad-label { color: var(--text-mute); margin-left: 2px; }
+.kit-pads { display: inline-flex; gap: 10px; margin-left: auto; }
+.kit-add { margin-top: 8px; }

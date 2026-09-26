@@ -103,6 +103,10 @@ export const applyChecklistTemplate = (jobId) =>
 export const assignJobEquipment = (jobId, data) =>
   api(`/jobs/${jobId}/equipment`, { method: 'POST', body: JSON.stringify(data) });
 
+// Redraws the item's booking as the job window plus the new transit pads.
+export const setJobEquipmentPads = (assignmentId, pads) =>
+  api(`/jobs/equipment/${assignmentId}/pads`, { method: 'PUT', body: JSON.stringify(pads) });
+
 export const removeJobEquipment = (assignmentId) =>
   api(`/jobs/equipment/${assignmentId}`, { method: 'DELETE' });
 

@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Section } from './ui.jsx';
+import EquipmentPicker, { PadInput } from './EquipmentPicker.jsx';
 import {
   JOB_STATUSES, STATES, EQUIPMENT_CATEGORIES,
   updateJob, getJobReadiness, setJobStatus,
   addChecklistItem, updateChecklistItem, deleteChecklistItem, applyChecklistTemplate,
-  assignJobEquipment, removeJobEquipment, confirmJobKit, getKits, applyKitToJob,
+  removeJobEquipment, setJobEquipmentPads, confirmJobKit, getKits, applyKitToJob,
   bulkAssignSchedule, clearMemberDay,
 } from '../api.js';
 import { rangeOf, fmtShort } from '../lib/dates.js';
-import { makeMatcher } from '../lib/search.js';
 
 // ── Job card ────────────────────────────────────────────────────────────
 //
@@ -51,7 +51,7 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
   const [crewPick, setCrewPick] = useState('');
   const [kitPick, setKitPick] = useState('');
   const [kits, setKits] = useState([]);
-  const [kitSearch, setKitSearch] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Ticks show immediately and are reconciled when the reload lands. Without
   // this the box is purely controlled, so it snaps back for the second or two
   // the round trip takes and a quick second click silently undoes the first.
@@ -203,13 +203,26 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
     [card]
   );
 
-  const kitCandidates = useMemo(() => {
-    const match = makeMatcher(kitSearch);
-    return (equipment || [])
-      .filter((e) => e.active !== 0 && !assignedIds.has(e.id))
-      .filter((e) => match(e.name, e.equipment_category, e.serial_number))
-      .slice(0, 40);
-  }, [equipment, assignedIds, kitSearch]);
+  // What kit gets booked around: the saved planned dates, else the crew's
+  // span — the same rule the server uses.
+  const kitWindow = useMemo(() => {
+    if (job?.planned_start && job?.planned_end && job.planned_end >= job.planned_start) {
+      return { from: job.planned_start, to: job.planned_end };
+    }
+    const spans = (card?.crew || []).filter((c) => c.from_date);
+    if (!spans.length) return null;
+    return {
+      from: spans.reduce((m, c) => (c.from_date < m ? c.from_date : m), spans[0].from_date),
+      to: spans.reduce((m, c) => (c.to_date > m ? c.to_date : m), spans[0].to_date),
+    };
+  }, [job?.planned_start, job?.planned_end, card]);
+
+  const changePads = (k, pads) => act(async () => {
+    const r = await setJobEquipmentPads(k.id, pads);
+    if (r?.conflicts?.length) {
+      showToast?.(`${k.equipment_name} now clashes with ${r.conflicts.map((c) => c.code).join(', ')}`, 'error');
+    }
+  });
 
   if (!job || !form) return <div className="loading-screen">Loading job…</div>;
 
@@ -380,6 +393,16 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
             <span className="rl-sub">
               {k.booked_from ? `${fmtShort(k.booked_from)}–${fmtShort(k.booked_to)}` : 'not booked'}
             </span>
+            {isAdmin ? (
+              <span className="kit-pads" title="Transit buffer either side of the job">
+                <PadInput label="before" value={k.pad_before || 0} disabled={busy}
+                  onChange={(v) => changePads(k, { pad_before: v })} />
+                <PadInput label="after" value={k.pad_after || 0} disabled={busy}
+                  onChange={(v) => changePads(k, { pad_after: v })} />
+              </span>
+            ) : (
+              <span className="rl-sub">transit {k.pad_before || 0}d / {k.pad_after || 0}d</span>
+            )}
             {(k.conflicts || []).length > 0 && (
               <span className="tag tag-danger" title={k.conflicts.map((c) => c.code).join(', ')}>clash</span>
             )}
@@ -416,31 +439,19 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
               </button>
             </div>
 
-            <input
-              className="kit-search"
-              type="search"
-              placeholder="Add a single item — search equipment…"
-              value={kitSearch}
-              onChange={(e) => setKitSearch(e.target.value)}
-            />
-            {kitSearch && (
-              <div className="kit-results">
-                {kitCandidates.length === 0 && <div className="rl-sub">Nothing matches.</div>}
-                {kitCandidates.map((e) => (
-                  <button
-                    key={e.id}
-                    className="opt"
-                    disabled={busy}
-                    onClick={() => act(
-                      () => assignJobEquipment(jobId, { equipment_id: e.id }),
-                      `${e.name} assigned`
-                    ).then(() => setKitSearch(''))}
-                  >
-                    <span className="opt-name">{e.name}</span>
-                    <span className="opt-hint">{e.equipment_category || e.role}</span>
-                  </button>
-                ))}
-              </div>
+            <button className="btn btn-primary kit-add" disabled={busy} onClick={() => setPickerOpen(true)}>
+              + Add equipment…
+            </button>
+            {pickerOpen && (
+              <EquipmentPicker
+                jobId={jobId}
+                window={kitWindow}
+                equipment={equipment}
+                assignedIds={assignedIds}
+                onClose={() => setPickerOpen(false)}
+                onAdded={onChanged}
+                showToast={showToast}
+              />
             )}
           </>
         )}
