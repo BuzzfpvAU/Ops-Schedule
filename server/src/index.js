@@ -8,6 +8,7 @@ import { requireAuth, requireAdmin } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import passkeyRoutes from './routes/passkey.js';
 import teamRoutes from './routes/teams.js';
+import geocodeRoutes from './routes/geocode.js';
 import jobRoutes from './routes/jobs.js';
 import scheduleRoutes from './routes/schedule.js';
 import exportRoutes from './routes/export.js';
@@ -57,6 +58,7 @@ app.get('/api/health', (req, res) => {
 
 // Protected API routes (require login)
 app.use('/api/team-members', requireAuth, teamRoutes);
+app.use('/api/geocode', requireAuth, geocodeRoutes);
 app.use('/api/jobs', requireAuth, jobRoutes);
 app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api/export', requireAuth, exportRoutes);

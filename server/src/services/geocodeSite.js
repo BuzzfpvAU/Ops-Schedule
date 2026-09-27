@@ -2,7 +2,8 @@
 // request path: saving a job must not wait on a third-party service.
 const PHOTON = 'https://photon.komoot.io/api/';
 
-export async function geocodeAddress(address, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+// A place name → { lat, lng, label }, biased to Australia; null on any failure.
+export async function geocodePlace(address, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
   const q = String(address || '').trim();
   if (!q) return null;
   const ctrl = new AbortController();
@@ -12,13 +13,21 @@ export async function geocodeAddress(address, { fetchImpl = fetch, timeoutMs = 5
     const res = await fetchImpl(url, { signal: ctrl.signal, headers: { 'User-Agent': 'taskz.id ops-schedule' } });
     if (!res.ok) return null;
     const body = await res.json();
-    const c = body?.features?.[0]?.geometry?.coordinates;
-    return Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]) ? { lat: c[1], lng: c[0] } : null;
+    const f = body?.features?.[0];
+    const c = f?.geometry?.coordinates;
+    if (!Array.isArray(c) || !Number.isFinite(c[0]) || !Number.isFinite(c[1])) return null;
+    const p = f.properties || {};
+    return { lat: c[1], lng: c[0], label: [p.name, p.state].filter(Boolean).join(', ') || q };
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function geocodeAddress(address, opts) {
+  const pos = await geocodePlace(address, opts);
+  return pos ? { lat: pos.lat, lng: pos.lng } : null;
 }
 
 let geocoder = (a) => geocodeAddress(a);

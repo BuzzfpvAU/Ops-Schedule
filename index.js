@@ -16,6 +16,7 @@ import calendarRoutes from './server/src/routes/calendar.js';
 import notificationRoutes from './server/src/routes/notifications.js';
 import seedRoutes from './server/src/routes/seed.js';
 import equipmentRoutes from './server/src/routes/equipment.js';
+import geocodeRoutes from './server/src/routes/geocode.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -74,6 +75,7 @@ app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
 app.use('/api/seed', requireAuth, requireAdmin, seedRoutes);
 app.use('/api/equipment', equipmentRoutes);
+app.use('/api/geocode', requireAuth, geocodeRoutes);
 // Calendar subscription feeds: public URLS gated by per-entity tokens;
 // token-management endpoints enforce auth inside the router.
 app.use('/api/calendar', calendarRoutes);
