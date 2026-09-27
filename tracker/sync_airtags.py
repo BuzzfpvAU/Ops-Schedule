@@ -33,6 +33,7 @@ from pathlib import Path
 TRACKER_DIR = Path(__file__).resolve().parent
 ACCOUNTS_ROOT = TRACKER_DIR / "accounts"
 ENV_FILE = TRACKER_DIR / ".env"
+ANISETTE_LIBS = TRACKER_DIR / "ani_libs.bin"
 
 
 def _load_env() -> None:
@@ -48,6 +49,10 @@ _load_env()
 
 API_URL = (os.environ.get("API_URL") or "http://localhost:3000").rstrip("/")
 INGEST_KEY = os.environ.get("TRACKER_INGEST_KEY") or ""
+# Keys saved by the export portal (accounts/shared/<slug>/keys) have no
+# session of their own; they are located with this account's session.
+LOOKUP_ACCOUNT = os.environ.get("LOOKUP_ACCOUNT") or "droneops"
+PORTAL_URL = (os.environ.get("PORTAL_HEALTH_URL") or "http://127.0.0.1:8787").rstrip("/")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("airtag-tracker")
@@ -55,65 +60,95 @@ log = logging.getLogger("airtag-tracker")
 # Status-byte battery bits (see findmy docs)
 BATTERY = {0b00: "Full", 0b01: "Medium", 0b10: "Low", 0b11: "Very Low"}
 
+DEVICE_MODEL_PREFIXES = ("iPhone", "iPad", "Mac", "Watch", "AirPods")
+
+
+def classify(model: str | None, identifier: str | None) -> str:
+    """'device' for Apple devices (never located unless an admin includes
+    them), 'tag' for AirTags and third-party Find My tags."""
+    if (model or "").startswith(DEVICE_MODEL_PREFIXES):
+        return "device"
+    if (identifier or "").startswith(("l:/", "me:/")):
+        return "device"
+    return "tag"
+
 
 class AccountError(Exception):
     """Account dir exists but is not usable yet (missing session/keys)."""
 
 
+def slug_of(acct_dir: Path) -> str:
+    return f"shared/{acct_dir.name}" if acct_dir.parent.name == "shared" else acct_dir.name
+
+
+def is_shared(acct_dir: Path) -> bool:
+    return acct_dir.parent.name == "shared"
+
+
 def list_accounts(only: list[str] | None = None) -> list[Path]:
+    """Apple ID accounts first, then portal-shared key dirs."""
     if not ACCOUNTS_ROOT.is_dir():
         return []
-    dirs = sorted(p for p in ACCOUNTS_ROOT.iterdir() if p.is_dir())
+    dirs = sorted(p for p in ACCOUNTS_ROOT.iterdir() if p.is_dir() and p.name != "shared")
+    shared = ACCOUNTS_ROOT / "shared"
+    if shared.is_dir():
+        dirs += sorted(p for p in shared.iterdir() if p.is_dir())
     if only:
         wanted = set(only)
-        dirs = [p for p in dirs if p.name in wanted]
+        dirs = [p for p in dirs if slug_of(p) in wanted]
     return dirs
 
 
-def load_account(acct_dir: Path):
+def load_account(acct_dir: Path, lookup=None):
     """Load one account's session + accessory keys.
 
-    Returns (account, accessories) or raises AccountError with a fix hint.
+    Returns (account, [(accessory, key_file_json)]) or raises AccountError
+    with a fix hint.
     """
     from findmy import AppleAccount, FindMyAccessory
 
-    slug = acct_dir.name
+    slug = slug_of(acct_dir)
     session_file = acct_dir / "account.json"
     keys_dir = acct_dir / "keys"
 
-    if not session_file.exists():
+    if is_shared(acct_dir):
+        if lookup is None:
+            raise AccountError(f"[{slug}] no {LOOKUP_ACCOUNT} session to locate shared keys")
+        account = lookup
+    elif not session_file.exists():
         raise AccountError(
             f"[{slug}] no session — run ./findmy_login.py {slug} (Apple ID + 2FA)"
         )
-    try:
-        account = AppleAccount.from_json(session_file)
-    except Exception as exc:  # noqa: BLE001
-        raise AccountError(
-            f"[{slug}] session restore failed ({exc}) — re-run ./findmy_login.py {slug}"
-        ) from exc
+    else:
+        try:
+            account = AppleAccount.from_json(session_file, anisette_libs_path=ANISETTE_LIBS)
+        except Exception as exc:  # noqa: BLE001
+            raise AccountError(
+                f"[{slug}] session restore failed ({exc}) — re-run ./findmy_login.py {slug}"
+            ) from exc
 
     if not keys_dir.is_dir():
         raise AccountError(
             f"[{slug}] missing keys dir — run ./export_keys.sh {slug} <apple-id-email>"
         )
-    accessories = []
+    pairs = []
     for path in sorted(keys_dir.glob("*.json")):
         try:
-            accessories.append(FindMyAccessory.from_json(path))
+            meta = json.loads(path.read_text())
+            pairs.append((FindMyAccessory.from_json(path), meta))
         except Exception as exc:  # noqa: BLE001
             log.warning("[%s] skipping bad key file %s: %s", slug, path.name, exc)
-    if not accessories:
+    if not pairs:
         raise AccountError(
             f"[{slug}] no valid accessory keys in {keys_dir.name}/ — run "
             f"./export_keys.sh {slug} <apple-id-email>"
         )
-    return account, accessories
+    return account, pairs
 
 
-def fetch_account(acct_dir: Path) -> list[dict]:
-    """Fetch + decrypt locations for one account; returns API-ready rows."""
-    slug = acct_dir.name
-    account, accessories = load_account(acct_dir)
+def fetch_account(slug: str, account, accessories) -> list[dict]:
+    """Fetch + decrypt locations for one account's included accessories;
+    returns API-ready rows."""
 
     log.info("[%s] fetching Find My locations for %d accessories…", slug, len(accessories))
     try:
@@ -124,10 +159,11 @@ def fetch_account(acct_dir: Path) -> list[dict]:
 
     # Persist refreshed session tokens — do this on every successful fetch so
     # an expired session is noticed early instead of mid-rotation.
-    try:
-        account.to_json(acct_dir / "account.json")
-    except Exception:  # noqa: BLE001
-        log.warning("[%s] could not persist refreshed session", slug)
+    if not slug.startswith("shared/"):  # shared keys borrow LOOKUP_ACCOUNT's session
+        try:
+            account.to_json(ACCOUNTS_ROOT / slug / "account.json")
+        except Exception:  # noqa: BLE001
+            log.warning("[%s] could not persist refreshed session", slug)
 
     locations: list[dict] = []
     for accessory, report in (results or {}).items():
@@ -138,6 +174,7 @@ def fetch_account(acct_dir: Path) -> list[dict]:
         battery = BATTERY.get((report.status >> 6) & 0b11, "Unknown")
         locations.append(
             {
+                "identifier": getattr(accessory, "identifier", None),
                 "airtag_name": name,
                 "lat": report.latitude,
                 "lng": report.longitude,
@@ -152,6 +189,55 @@ def fetch_account(acct_dir: Path) -> list[dict]:
             slug, name, report.latitude, report.longitude, report.horizontal_accuracy, battery,
         )
     return locations
+
+
+def inventory_rows(slug: str, pairs) -> list[dict]:
+    rows = []
+    for acc, meta in pairs:
+        ident = getattr(acc, "identifier", None)
+        if not ident:
+            continue
+        model = getattr(acc, "model", None) or ""
+        rows.append({
+            "identifier": ident,
+            "account": slug,
+            "name": getattr(acc, "name", None) or "",
+            "emoji": meta.get("emoji") or "",
+            "model": model,
+            "serial_number": getattr(acc, "serial_number", None) or "",
+            "kind": classify(model, ident),
+        })
+    return rows
+
+
+def portal_health() -> dict:
+    """Whether the export portal on this Mac answers, for Settings' tile."""
+    try:
+        with urllib.request.urlopen(f"{PORTAL_URL}/healthz", timeout=3) as resp:
+            body = json.loads(resp.read())
+        return {"ok": bool(body.get("ok")), "version": str(body.get("version") or "")}
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "version": ""}
+
+
+def post_inventory(rows: list[dict], portal: dict | None = None) -> set[str] | None:
+    """Report every held key; returns the identifiers to locate, or None on
+    any failure (the caller must then locate nothing)."""
+    req = urllib.request.Request(
+        f"{API_URL}/api/equipment/tracker/inventory",
+        data=json.dumps({"items": rows, **({"portal": portal} if portal else {})}).encode(),
+        headers={"Content-Type": "application/json", "X-Ingest-Key": INGEST_KEY},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = json.loads(resp.read())
+        return set(body["included"])
+    except urllib.error.HTTPError as exc:
+        log.error("Inventory rejected (HTTP %s): %s", exc.code, exc.read()[:300])
+    except Exception as exc:  # noqa: BLE001
+        log.error("Inventory failed: %s", exc)
+    return None
 
 
 def push(locations: list[dict]) -> bool:
@@ -177,7 +263,7 @@ def push(locations: list[dict]) -> bool:
         body.get("inserted", 0), len(locations), len(body.get("unmatched", [])), body.get("invalid", 0),
     )
     if body.get("unmatched"):
-        log.warning("Unmatched AirTag names: %s", [u.get("airtag_name") for u in body["unmatched"]])
+        log.warning("Unmatched: %s", [u.get("airtag_name") or u.get("identifier") for u in body["unmatched"]])
     return True
 
 
@@ -195,29 +281,34 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    locations: list[dict] = []
-    seen_in: dict[str, list[str]] = {}
+    loaded = []
     failed = 0
+    lookup = None
     for acct_dir in acct_dirs:
-        slug = acct_dir.name
+        # Apple ID dirs sort before shared ones, so the lookup session is
+        # loaded by the time shared keys need it.
         try:
-            locs = fetch_account(acct_dir)
+            account, pairs = load_account(acct_dir, lookup)
         except AccountError as exc:
             log.error("%s", exc)
             failed += 1
             continue
-        for loc in locs:
-            seen_in.setdefault(loc["airtag_name"], []).append(slug)
-        locations.extend(locs)
+        if acct_dir.name == LOOKUP_ACCOUNT and not is_shared(acct_dir):
+            lookup = account
+        loaded.append((slug_of(acct_dir), account, pairs))
 
-    # Names must be unique across accounts — the API matches by name only.
-    for name, slugs in seen_in.items():
-        if len(set(slugs)) > 1:
-            log.warning(
-                "Duplicate AirTag name %r in accounts %s — the map will show the "
-                "newest report; rename one tag in Find My",
-                name, sorted(set(slugs)),
-            )
+    rows = [r for slug, _, pairs in loaded for r in inventory_rows(slug, pairs)]
+    included = post_inventory(rows, portal_health()) if rows else set()
+    if included is None:
+        log.error("Inventory not accepted — locating nothing this run")
+        return 1
+
+    locations: list[dict] = []
+    for slug, account, pairs in loaded:
+        wanted = [acc for acc, _ in pairs if getattr(acc, "identifier", None) in included]
+        log.info("[%s] %d of %d items included", slug, len(wanted), len(pairs))
+        if wanted:
+            locations.extend(fetch_account(slug, account, wanted))
 
     if not locations:
         return 1 if failed else 0

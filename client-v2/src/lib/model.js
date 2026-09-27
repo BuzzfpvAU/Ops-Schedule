@@ -190,3 +190,25 @@ export const NON_WORK = new Set(['leave', 'toil', 'unavailable', 'note']);
 export function isWork(entry) {
   return !NON_WORK.has(entry.status || 'tentative');
 }
+
+/**
+ * The dates a new crew or kit booking on a job covers.
+ *
+ * Planned start → end when both are set; a start with no end is one day (as
+ * V1 reads it); otherwise the span of the crew already booked, which is the
+ * rule the server uses for kit. Null when there is nothing to go on.
+ */
+export function bookingWindow(planned, crew) {
+  const start = planned?.planned_start || '';
+  const end = planned?.planned_end || '';
+  if (start && (!end || end >= start)) {
+    return { from: start, to: end || start, source: 'planned' };
+  }
+  const spans = (crew || []).filter((c) => c.from_date && c.to_date);
+  if (!spans.length) return null;
+  return {
+    from: spans.reduce((m, c) => (c.from_date < m ? c.from_date : m), spans[0].from_date),
+    to: spans.reduce((m, c) => (c.to_date > m ? c.to_date : m), spans[0].to_date),
+    source: 'crew',
+  };
+}

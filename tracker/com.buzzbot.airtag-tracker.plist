@@ -14,15 +14,15 @@
     <key>API_URL</key>
     <string>https://taskz.id</string>
     <key>TRACKER_INGEST_KEY</key>
-    <string>a662d3a0d8d7b257641874314eff155c8c1c0301b36004da</string>
+    <string>REPLACE_WITH_SERVER_TRACKER_INGEST_KEY</string>
   </dict>
   <key>StartInterval</key>
   <integer>1200</integer>
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Users/buzzbot/Dev/Ops-Schedule/tracker/logs/sync.log</string>
+  <string>/Users/buzzbot/Library/Logs/airtag-tracker/sync.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buzzbot/Dev/Ops-Schedule/tracker/logs/sync.err.log</string>
+  <string>/Users/buzzbot/Library/Logs/airtag-tracker/sync.err.log</string>
 </dict>
 </plist>

@@ -37,14 +37,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if store.exists():
         try:
-            acc = AppleAccount.from_json(store)
+            acc = AppleAccount.from_json(store, anisette_libs_path=ANISETTE_LIBS)
             print(f"Existing session for: {acc.account_name}")
             if input("Reuse it? [Y/n] ").strip().lower() != "n":
                 return 0
         except Exception:  # noqa: BLE001
             print("Stored session is invalid — signing in fresh.")
 
-    provider = LocalAnisetteProvider(ANISETTE_LIBS)
+    provider = LocalAnisetteProvider(libs_path=ANISETTE_LIBS)
     acc = AppleAccount(anisette=provider)
 
     email = input("Apple ID email: ").strip()

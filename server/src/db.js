@@ -448,6 +448,46 @@ export function initDb() {
       ON equipment_locations(team_member_id, seen_at DESC);
   `);
 
+  // Find My items the tracker Mac holds keys for (tags and Apple devices).
+  // Keyed by the export's permanent identifier; linked to equipment by id.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tracker_items (
+      identifier TEXT PRIMARY KEY,
+      account TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      emoji TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      serial_number TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT 'tag',
+      included INTEGER NOT NULL DEFAULT 0,
+      equipment_id TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_inventory_at TEXT NOT NULL,
+      last_seen_at TEXT,
+      battery TEXT,
+      FOREIGN KEY (equipment_id) REFERENCES team_members(id) ON DELETE SET NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tracker_items_equipment
+      ON tracker_items(equipment_id) WHERE equipment_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS tracker_invites (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      attempts_left INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      tags_saved INTEGER NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT ''
+    );
+  `);
+
   // New tables for auth
   db.exec(`
     CREATE TABLE IF NOT EXISTS passkey_credentials (

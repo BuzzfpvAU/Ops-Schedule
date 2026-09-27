@@ -3,6 +3,11 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { upsertInventory, listItems, setStaleDays } from '../services/trackerItems.js';
+import {
+  createInvite, listInvites, checkInvite, recordAttempt, completeInvite, failInvite,
+  markCleanupFailed, cancelInvite, recordPortalStatus, portalLastOkAt,
+} from '../services/trackerInvites.js';
 
 const router = Router();
 
@@ -79,6 +84,9 @@ router.get('/tracking-status', requireAuth, requireAdmin, (req, res) => {
     FROM equipment_locations
   `).get();
 
+  const { items } = listItems(req.db);
+  const tags = items.filter((i) => i.kind === 'tag');
+
   res.json({
     ingest_key_configured: !!process.env.TRACKER_INGEST_KEY,
     equipment_total: counts.total || 0,
@@ -86,6 +94,13 @@ router.get('/tracking-status', requireAuth, requireAdmin, (req, res) => {
     pings_total: pings.total || 0,
     reporting_items: pings.reporting_items || 0,
     last_seen_at: pings.last_seen_at || null,
+    tags_total: tags.length,
+    tags_tracked: tags.filter((i) => i.included && i.equipment_id).length,
+    tags_stale: tags.filter((i) => i.status === 'stale').length,
+    devices_hidden: items.filter((i) => i.kind === 'device' && !i.included).length,
+    portal_url: process.env.TRACKER_PORTAL_URL || null,
+    portal_last_ok_at: portalLastOkAt(req.db),
+    tracker_last_report_at: items.reduce((m, i) => (i.last_inventory_at > (m || '') ? i.last_inventory_at : m), null),
   });
 });
 
@@ -148,6 +163,11 @@ router.post('/locations', softAuth, (req, res) => {
     INSERT INTO equipment_locations (id, team_member_id, lat, lng, accuracy, battery, source, seen_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const trackerItem = req.db.prepare('SELECT identifier, included, equipment_id FROM tracker_items WHERE identifier = ?');
+  const touchItem = req.db.prepare(`
+    UPDATE tracker_items SET last_seen_at = ?, battery = COALESCE(?, battery)
+    WHERE identifier = ? AND (last_seen_at IS NULL OR last_seen_at < ?)
+  `);
 
   const tx = req.db.transaction(() => {
     for (const item of items) {
@@ -158,7 +178,22 @@ router.post('/locations', softAuth, (req, res) => {
         invalid.push({ item });
         continue;
       }
-      const member = resolveMember(req.db, item);
+      let member;
+      if (item.identifier) {
+        const ti = trackerItem.get(String(item.identifier));
+        if (!ti || !ti.included) {
+          unmatched.push({ identifier: item.identifier, airtag_name: item.airtag_name || null });
+          continue;
+        }
+        const seen = item.seen_at || now;
+        touchItem.run(seen, item.battery || null, ti.identifier, seen);
+        member = ti.equipment_id
+          ? req.db.prepare('SELECT * FROM team_members WHERE id = ? AND is_equipment = 1').get(ti.equipment_id)
+          : null;
+        if (!member) continue; // included but not linked: last-seen only
+      } else {
+        member = resolveMember(req.db, item);
+      }
       if (!member) {
         unmatched.push({ member_id: item.member_id || null, airtag_name: item.airtag_name || null });
         continue;
@@ -190,6 +225,107 @@ router.delete('/locations/:memberId', requireAuth, requireAdmin, (req, res) => {
     'DELETE FROM equipment_locations WHERE team_member_id = ?'
   ).run(req.params.memberId);
   res.json({ success: true, deleted: result.changes });
+});
+
+// ── Tracker items (Find My inventory from the tracker Mac) ──────────
+// The Mac reports every item it holds keys for and gets back the ones an
+// admin chose to track. It locates only those.
+router.post('/tracker/inventory', (req, res) => {
+  if (!ingestKeyMatches(req)) return res.status(401).json({ error: 'Valid X-Ingest-Key required' });
+  const items = req.body?.items;
+  if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' });
+  recordPortalStatus(req.db, req.body.portal, new Date().toISOString());
+  res.json({ included: upsertInventory(req.db, items, new Date().toISOString()) });
+});
+
+router.get('/tracker/items', requireAuth, requireAdmin, (req, res) => {
+  res.json(listItems(req.db));
+});
+
+router.patch('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res) => {
+  const db = req.db;
+  const id = req.params.identifier;
+  const item = db.prepare('SELECT * FROM tracker_items WHERE identifier = ?').get(id);
+  if (!item) return res.status(404).json({ error: 'Unknown item' });
+  const { included, equipment_id, move } = req.body || {};
+
+  if (equipment_id !== undefined && equipment_id !== null) {
+    const eq = db.prepare('SELECT id FROM team_members WHERE id = ? AND is_equipment = 1').get(equipment_id);
+    if (!eq) return res.status(400).json({ error: 'Not an equipment item' });
+    const holder = db.prepare('SELECT identifier, name FROM tracker_items WHERE equipment_id = ? AND identifier != ?')
+      .get(equipment_id, id);
+    if (holder && !move) return res.status(409).json({ error: 'Equipment already linked to another tag', holder });
+    db.transaction(() => {
+      if (holder) db.prepare('UPDATE tracker_items SET equipment_id = NULL WHERE identifier = ?').run(holder.identifier);
+      db.prepare('UPDATE tracker_items SET equipment_id = ? WHERE identifier = ?').run(equipment_id, id);
+    })();
+  } else if (equipment_id === null) {
+    db.prepare('UPDATE tracker_items SET equipment_id = NULL WHERE identifier = ?').run(id);
+  }
+  if (included !== undefined) {
+    db.prepare('UPDATE tracker_items SET included = ? WHERE identifier = ?').run(included ? 1 : 0, id);
+  }
+  res.json(listItems(db).items.find((i) => i.identifier === id));
+});
+
+router.delete('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res) => {
+  const item = listItems(req.db).items.find((i) => i.identifier === req.params.identifier);
+  if (!item) return res.status(404).json({ error: 'Unknown item' });
+  if (item.status !== 'missing') {
+    return res.status(409).json({ error: 'Only items missing from the latest export can be removed' });
+  }
+  req.db.prepare('DELETE FROM tracker_items WHERE identifier = ?').run(item.identifier);
+  res.json({ success: true });
+});
+
+router.put('/tracker/settings', requireAuth, requireAdmin, (req, res) => {
+  try {
+    res.json({ stale_days: setStaleDays(req.db, req.body?.stale_days) });
+  } catch (e) {
+    if (e instanceof RangeError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+// ── Export portal invites ────────────────────────────────────────────
+router.post('/tracker/invites', requireAuth, requireAdmin, (req, res) => {
+  const portal = process.env.TRACKER_PORTAL_URL;
+  if (!portal) return res.status(400).json({ error: 'TRACKER_PORTAL_URL is not set on the server' });
+  const label = String(req.body?.label || '').trim().slice(0, 60);
+  if (!label) return res.status(400).json({ error: 'A label is required' });
+  const { id, token } = createInvite(req.db, { label, createdBy: req.user?.memberId });
+  res.status(201).json({ id, url: `${portal.replace(/\/$/, '')}/i/${token}` });
+});
+
+router.get('/tracker/invites', requireAuth, requireAdmin, (req, res) => {
+  res.json(listInvites(req.db));
+});
+
+router.delete('/tracker/invites/:id', requireAuth, requireAdmin, (req, res) => {
+  const status = cancelInvite(req.db, req.params.id);
+  if (!status) return res.status(409).json({ error: 'Only pending invites can be cancelled' });
+  res.json({ status });
+});
+
+router.post('/tracker/invites/check', (req, res) => {
+  if (!ingestKeyMatches(req)) return res.status(401).json({ error: 'Valid X-Ingest-Key required' });
+  res.json(checkInvite(req.db, req.body?.token));
+});
+
+const INVITE_STEPS = {
+  attempt: (db, id) => recordAttempt(db, id),
+  complete: (db, id, body) => completeInvite(db, id, body?.tags_saved),
+  failed: (db, id, body) => failInvite(db, id, body?.note),
+  'cleanup-failed': (db, id, body) => markCleanupFailed(db, id, body?.note),
+};
+
+router.post('/tracker/invites/:id/:step', (req, res) => {
+  if (!ingestKeyMatches(req)) return res.status(401).json({ error: 'Valid X-Ingest-Key required' });
+  const fn = INVITE_STEPS[req.params.step];
+  if (!fn) return res.status(404).json({ error: 'Unknown step' });
+  const status = fn(req.db, req.params.id, req.body);
+  if (!status) return res.status(409).json({ error: 'Invite is not in a state for that step' });
+  res.json({ status });
 });
 
 // ── Booking index (V2 equipment timeline) ────────────────────────────

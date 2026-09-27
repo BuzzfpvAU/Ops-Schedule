@@ -33,6 +33,16 @@ Works with **any Find My network tag**: genuine AirTags *and* third-party
 "Works with Find My" tags (e.g. Kmart/Anko Smart Tag Type-C $20 — not the
 Google/Android one).
 
+## Install (once per Mac)
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install 'findmy>=0.10.2'
+```
+
+FindMy **0.10.2 or newer** is required: since Sep 2026 Apple refuses 0.10.1
+sign-ins with `Error response for GSA request: 503`.
+
 ## Adding an account (per Apple ID, one time)
 
 1. **Sign in** (Apple ID + 2FA — do this in a real terminal, password is not
@@ -51,16 +61,22 @@ Google/Android one).
    ```
 
    Interactive: Apple ID password → pick 2FA method (trusted device or SMS) →
-   escrow password (choose "Generate a random password") → it joins the
+   the **passcode of a listed trusted device** (iPhone PIN or Mac login
+   password) → escrow password (choose "Generate a random password") → it joins the
    iCloud keychain circle, fetches the Find My accessory list from CloudKit
    and writes one `.json` per tag into `accounts/<acct>/keys/`.
 
    Requires the Apple ID to have iCloud Keychain escrow bottles (i.e. a
    device with a passcode — any normal iPhone setup qualifies).
 
-3. Configure the push target once: `cp .env.example .env` and set
-   `API_URL` + `TRACKER_INGEST_KEY` (must match the server's
-   `TRACKER_INGEST_KEY` env var).
+   The export includes the owner's iPhones, iPads and Macs as well as tags.
+   Move any key files you must never locate out of `keys/`.
+
+3. Configure the push target: the server reads `TRACKER_INGEST_KEY` from a
+   `SetEnv TRACKER_INGEST_KEY <key>` line in its `.htaccess`. Generate a key
+   with `openssl rand -hex 32` and put the same value **only** in the
+   installed launchd plist (below). For manual runs pass it in the
+   environment; `.env` holds just `API_URL`.
 
 ## Run
 
@@ -69,12 +85,13 @@ Google/Android one).
 .venv/bin/python sync_airtags.py <acct>   # one account
 ```
 
-launchd (every 20 min, logs to `logs/`):
+launchd (every 20 min, logs to `~/Library/Logs/airtag-tracker/` — launchd cannot write logs on the external /Volumes/Data disk, exit code 78):
 
 ```bash
-mkdir -p logs
+mkdir -p ~/Library/Logs/airtag-tracker
 cp com.buzzbot.airtag-tracker.plist ~/Library/LaunchAgents/
-# edit API_URL + TRACKER_INGEST_KEY inside the plist first
+chmod 600 ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist
+# set TRACKER_INGEST_KEY in the INSTALLED copy only — never in the repo copy
 launchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist
 ```
 
@@ -90,4 +107,39 @@ launchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist
 - Hardware security keys as the Apple ID's *only* 2FA won't work.
 - The exporter's device profile (`~/Dev/export-findmy/.local/<acct>.toml`)
   stores the escrow password — keep it private.
-- Never commit `accounts/`, `account.json`, `keys/`, `.env` (gitignored).
+- Never commit `accounts/`, `account.json`, `keys/`, `.env` (gitignored), or
+  a real key in `com.buzzbot.airtag-tracker.plist` — this repo is public.
+
+## Phone export portal (`portal/`)
+
+Staff with only a phone add their tags through a one-time link: an admin
+creates it in V2 Settings → Tracking → "Add tags from a phone". The link
+opens `https://tags.keyz.au/i/<token>`, served by `portal/server.py` on
+`127.0.0.1:8787` through a Cloudflare Tunnel. The portal runs export-findmy
+for them, keeps only the tags they tick (in `accounts/shared/<slug>/keys/`,
+located with the `droneops` session), then deletes the escrow bottle and its
+temp dir (`~/Library/Application Support/taskz-portal/`).
+
+Install once:
+
+```bash
+.venv/bin/pip install 'pexpect>=4.9'
+cp com.buzzbot.tracker-portal.plist ~/Library/LaunchAgents/
+# set TRACKER_INGEST_KEY in the INSTALLED copy only (same value as the sync plist)
+chmod 600 ~/Library/LaunchAgents/com.buzzbot.tracker-portal.plist
+launchctl load ~/Library/LaunchAgents/com.buzzbot.tracker-portal.plist
+curl -s 127.0.0.1:8787/healthz
+```
+
+Server: `SetEnv TRACKER_PORTAL_URL https://tags.keyz.au` in `.htaccess`
+(then restart the app). Setting it shows the Invites section and hides the
+Mac setup steps in Settings.
+
+Tests: `.venv/bin/python -m unittest discover -s portal/tests -t .`
+(runs against `portal/tests/fake_exporter.py`, never Apple).
+
+**"Cleanup needed" on an invite** means the portal could not delete the
+escrow bottle it created in that person's iCloud. With them present, run
+export-findmy `--delete-own-escrow-bottle` against a profile whose serial
+matches (the portal logs it), and have them remove "Taskz Tag Export" from
+their Apple ID's device list.

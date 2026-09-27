@@ -223,6 +223,7 @@ input, select, textarea { font: inherit; }
 .btn-danger { color: var(--danger); border-color: var(--line); }
 .btn-danger:hover { background: rgba(239, 68, 68, 0.12); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 
 .toggle {
   display: inline-flex;
@@ -1608,3 +1609,33 @@ body.is-report #root { height: auto; }
   /* Repeat the watermark on every printed page, near the corner. */
   .pl-watermark { position: fixed; right: 0; bottom: 0; width: 50mm; }
 }
+
+/* Settings → Tracking: tag list */
+.tt-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; font-size: 12.5px; margin-bottom: 10px; }
+.tt-stale { color: var(--danger); font-weight: 600; }
+.tt-stale-input { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.tt-stale-input input { width: 52px; }
+.tt-group { margin-bottom: 14px; }
+.tt-account { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); margin: 6px 0; }
+.tt-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.tt-row.is-off .entry-name { color: var(--text-dim); }
+.tt-name { display: flex; gap: 8px; align-items: center; min-width: 0; cursor: pointer; }
+.tt-emoji { font-size: 16px; }
+.tt-serial { display: block; font-size: 11px; }
+.tt-status { white-space: nowrap; }
+.tt-devices summary { cursor: pointer; font-size: 12px; color: var(--text-dim); padding: 6px 0; }
+@media (max-width: 640px) {
+  .tt-row { grid-template-columns: 1fr auto; }
+  .tt-link { grid-column: 1 / -1; }
+}
+
+/* Settings → Tracking: Mac setup steps, collapsed for non-maintainers */
+.admin-setup { margin-top: 18px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.admin-setup > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+
+/* Settings → Tracking: export portal invites */
+.inv-new { display: flex; gap: 8px; margin-bottom: 10px; }
+.inv-new input { flex: 1; min-width: 0; }
+.inv-link { display: grid; gap: 6px; }
+.inv-url { word-break: break-all; user-select: all; }
+.inv-list .entry-row { gap: 8px; }

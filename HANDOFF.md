@@ -1,85 +1,55 @@
-# HANDOFF — 2026-09-10
+# HANDOFF — 2026-09-27
 
-## What this covers
+## Deploying
 
-Mobile individual schedule view. Built, committed, **not deployed**.
+**A push to `origin/main` is the deploy.** Hostinger's hbuilds watcher rebuilds
+and swaps the live app. For server files use `ssh tagz-host` (shared hosting
+u882499788, port 65002, `~/.ssh/config`) — the `hermes@srv1713679` VPS in older
+notes is wrong. `.htaccess` is `~/domains/taskz.id/public_html/.htaccess`.
+Env changes there need an app restart: touching `tmp/restart.txt` did NOT
+work; kill the `lsnode:` process (`ps -u $(id -u) -o pid,args | grep lsnode`)
+and LiteSpeed respawns it on the next request.
+Verify by comparing the `/v2/assets/index-*.js` hash on https://taskz.id/v2/
+with a local `cd client-v2 && npx vite build`. See `.agent-status.md` → Deploy notes.
 
-## State
+## What shipped (27 Sep)
 
-- **Branch:** `main`, 3 commits ahead of `origin/main` — nothing pushed
-- **Commits:** `4efc9fc` (spec), `4e60850` (feature), plus this handoff
-- **Live:** https://taskz.id still runs the previous build (`ce951e2`)
-- **Tests:** `npm test` — 24 passing
+- **AirTag tracker brought up** for the `droneops` Apple ID (session +
+  keys exported on this Mac). FindMy pinned to ≥ 0.10.2 — 0.10.1 is refused
+  by Apple with GSA 503.
+- **Tag management** — V2 Settings → Tracking → Tags. The Mac posts its
+  inventory to `POST /api/equipment/tracker/inventory` each run and locates
+  only items an admin included; tags link to equipment by permanent
+  identifier. Spec: `docs/superpowers/specs/2026-09-27-tracker-tag-management-design.md`.
+- **Tracker Mac setup** steps collapsed on the Settings page; new "Tracker
+  Mac last reported" tile.
+- **Job card fix** — crew can be added to a job with no planned end / no
+  planned dates (uses the crew's dates, as kit already did).
 
-## Pending: finish the deploy
+## Tracker status (live 27 Sep)
 
-Blocked on credentials, not on code. Both legs failed from the agent shell:
+- Server key rotated in `.htaccess` (backup `~/htaccess.taskz.bak-20260927`
+  on the host); the old key from git history is rejected (401).
+- launchd job loaded — syncs every 20 min, logs in
+  `~/Library/Logs/airtag-tracker/`. Each run posts the inventory (8 droneops
+  items, all excluded) and locates only included items.
+- **No active tags.** The four droneops tags were last aligned Aug 2023. Pair
+  real equipment tags to the droneops Apple ID, re-run
+  `./export_keys.sh droneops <email>`, then include + link in Settings.
 
-- `git push` → `remote: Invalid username or token`. The osxkeychain GitHub
-  entry is stale and `gh` is not logged in (`gh auth login` fixes it).
-- `ssh hermes@srv1713679.hstgr.cloud` → `Permission denied (publickey,password)`.
-  The agent socket under `~/.ssh/agent/` does not answer a non-interactive
-  shell; `ssh-add -l` hangs against it.
+## Open
 
-Run, in order:
-
-```
-git push origin main
-```
-
-```
-ssh hermes@srv1713679.hstgr.cloud 'export PATH=/opt/alt/alt-nodejs20/root/bin:$PATH && cd ~/domains/taskz.id/nodejs && git reset --hard origin/main && npm install && npm run build && touch tmp/restart.txt'
-```
-
-Then confirm https://taskz.id returns 200 and open it on a phone.
-
-Rollback is `git reset --hard ce951e2` in `~/domains/taskz.id/nodejs`
-followed by `touch tmp/restart.txt`. No schema migration ships with this
-change, so a rollback needs no database work.
-
-## What the change does
-
-Viewports of 768px or less render `IndividualSchedule` — one person's days
-stacked vertically — instead of the horizontal team grid. Wider viewports
-are untouched. It opens on the logged-in user and switches to any member.
-Tapping one of your own days opens a sheet: note, TOIL, leave, unavailable,
-and remove for entries you added.
-
-`POST /api/schedule/quick` is new. `POST /api/jobs` is admin-only, and the
-note/TOIL flow creates its backing job client-side, so a non-admin adding a
-note — or the first TOIL entry before that job exists — got a 403. The
-desktop grid has the same bug; the new endpoint resolves the job server-side
-inside the entry transaction. `DELETE /api/schedule/:id` now also accepts a
-member removing their own note-type entry, where it was admin-only before.
-
-Design doc: `docs/superpowers/specs/2026-09-10-mobile-individual-view-design.md`
-
-## Verify after deploying
-
-Checked locally as a non-admin: add TOIL, add a note, remove your own entry,
-and confirm another member's days are read-only with no sheet.
-
-**Not verified anywhere yet — check this on a real phone.** Scrolling to
-either end of the list should load another fortnight, and prepending past
-days should hold your scroll position. The Claude Code browser pane stayed
-hidden for the whole session, which puts the page in `visibilityState:
-'hidden'` and suspends both IntersectionObserver and scroll events, so the
-loader never fired there. If it is broken the list simply caps at its
-initial six-week window; nothing else breaks.
-
-## Local-only, not committed
-
-- `.claude/launch.json` points the dev servers at Node 22 (`~/.local/bin`).
-  `better-sqlite3` is compiled for 22, so the API will not boot under
-  Homebrew's Node 26. Gitignored.
-- A throwaway `mobiletest@example.com` member was created in the local dev
-  database to test as a non-admin, then deleted along with the note job it
-  created. Prod was never touched.
-
-## Still open from before
-
-Unchanged by this work — see `.agent-status.md`:
-
-- AirTag go-live (Apple sign-in, key export, launchd job)
-- `deploy/` gitlink dirty, with no `.gitmodules` mapping
-- Shared viewer credentials hardcoded in `server/src/db.js`
+- **Part 2 — export portal: LIVE 27 Sep, awaiting first real test.**
+  `https://tags.keyz.au` → Cloudflare tunnel `tags-portal`
+  (`~/.cloudflared/tags-portal-config.yml`, launchd `com.cloudflared.tags-portal`)
+  → `127.0.0.1:8787` (launchd `com.buzzbot.tracker-portal`, logs in
+  `~/Library/Logs/airtag-tracker/`). Server has `SetEnv TRACKER_PORTAL_URL`.
+  Before sending staff links: one real export with a spare Apple ID, and
+  update `portal/exporter_driver.py` ERROR_PATTERNS with Apple's real error
+  strings (only the fake exporter's guesses are tested).
+- The new key was typed into a zsh session — delete that line from
+  `~/.zsh_history`, or rotate the key again.
+- Spun off as separate tasks: hard-coded viewer password in
+  `server/src/db.js`; `server/src/index.js` (dev entry) does not mount
+  `/api/equipment` or `/api/calendar`.
+- `deploy/` gitlink dirty, with no `.gitmodules` mapping (unchanged).

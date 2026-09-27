@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Section } from './ui.jsx';
 import EquipmentPicker, { PadInput } from './EquipmentPicker.jsx';
 import {
@@ -9,6 +9,7 @@ import {
   bulkAssignSchedule, clearMemberDay,
 } from '../api.js';
 import { rangeOf, fmtShort } from '../lib/dates.js';
+import { bookingWindow } from '../lib/model.js';
 
 // ── Job card ────────────────────────────────────────────────────────────
 //
@@ -84,11 +85,18 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
 
   const set = (key, value) => { setForm((f) => ({ ...f, [key]: value })); setDirty(true); };
 
-  const plannedDays = useMemo(() => {
-    if (!form?.planned_start || !form?.planned_end) return [];
-    if (form.planned_end < form.planned_start) return [];
-    return rangeOf(form.planned_start, form.planned_end);
-  }, [form?.planned_start, form?.planned_end]);
+  // New crew is booked over the planned dates on the form (saved or not), else
+  // the crew already on the job — so a job rostered from the schedule without
+  // planned dates can still take more people.
+  const crewWindow = useMemo(
+    () => bookingWindow(form, card?.crew),
+    [form?.planned_start, form?.planned_end, card]
+  );
+  const plannedDays = useMemo(
+    () => (crewWindow ? rangeOf(crewWindow.from, crewWindow.to) : []),
+    [crewWindow]
+  );
+  const plannedStartRef = useRef(null);
 
   const save = async () => {
     setBusy(true);
@@ -185,7 +193,8 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
   const assignCrew = () => {
     if (!crewPick) return;
     if (!plannedDays.length) {
-      showToast?.('Set a planned start and end before assigning crew', 'error');
+      showToast?.('Set a planned start in Details before assigning crew', 'error');
+      plannedStartRef.current?.focus();
       return;
     }
     const member = members.find((m) => m.id === crewPick);
@@ -219,17 +228,10 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
 
   // What kit gets booked around: the saved planned dates, else the crew's
   // span — the same rule the server uses.
-  const kitWindow = useMemo(() => {
-    if (job?.planned_start && job?.planned_end && job.planned_end >= job.planned_start) {
-      return { from: job.planned_start, to: job.planned_end };
-    }
-    const spans = (card?.crew || []).filter((c) => c.from_date);
-    if (!spans.length) return null;
-    return {
-      from: spans.reduce((m, c) => (c.from_date < m ? c.from_date : m), spans[0].from_date),
-      to: spans.reduce((m, c) => (c.to_date > m ? c.to_date : m), spans[0].to_date),
-    };
-  }, [job?.planned_start, job?.planned_end, card]);
+  const kitWindow = useMemo(
+    () => bookingWindow(job, card?.crew),
+    [job?.planned_start, job?.planned_end, card]
+  );
 
   const changePads = (k, pads) => act(async () => {
     const r = await setJobEquipmentPads(k.id, pads);
@@ -333,7 +335,7 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
             />
           </Field>
           <Field label="Planned start">
-            <input type="date" value={form.planned_start} onChange={(e) => set('planned_start', e.target.value)} />
+            <input ref={plannedStartRef} type="date" value={form.planned_start} onChange={(e) => set('planned_start', e.target.value)} />
           </Field>
           <Field label="Planned end">
             <input type="date" value={form.planned_end} onChange={(e) => set('planned_end', e.target.value)} />
@@ -390,8 +392,19 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
             <button className="btn btn-primary" disabled={!crewPick || busy} onClick={assignCrew}>Assign</button>
             <span className="rl-sub">
               {plannedDays.length
-                ? `books ${plannedDays.length} day${plannedDays.length === 1 ? '' : 's'} (${fmtShort(form.planned_start)}–${fmtShort(form.planned_end)})`
-                : 'set a planned window first'}
+                ? `books ${plannedDays.length} day${plannedDays.length === 1 ? '' : 's'} (${fmtShort(crewWindow.from)}–${fmtShort(crewWindow.to)}${crewWindow.source === 'crew' ? ', the crew’s dates' : ''})`
+                : (
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => {
+                      plannedStartRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                      plannedStartRef.current?.focus();
+                    }}
+                  >
+                    set a planned start first ↑
+                  </button>
+                )}
             </span>
           </div>
         )}
