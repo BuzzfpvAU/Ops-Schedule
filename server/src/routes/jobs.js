@@ -4,6 +4,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { computeReadiness, TRANSITION_GATES } from '../services/readiness.js';
 import { notifyAdmins, notifyCrew } from '../services/notify.js';
 import { findConflicts } from '../services/conflicts.js';
+import { refreshSitePosition } from '../services/geocodeSite.js';
 
 const router = Router();
 
@@ -540,6 +541,7 @@ router.post('/', requireAdmin, (req, res) => {
 
   const job = req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(id);
   res.status(201).json(job);
+  refreshSitePosition(req.db, id);
 });
 
 // PUT update job (admin only)
@@ -623,6 +625,7 @@ router.put('/:id', requireAdmin, (req, res) => {
 
   const job = req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(req.params.id);
   res.json({ ...job, ...(rebooked ? { rebooked } : {}), ...(released ? { released } : {}) });
+  refreshSitePosition(req.db, req.params.id);
 });
 
 // DELETE (soft delete) job (admin only)

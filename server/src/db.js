@@ -196,6 +196,9 @@ export function initDb() {
   addJobColumn('sharepoint_url', `sharepoint_url TEXT DEFAULT ''`);
   addJobColumn('status', `status TEXT DEFAULT 'planning'`);        // planning|confirmed|active|complete|cancelled
   addJobColumn('site_address', `site_address TEXT DEFAULT ''`);
+  addJobColumn('site_lat', `site_lat REAL`);                          // geocoded from site_address
+  addJobColumn('site_lng', `site_lng REAL`);
+  addJobColumn('site_geocoded_address', `site_geocoded_address TEXT`); // the address those belong to
   addJobColumn('site_contact', `site_contact TEXT DEFAULT ''`);
   addJobColumn('notes', `notes TEXT DEFAULT ''`);
   addJobColumn('rental_required', `rental_required INTEGER DEFAULT 0`);

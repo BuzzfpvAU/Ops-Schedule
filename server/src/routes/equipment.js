@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import {
-  upsertInventory, listItems, setStaleDays, removedAmong, removeItem, restoreItem, purgeItem,
+  upsertInventory, listItems, setStaleDays, getStaleDays, removedAmong, removeItem, restoreItem, purgeItem,
 } from '../services/trackerItems.js';
 import {
   createInvite, listInvites, checkInvite, recordAttempt, completeInvite, failInvite,
@@ -300,6 +300,12 @@ router.put('/tracker/settings', requireAuth, requireAdmin, (req, res) => {
     if (e instanceof RangeError) return res.status(400).json({ error: e.message });
     throw e;
   }
+});
+
+// Readable by everyone signed in: the equipment view uses it to decide when a
+// tag position is too old to trust as an item's location.
+router.get('/tracker/stale-days', requireAuth, (req, res) => {
+  res.json({ stale_days: getStaleDays(req.db) });
 });
 
 // ── Export portal invites ────────────────────────────────────────────
