@@ -341,6 +341,9 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
             <input type="date" value={form.planned_end} onChange={(e) => set('planned_end', e.target.value)} />
           </Field>
           <Field label="Site address"><input value={form.site_address} onChange={(e) => set('site_address', e.target.value)} /></Field>
+          {job.site_address && form.site_address === job.site_address && job.site_lat == null && (
+            <div className="rl-sub" style={{ gridColumn: '1 / -1' }}>Site not found on map — check the address.</div>
+          )}
           <Field label="Site contact"><input value={form.site_contact} onChange={(e) => set('site_contact', e.target.value)} /></Field>
           <Field label="SharePoint"><input type="url" value={form.sharepoint_url} onChange={(e) => set('sharepoint_url', e.target.value)} /></Field>
           <Field label="Notes">
