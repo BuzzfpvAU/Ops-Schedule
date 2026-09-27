@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Section } from './ui.jsx';
-import { getEquipmentLocations, getTrackingStatus } from '../api.js';
+import { getTrackingStatus } from '../api.js';
+import TrackerTags from './TrackerTags.jsx';
 
 // ── Settings: Find My / AirTag tracking ─────────────────────────────────
 //
@@ -13,8 +14,8 @@ import { getEquipmentLocations, getTrackingStatus } from '../api.js';
 const STEPS = [
   {
     title: 'Install the tracker dependencies',
-    body: 'On the Mac that will do the polling, inside the repo:',
-    cmd: 'cd tracker\npython3 -m venv .venv\n.venv/bin/pip install findmy requests',
+    body: 'On the Mac that will do the polling, inside the repo. FindMy 0.10.2 or newer — Apple refuses 0.10.1 sign-ins with a GSA 503.',
+    cmd: 'cd tracker\npython3.11 -m venv .venv\n.venv/bin/pip install \'findmy>=0.10.2\'',
   },
   {
     title: 'Build the key exporter',
@@ -28,13 +29,13 @@ const STEPS = [
   },
   {
     title: 'Export the accessory keys',
-    body: 'Asks for the Apple ID password, a 2FA method, then an escrow password — choose "Generate a random password". Needs the Apple ID to have iCloud Keychain escrow, which any iPhone with a passcode provides.',
+    body: 'Asks for the Apple ID password, a 2FA method, the passcode of one of that Apple ID\'s devices (iPhone PIN or Mac login password), then an escrow password — choose "Generate a random password". Everything on the account is exported, phones and Macs included; nothing is located until you include it in Tags above.',
     cmd: './export_keys.sh droneops you@example.com',
   },
   {
-    title: 'Point the tracker at this server',
-    body: 'Copy the template and set both values. TRACKER_INGEST_KEY must match the one set on the server — the status above says whether the server has one at all.',
-    cmd: 'cp .env.example .env\n# API_URL=https://taskz.id\n# TRACKER_INGEST_KEY=<the server’s key>',
+    title: 'Set the ingest key',
+    body: 'The server reads TRACKER_INGEST_KEY from a SetEnv line in its .htaccess. Generate one with openssl rand -hex 32; put the same value only in the installed launchd plist, never in the repo (it is public). .env holds just API_URL.',
+    cmd: 'openssl rand -hex 32\n# server .htaccess:  SetEnv TRACKER_INGEST_KEY <key>',
   },
   {
     title: 'Run it once by hand',
@@ -43,12 +44,12 @@ const STEPS = [
   },
   {
     title: 'Poll every 20 minutes',
-    body: 'Edit the paths and the key inside the plist first, then load it.',
-    cmd: 'mkdir -p logs\ncp com.buzzbot.airtag-tracker.plist ~/Library/LaunchAgents/\nlaunchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist',
+    body: 'Copy the plist, set TRACKER_INGEST_KEY in the installed copy only, then load it.',
+    cmd: 'mkdir -p logs\ncp com.buzzbot.airtag-tracker.plist ~/Library/LaunchAgents/\nchmod 600 ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist\nlaunchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist',
   },
   {
-    title: 'Name each tag in this app',
-    body: 'Equipment tab → click an item → AirTag name. It must match the tag’s name in Find My exactly, and names must be unique across all Apple IDs, because matching is by name alone. Unmatched items show up in the list above.',
+    title: 'Include and link tags',
+    body: 'Each sync lists every item under Tags above. Tick the ones to track and pick the equipment each one is. Changes apply on the next sync.',
     cmd: null,
   },
 ];
@@ -97,14 +98,11 @@ function ago(iso) {
 
 export default function Settings({ onClose, showToast }) {
   const [status, setStatus] = useState(null);
-  const [locations, setLocations] = useState(null);
   const [error, setError] = useState('');
 
   const load = async () => {
     try {
-      const [st, locs] = await Promise.all([getTrackingStatus(), getEquipmentLocations()]);
-      setStatus(st);
-      setLocations(locs);
+      setStatus(await getTrackingStatus());
       setError('');
     } catch (e) {
       setError(e.message);
@@ -112,18 +110,6 @@ export default function Settings({ onClose, showToast }) {
   };
 
   useEffect(() => { load(); }, []);
-
-  // The two failure modes worth naming: kit with no tag at all, and kit with a
-  // tag name that has never produced a position — which almost always means
-  // the name does not match Find My.
-  const { untagged, silent, reporting } = useMemo(() => {
-    const rows = locations || [];
-    return {
-      untagged: rows.filter((r) => !String(r.airtag_name || '').trim()),
-      silent: rows.filter((r) => String(r.airtag_name || '').trim() && !r.seen_at),
-      reporting: rows.filter((r) => r.seen_at),
-    };
-  }, [locations]);
 
   const keyOk = status?.ingest_key_configured;
 
@@ -155,9 +141,9 @@ export default function Settings({ onClose, showToast }) {
                 tone={keyOk ? 'ok' : 'danger'}
               />
               <Stat
-                label="Equipment with a tag name"
-                value={`${status.equipment_with_tag} / ${status.equipment_total}`}
-                tone={status.equipment_with_tag === 0 ? 'warn' : undefined}
+                label="Tags tracked"
+                value={`${status.tags_tracked} / ${status.tags_total}`}
+                tone={status.tags_tracked === 0 ? 'warn' : undefined}
               />
               <Stat
                 label="Items ever reported"
@@ -174,9 +160,9 @@ export default function Settings({ onClose, showToast }) {
             {!keyOk && (
               <div className="banner banner-danger">
                 <strong>The server has no TRACKER_INGEST_KEY set.</strong> Every push
-                from the tracker will be rejected with a 401 until it does. Set it in
-                the server environment and restart, then use the same value in
-                <code> tracker/.env</code>.
+                from the tracker will be rejected with a 401 until it does. Add
+                <code> SetEnv TRACKER_INGEST_KEY …</code> to the server&rsquo;s .htaccess,
+                then use the same value in the installed launchd plist.
               </div>
             )}
 
@@ -189,49 +175,7 @@ export default function Settings({ onClose, showToast }) {
           </>
         )}
 
-        {locations && (
-          <Section title="What is mapped">
-            {silent.length > 0 && (
-              <div className="banner banner-warn">
-                <strong>
-                  {silent.length === 1
-                    ? '1 item has a tag name but has never reported.'
-                    : `${silent.length} items have a tag name but have never reported.`}
-                </strong>{' '}
-                Usually the name here does not match the tag&rsquo;s name in Find My exactly.
-                <div style={{ marginTop: 6 }}>
-                  {silent.map((r) => (
-                    <div key={r.id} className="mono-line">{r.name} → “{r.airtag_name}”</div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {reporting.length > 0 && (
-              <div className="track-list">
-                {reporting.map((r) => (
-                  <div className="entry-row" key={r.id}>
-                    <span className="opt-dot" style={{ background: 'var(--ok)' }} />
-                    <span className="entry-name">{r.name}</span>
-                    <span className="rl-sub">{r.airtag_name}</span>
-                    <span className="rl-sub">{ago(r.seen_at)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {untagged.length > 0 && (
-              <details className="untagged">
-                <summary>{untagged.length} item{untagged.length === 1 ? '' : 's'} with no tag name</summary>
-                <div style={{ marginTop: 8 }}>
-                  {untagged.map((r) => (
-                    <div key={r.id} className="mono-line">{r.name}</div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </Section>
-        )}
+        <TrackerTags showToast={showToast} />
 
         <Section title="Adding an Apple ID">
           <div className="banner banner-warn">
@@ -258,7 +202,7 @@ export default function Settings({ onClose, showToast }) {
         <Section title="Known limits">
           <ul className="notes">
             <li>Tags report only when an Apple device passes near them — remote sites go quiet until someone walks past.</li>
-            <li>Matching is by name only, and names must be unique across every Apple ID you add.</li>
+            <li>Items are matched by their permanent Find My identifier, so renaming a tag in Find My changes nothing here.</li>
             <li>Equipment marked inactive stops matching, so its tag goes quiet with no error.</li>
             <li>FindMy.py is unofficial. If a session stops working, re-run step 3 for that account.</li>
           </ul>

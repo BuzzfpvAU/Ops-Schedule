@@ -127,6 +127,13 @@ export const clearMemberDay = (memberId, date) =>
 // ── Equipment tracking (Find My) ──
 export const getEquipmentLocations = () => api('/equipment/locations');
 export const getTrackingStatus = () => api('/equipment/tracking-status');
+export const getTrackerItems = () => api('/equipment/tracker/items');
+export const updateTrackerItem = (identifier, data) =>
+  api(`/equipment/tracker/items/${encodeURIComponent(identifier)}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteTrackerItem = (identifier) =>
+  api(`/equipment/tracker/items/${encodeURIComponent(identifier)}`, { method: 'DELETE' });
+export const setTrackerStaleDays = (stale_days) =>
+  api('/equipment/tracker/settings', { method: 'PUT', body: JSON.stringify({ stale_days }) });
 
 // ── Single project ──
 export const getJobPlanner = (id, from, to) => {

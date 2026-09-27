@@ -1510,3 +1510,22 @@ body.is-resizing { cursor: row-resize; user-select: none; }
 .pad-label { color: var(--text-mute); margin-left: 2px; }
 .kit-pads { display: inline-flex; gap: 10px; margin-left: auto; }
 .kit-add { margin-top: 8px; }
+
+/* Settings → Tracking: tag list */
+.tt-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; font-size: 12.5px; margin-bottom: 10px; }
+.tt-stale { color: var(--danger); font-weight: 600; }
+.tt-stale-input { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.tt-stale-input input { width: 52px; }
+.tt-group { margin-bottom: 14px; }
+.tt-account { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); margin: 6px 0; }
+.tt-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.tt-row.is-off .entry-name { color: var(--text-dim); }
+.tt-name { display: flex; gap: 8px; align-items: center; min-width: 0; cursor: pointer; }
+.tt-emoji { font-size: 16px; }
+.tt-serial { display: block; font-size: 11px; }
+.tt-status { white-space: nowrap; }
+.tt-devices summary { cursor: pointer; font-size: 12px; color: var(--text-dim); padding: 6px 0; }
+@media (max-width: 640px) {
+  .tt-row { grid-template-columns: 1fr auto; }
+  .tt-link { grid-column: 1 / -1; }
+}
