@@ -130,6 +130,8 @@ export const clearMemberDay = (memberId, date) =>
 // ── Equipment tracking (Find My) ──
 export const getEquipmentLocations = () => api('/equipment/locations');
 export const getTrackingStatus = () => api('/equipment/tracking-status');
+export const getStaleDays = () => api('/equipment/tracker/stale-days');
+export const getEquipmentLocationHistory = (id, days = 7) => api(`/equipment/locations/${id}/history?days=${days}`);
 export const getTrackerItems = () => api('/equipment/tracker/items');
 export const updateTrackerItem = (identifier, data) =>
   api(`/equipment/tracker/items/${encodeURIComponent(identifier)}`, { method: 'PATCH', body: JSON.stringify(data) });

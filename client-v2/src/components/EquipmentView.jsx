@@ -1,10 +1,25 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
+import PlanningBar from './PlanningBar.jsx';
 import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
-import { STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment } from '../api.js';
+import {
+  STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, getEquipmentLocations, getStaleDays,
+} from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
-import { diffDays, fmtShort, fmtLong, addDays } from '../lib/dates.js';
+import { diffDays, fmtShort, fmtLong, addDays, today as todayIso } from '../lib/dates.js';
+import {
+  bookedIndex, planWindow, availability, availText, resolveLocation, sortRows, summary, AVAIL_TONE, LAST_JOB_DAYS,
+} from '../lib/equipmentPlan.js';
+
+const PLAN_KEY = 'eq.plan';
+function loadPlan() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PLAN_KEY) || 'null');
+    if (v && ['7', '14', 'custom'].includes(v.preset)) return v;
+  } catch { /* storage unavailable */ }
+  return { preset: '14', freeOnly: false };
+}
 
 const CATEGORY_ORDER = EQUIPMENT_CATEGORIES;
 
@@ -18,7 +33,7 @@ const CATEGORY_ORDER = EQUIPMENT_CATEGORIES;
 
 export default function EquipmentView({
   equipment, schedule, bookings, days, zoom, labelWidth, myState, scrollCmd, onReachEdge,
-  isAdmin, activeFilter, onActiveFilter, showToast, onChanged,
+  isAdmin, activeFilter, onActiveFilter, showToast, onChanged, jobs = [], onEnsureRange,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [byHomeBase, setByHomeBase] = useState(true);
@@ -28,6 +43,36 @@ export default function EquipmentView({
   const [editing, setEditing] = useState(null); // the item whose details are open
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [plan, setPlan] = useState(loadPlan);
+  const [locations, setLocations] = useState([]);
+  const [staleDays, setStaleDays] = useState(3);
+  const [selectedId, setSelectedId] = useState(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch { /* storage unavailable */ }
+  }, [plan]);
+
+  useEffect(() => {
+    getEquipmentLocations().then(setLocations).catch(() => setLocations([]));
+    getStaleDays().then((r) => setStaleDays(r.stale_days || 3)).catch(() => {});
+  }, []);
+
+  const win = useMemo(
+    () => planWindow(plan.preset, todayIso(), { from: plan.from, to: plan.to }),
+    [plan.preset, plan.from, plan.to]
+  );
+  // The last-job rule looks back before the window, so make sure that
+  // history is loaded too.
+  useEffect(() => {
+    onEnsureRange?.(addDays(win.from, -LAST_JOB_DAYS), win.to);
+  }, [win.from, win.to, onEnsureRange]);
+
+  const booked = useMemo(() => bookedIndex(schedule), [schedule]);
+  const jobsById = useMemo(() => new Map((jobs || []).map((j) => [j.id, j])), [jobs]);
+  const pingById = useMemo(
+    () => new Map((locations || []).filter((l) => l.seen_at).map((l) => [l.id, l])),
+    [locations]
+  );
 
   const dayIndex = useMemo(() => {
     const m = new Map();
@@ -57,7 +102,7 @@ export default function EquipmentView({
 
   const entriesByItem = useMemo(() => groupByEntity(schedule), [schedule]);
 
-  const groups = useMemo(() => {
+  const grouped = useMemo(() => {
     const match = makeMatcher(search);
 
     const rows = equipment
@@ -99,9 +144,19 @@ export default function EquipmentView({
 
         const laid = layoutLanes(bars);
         const bookedDays = runs.reduce((n, r) => n + r.entries.length, 0);
-        return { id: item.id, item, bars: laid.bars, lanes: laid.lanes, bookedDays, clash: clash.size > 0 };
+        const avail = availability(item, booked.get(item.id), win);
+        const loc = resolveLocation(item, {
+          ping: pingById.get(item.id), staleDays, booked: booked.get(item.id), jobsById, windowStart: win.from,
+        });
+        return {
+          id: item.id, item, bars: laid.bars, lanes: laid.lanes, bookedDays, clash: clash.size > 0,
+          avail, loc, minHeight: 72,
+        };
       })
       .filter(Boolean);
+
+    const counts = summary(rows);
+    const shown = plan.freeOnly ? rows.filter((r) => r.avail.status === 'free') : rows;
 
     const keyOf = byHomeBase ? (r) => r.item.location : (r) => r.item.equipment_category;
     // Only the home-base grouping is state-based; the category grouping keeps
@@ -109,12 +164,21 @@ export default function EquipmentView({
     const order = byHomeBase ? orderStatesFor(myState, STATES) : CATEGORY_ORDER;
     const fallback = byHomeBase ? 'No home base' : 'Uncategorised';
 
-    return bucketBy(rows, keyOf, order, fallback).map((b) => ({
+    const buckets = bucketBy(shown, keyOf, order, fallback).map((b) => ({
       key: b.key,
       label: b.key,
-      rows: b.rows.sort((a, z) => (a.item.name || '').localeCompare(z.item.name || '')),
+      rows: sortRows(b.rows),
     }));
-  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, activeFilter, myState, dayIndex, windowStart, windowEnd]);
+    return { buckets, counts, visible: shown };
+  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, activeFilter, myState, dayIndex,
+    windowStart, windowEnd, booked, win, pingById, staleDays, jobsById, plan.freeOnly]);
+  const groups = grouped.buckets;
+
+  // One selection shared by the row list and the map.
+  const onSelect = useCallback((id) => {
+    setSelectedId(id);
+    document.querySelector(`[data-row-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, []);
 
   const adjust = async (edge, delta) => {
     const assignment = selected?.bar?.assignment;
@@ -216,7 +280,7 @@ export default function EquipmentView({
     const item = row.item;
     const inactive = item.active === 0;
     return (
-      <>
+      <div className={`eq-label${row.id === selectedId ? ' is-selected' : ''}`}>
         <span className="swatch" style={{ background: item.color || '#475569' }} />
         <button
           type="button"
@@ -236,10 +300,11 @@ export default function EquipmentView({
               .join(' · ') || item.role}
           </span>
         </button>
-        <span className="rl-sub" style={{ flex: 'none' }}>
-          {row.bookedDays ? `${row.bookedDays}d` : 'free'}
-        </span>
-      </>
+        <button type="button" className="rl-loc" onClick={() => onSelect(row.id)} title="Show on map">
+          {row.loc.label}
+        </button>
+        <span className={`tag tag-${AVAIL_TONE[row.avail.status]} eq-chip`}>{availText(row.avail)}</span>
+      </div>
     );
   };
 
@@ -267,6 +332,7 @@ export default function EquipmentView({
 
   return (
     <>
+      <PlanningBar plan={plan} onPlan={setPlan} win={win} counts={grouped.counts} />
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
         <div className="chips" role="group" aria-label="Filter by status">
           {[['active', 'Active'], ['inactive', 'Inactive'], ['all', 'All']].map(([v, l]) => (
@@ -324,7 +390,8 @@ export default function EquipmentView({
         onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}
         renderLabel={renderLabel}
         renderBar={renderBar}
-        emptyMessage="No equipment matches these filters."
+        highlight={win}
+        emptyMessage={plan.freeOnly ? 'Nothing is free for the whole window.' : 'No equipment matches these filters.'}
       />
 
       {editing && form && (

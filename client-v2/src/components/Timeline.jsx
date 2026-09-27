@@ -36,6 +36,7 @@ export default function Timeline({
   scrollCmd,
   onReachEdge,
   focusDate,
+  highlight,
 }) {
   const innerRef = useRef(null);
   const ref = scrollRef || innerRef;
@@ -207,6 +208,14 @@ export default function Timeline({
             {todayIdx >= 0 && (
               <div className="tl-wash-today" style={{ left: todayIdx * colW, width: colW }} />
             )}
+            {highlight && (() => {
+              const a = days.indexOf(highlight.from);
+              const b = days.indexOf(highlight.to);
+              if (a < 0 && b < 0) return null;
+              const s = a < 0 ? 0 : a;
+              const e = b < 0 ? days.length - 1 : b;
+              return <div className="tl-wash-window" style={{ left: s * colW, width: (e - s + 1) * colW }} />;
+            })()}
           </div>
 
           {totalRows === 0 && <div className="tl-empty" style={{ left: labelWidth }}>{emptyMessage}</div>}
@@ -232,9 +241,9 @@ export default function Timeline({
                 </div>
 
                 {!isCollapsed && group.rows.map((row) => {
-                  const h = rowHeight(row.lanes || 1);
+                  const h = Math.max(rowHeight(row.lanes || 1), row.minHeight || 0);
                   return (
-                    <div className="tl-row" key={row.id} style={{ height: h }}>
+                    <div className="tl-row" key={row.id} data-row-id={row.id} style={{ height: h }}>
                       <div className="tl-label" style={{ width: labelWidth }}>
                         {renderLabel(row)}
                       </div>

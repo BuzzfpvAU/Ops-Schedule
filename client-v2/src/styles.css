@@ -1640,3 +1640,23 @@ body.is-report #root { height: auto; }
 .inv-url { word-break: break-all; user-select: all; }
 .inv-list .entry-row { gap: 8px; }
 .tt-actions { display: inline-flex; gap: 6px; justify-content: flex-end; }
+
+/* Equipment planning */
+.plan-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-top: 1px solid var(--line-soft); }
+.plan-title { font-size: 12px; }
+.plan-dates { font-size: 12px; color: var(--text-dim); display: inline-flex; gap: 4px; align-items: center; }
+.plan-free { font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+.plan-summary { display: inline-flex; gap: 4px; margin-left: auto; }
+.tl-wash-window { position: absolute; top: 0; bottom: 0; background: rgba(99, 132, 255, 0.07); border-left: 1px dashed rgba(99, 132, 255, 0.5); border-right: 1px dashed rgba(99, 132, 255, 0.5); }
+.rl-loc { display: block; max-width: 100%; text-align: left; background: none; border: 0; padding: 0; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.rl-loc:hover { color: var(--accent); }
+.tl-label.is-selected, .is-selected-row { box-shadow: inset 3px 0 0 var(--accent); }
+
+.eq-label { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 6px; row-gap: 1px; align-items: center; width: 100%; min-width: 0; }
+.eq-label > .swatch { grid-row: 1 / span 3; align-self: start; margin-top: 4px; }
+.eq-label > .rl-loc, .eq-label > .eq-chip { grid-column: 2; justify-self: start; }
+.eq-label .eq-chip { font-size: 10px; }
+.eq-label.is-selected { box-shadow: inset 3px 0 0 var(--accent); padding-left: 3px; }
+.eq-label { padding: 6px 0; }
+.eq-label .rl-sub { display: block; line-height: 1.3; }
+.tl-wash-window { background: rgba(99, 132, 255, 0.12); }
