@@ -52,7 +52,7 @@ INGEST_KEY = os.environ.get("TRACKER_INGEST_KEY") or ""
 # Keys saved by the export portal (accounts/shared/<slug>/keys) have no
 # session of their own; they are located with this account's session.
 LOOKUP_ACCOUNT = os.environ.get("LOOKUP_ACCOUNT") or "droneops"
-PORTAL_URL = (os.environ.get("PORTAL_HEALTH_URL") or "http://127.0.0.1:8765").rstrip("/")
+PORTAL_URL = (os.environ.get("PORTAL_HEALTH_URL") or "http://127.0.0.1:8787").rstrip("/")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("airtag-tracker")

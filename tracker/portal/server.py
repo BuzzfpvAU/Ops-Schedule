@@ -2,7 +2,7 @@
 
 Run: cd tracker && .venv/bin/python -m portal.server
 Env: API_URL, TRACKER_INGEST_KEY, EXPORTER_BIN (default ~/Dev/export-findmy/target/release/export-findmy),
-     EXPORTER_TEMPLATE (default <export-findmy>/device-profile.template.toml), PORTAL_PORT (8765).
+     EXPORTER_TEMPLATE (default <export-findmy>/device-profile.template.toml), PORTAL_PORT (8787).
 """
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ def make_handler(portal: Portal):
     return Handler
 
 
-def make_server(cfg: SessionConfig, client, host: str = "127.0.0.1", port: int = 8765,
+def make_server(cfg: SessionConfig, client, host: str = "127.0.0.1", port: int = 8787,
                 secure_cookie: bool = True) -> ThreadingHTTPServer:
     portal = Portal(cfg, client, secure_cookie=secure_cookie)
     return ThreadingHTTPServer((host, port), make_handler(portal))
@@ -170,7 +170,7 @@ def main() -> None:
         work_root=Path.home() / "Library" / "Application Support" / "taskz-portal",
     )
     client = TaskzClient(os.environ["API_URL"], os.environ["TRACKER_INGEST_KEY"])
-    httpd = make_server(cfg, client, port=int(os.environ.get("PORTAL_PORT", "8765")))
+    httpd = make_server(cfg, client, port=int(os.environ.get("PORTAL_PORT", "8787")))
     log.info("portal listening on 127.0.0.1:%s", httpd.server_address[1])
     httpd.serve_forever()
 

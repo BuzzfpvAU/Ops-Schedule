@@ -14,7 +14,7 @@
 
 - Invite: 32 random bytes (base64url), stored only as SHA-256 hex; 24 h expiry; 3 attempts; single use.
 - Password, 2FA code, passcode: never written to disk or logs; pexpect `logfile=None`.
-- Portal binds `127.0.0.1:8765` only; public URL `https://tags.keyz.au`.
+- Portal binds `127.0.0.1:8787` only; public URL `https://tags.keyz.au`.
 - One export session at a time. Idle 10 min → cleanup. Exporter silent 90 s → error `apple_unavailable`.
 - Cleanup (bottle delete + temp dir removal) runs on every exit path.
 - Kept keys: `tracker/accounts/shared/<slug>/keys/`, dirs 0700, files 0600; inventory `account = "shared/<slug>"`.
@@ -1338,7 +1338,7 @@ class ExportSession:
 
 **Files:** Create `tracker/portal/taskz_client.py`, `tracker/portal/server.py`, `tracker/portal/static/index.html`, `tracker/portal/tests/test_server.py`.
 
-**Interfaces — Consumes:** Task 4 (`ExportSession`, `SessionConfig`). **Produces:** `TaskzClient(api_url, key)`; `make_server(cfg, client, host="127.0.0.1", port=8765) -> ThreadingHTTPServer`; `python -m portal.server` entry; HTTP: `GET /i/<token>`, `GET /`, `GET /healthz`, `GET /api/state`, `POST /api/start {email}`, `POST /api/answer {value}`, `POST /api/save {files}`, `POST /api/cancel`.
+**Interfaces — Consumes:** Task 4 (`ExportSession`, `SessionConfig`). **Produces:** `TaskzClient(api_url, key)`; `make_server(cfg, client, host="127.0.0.1", port=8787) -> ThreadingHTTPServer`; `python -m portal.server` entry; HTTP: `GET /i/<token>`, `GET /`, `GET /healthz`, `GET /api/state`, `POST /api/start {email}`, `POST /api/answer {value}`, `POST /api/save {files}`, `POST /api/cancel`.
 
 - [ ] **Step 1: Client** — `tracker/portal/taskz_client.py`:
 
@@ -1496,7 +1496,7 @@ if __name__ == "__main__":
 
 Run: cd tracker && .venv/bin/python -m portal.server
 Env: API_URL, TRACKER_INGEST_KEY, EXPORTER_BIN (default ~/Dev/export-findmy/target/release/export-findmy),
-     PORTAL_PORT (8765).
+     PORTAL_PORT (8787).
 """
 from __future__ import annotations
 
@@ -1646,7 +1646,7 @@ def make_handler(portal: Portal):
     return Handler
 
 
-def make_server(cfg: SessionConfig, client, host: str = "127.0.0.1", port: int = 8765,
+def make_server(cfg: SessionConfig, client, host: str = "127.0.0.1", port: int = 8787,
                 secure_cookie: bool = True) -> ThreadingHTTPServer:
     portal = Portal(cfg, client, secure_cookie=secure_cookie)
     return ThreadingHTTPServer((host, port), make_handler(portal))
@@ -1663,7 +1663,7 @@ def main() -> None:
         work_root=Path.home() / "Library" / "Application Support" / "taskz-portal",
     )
     client = TaskzClient(os.environ["API_URL"], os.environ["TRACKER_INGEST_KEY"])
-    httpd = make_server(cfg, client, port=int(os.environ.get("PORTAL_PORT", "8765")))
+    httpd = make_server(cfg, client, port=int(os.environ.get("PORTAL_PORT", "8787")))
     log.info("portal listening on 127.0.0.1:%s", httpd.server_address[1])
     httpd.serve_forever()
 
@@ -1718,7 +1718,7 @@ class SharedAccounts(unittest.TestCase):
 - [ ] **Step 2:** Run → FAIL.
 
 - [ ] **Step 3: Implement** in `sync_airtags.py`:
-  - Constants: `LOOKUP_ACCOUNT = os.environ.get("LOOKUP_ACCOUNT") or "droneops"`, `PORTAL_URL = os.environ.get("PORTAL_HEALTH_URL") or "http://127.0.0.1:8765"`.
+  - Constants: `LOOKUP_ACCOUNT = os.environ.get("LOOKUP_ACCOUNT") or "droneops"`, `PORTAL_URL = os.environ.get("PORTAL_HEALTH_URL") or "http://127.0.0.1:8787"`.
   - `slug_of(p)`: `f"shared/{p.name}"` when `p.parent.name == "shared"`, else `p.name`.
   - `list_accounts(only)`: normal dirs except `shared`, plus sorted `ACCOUNTS_ROOT/"shared"/*` dirs; filter `only` by `slug_of`.
   - `load_account(acct_dir, lookup=None)`: when `acct_dir.parent.name == "shared"`, don't read a session — return `(lookup, pairs)`, raising `AccountError(f"[{slug}] no {LOOKUP_ACCOUNT} session for shared keys")` if `lookup` is None. Use `slug_of` for messages.
@@ -1759,9 +1759,9 @@ class SharedAccounts(unittest.TestCase):
 </plist>
 ```
 
-Install: copy to `~/Library/LaunchAgents/`, set the key from the sync plist with PlistBuddy, `chmod 600`, `launchctl load`. Check `curl -s 127.0.0.1:8765/healthz`.
+Install: copy to `~/Library/LaunchAgents/`, set the key from the sync plist with PlistBuddy, `chmod 600`, `launchctl load`. Check `curl -s 127.0.0.1:8787/healthz`.
 
-- [ ] **Step 2: Tunnel** — add `tags.keyz.au → http://127.0.0.1:8765` to the running keyz.au tunnel's ingress (before its catch-all), `cloudflared tunnel route dns <tunnel> tags.keyz.au`, restart that tunnel. Check `curl -s https://tags.keyz.au/healthz`. (Outward-facing DNS change — confirm with the user before running.)
+- [ ] **Step 2: Tunnel** — add `tags.keyz.au → http://127.0.0.1:8787` to the running keyz.au tunnel's ingress (before its catch-all), `cloudflared tunnel route dns <tunnel> tags.keyz.au`, restart that tunnel. Check `curl -s https://tags.keyz.au/healthz`. (Outward-facing DNS change — confirm with the user before running.)
 
 - [ ] **Step 3: Server** — add `SetEnv TRACKER_PORTAL_URL https://tags.keyz.au` to `public_html/.htaccess` via `ssh tagz-host` (backup first), then kill the `lsnode:` process. Check Settings shows the Portal tile and Invites section, and the Mac setup section is gone.
 

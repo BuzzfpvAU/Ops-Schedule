@@ -18,7 +18,7 @@ Exporting a tag's keys needs export-findmy, which runs only on a computer and pr
 | D2 | How staff reach the portal | **One-time invite link** created by an admin in V2 Settings → Tracking: single use, expires in 24 h, labelled (e.g. "Sam – WA"). No other login. |
 | D3 | What is kept | **Staff choose on their phone.** Tags pre-ticked; iPhones/iPads/Macs unticked under "Your devices". Unticked keys are deleted immediately and never reach the server. Kept items arrive in Settings as excluded (part 1 rules). |
 | D4 | How the portal drives export-findmy | **pexpect** over a pseudo-terminal, prompts mapped to phone steps. export-findmy is not modified; its version is pinned and the driver is tested against a fake exporter. |
-| D5 | Hosting | Python service on the tracker Mac bound to `127.0.0.1:8765`, exposed as **`https://tags.keyz.au`** through the Cloudflare Tunnel already running on this Mac for keyz.au. |
+| D5 | Hosting | Python service on the tracker Mac bound to `127.0.0.1:8787`, exposed as **`https://tags.keyz.au`** through the Cloudflare Tunnel already running on this Mac for keyz.au. |
 | D6 | Terminal instructions in Settings | Removed from the page once `TRACKER_PORTAL_URL` is set on the server; they live only in `tracker/README.md`. |
 
 ## 3. Flow
@@ -91,14 +91,14 @@ Settings → Tracking:
 | `exporter_driver.py` | Spawn export-findmy under pexpect; expose `next_step()` returning one of `need_password`, `need_2fa_method(options)`, `need_code`, `need_passcode(device)`, `found_items(list)`, `error(kind, detail)`, `done`; `answer(value)`. Pure process/prompt logic, no HTTP. Also `delete_bottle(profile)` for cleanup. |
 | `session.py` | Single active session: temp dir lifecycle, timeouts, item choice, moving kept keys, cleanup guarantee (`try/finally` + idle reaper thread). |
 | `taskz_client.py` | Calls to taskz.id with the ingest key (check, attempt, complete, failed, cleanup-failed, inventory). |
-| `server.py` | stdlib `ThreadingHTTPServer` on 127.0.0.1:8765: `GET /i/<token>`, `GET /` (page), `GET /api/state`, `POST /api/answer`, `POST /api/save`, `POST /api/cancel`. |
+| `server.py` | stdlib `ThreadingHTTPServer` on 127.0.0.1:8787: `GET /i/<token>`, `GET /` (page), `GET /api/state`, `POST /api/answer`, `POST /api/save`, `POST /api/cancel`. |
 | `static/index.html` | Single mobile page, one step per screen, polls `/api/state`. No external assets. |
 | `tests/fake_exporter.py` | Emulates export-findmy's prompts; scripted scenarios: ok, wrong_password, sms, hardware_key, no_items, hang. |
 | `tests/test_driver.py`, `tests/test_session.py` | unittest against the fake exporter. |
 
 Ops:
 - `tracker/com.buzzbot.tracker-portal.plist` (launchd, KeepAlive) — like the sync plist, the key is set only in the installed copy.
-- `~/.cloudflared` config gains ingress `tags.keyz.au → http://127.0.0.1:8765`.
+- `~/.cloudflared` config gains ingress `tags.keyz.au → http://127.0.0.1:8787`.
 - `pexpect` added to the tracker venv; README gains an Install line.
 - export-findmy pinned at commit `eb5a3a9` (current); the driver's prompt patterns are asserted against that version's strings in tests.
 
