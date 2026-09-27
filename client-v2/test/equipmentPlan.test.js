@@ -204,3 +204,10 @@ test('nearFilter keeps rows within the radius, nearest first', () => {
   assert.ok(out[0].distKm < 50);
   assert.deepEqual(nearFilter(rows, { lat: -32.28, lng: 115.83 }, 1500).map((r) => r.id), ['p', 'k']);
 });
+
+test('moves into a job that has already started are not listed', () => {
+  const started = bookedIndex(days('k', '2026-10-01', '2026-10-03')).get('x');
+  assert.equal(movesFor({ id: 'x', location: 'WA' }, { runs: jobRuns(started), jobsById: J, win: W, today: '2026-10-01' }).length, 0);
+  const b = bookedIndex([...days('a', '2026-09-28', '2026-09-30'), ...days('b', '2026-10-01', '2026-10-02')]).get('x');
+  assert.equal(movesFor({ id: 'x' }, { runs: jobRuns(b), jobsById: J, win: W, today: '2026-10-01' }).length, 0);
+});

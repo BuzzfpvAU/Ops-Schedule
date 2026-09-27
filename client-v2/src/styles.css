@@ -1699,3 +1699,18 @@ body.is-report #root { height: auto; }
 .eqm-count.tone-mixed { background: #3b5bdb; }
 .eqm-count.is-approx { opacity: 0.6; border-style: dashed; }
 .eqm-count.is-sel { box-shadow: 0 0 0 4px #3b5bdb, 0 0 0 6px #fff; opacity: 1; }
+
+/* Equipment phase 2: near, moves */
+.near { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12px; }
+.near input { width: 190px; }
+.near-msg { color: var(--danger); font-size: 11px; }
+.moves { padding: 4px 12px 6px; border-top: 1px solid var(--line-soft); }
+.moves-head { display: flex; gap: 6px; flex-wrap: wrap; }
+.moves-tight { color: var(--danger); font-weight: 600; }
+.moves-list { display: grid; gap: 2px; margin-top: 6px; max-height: min(160px, 25vh); overflow: auto; }
+.moves-row { text-align: left; background: none; border: 0; padding: 4px 6px; border-radius: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
+.moves-row:hover { background: var(--line-soft); }
+.moves-row.is-tight { color: var(--danger); }
+.eqm-route { background: #fff; color: #333; border: 0; font-size: 10px; padding: 1px 4px; }
+.eq-label > .eq-chips { grid-column: 2; display: inline-flex; gap: 4px; align-items: center; justify-self: start; }
+.eq-usage { font-size: 10.5px; }

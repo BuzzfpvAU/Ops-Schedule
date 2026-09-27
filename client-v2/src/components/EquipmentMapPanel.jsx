@@ -9,11 +9,12 @@ const keyOf = (p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
 
 // Where the equipment is, for the rows the timeline is showing. Selection is
 // owned by the parent so the row list and the map always agree.
-export default function EquipmentMapPanel({ points, sites, notOnMap, selectedId, onSelect }) {
+export default function EquipmentMapPanel({ points, sites, notOnMap, selectedId, onSelect, route, near }) {
   const el = useRef(null);
   const map = useRef(null);
   const layer = useRef(null);
   const trail = useRef(null);
+  const overlay = useRef(null);
   const [broken, setBroken] = useState(false);
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export default function EquipmentMapPanel({ points, sites, notOnMap, selectedId,
     tiles.on('tileerror', () => { errors += 1; if (errors > 8) setBroken(true); });
     layer.current = L.layerGroup().addTo(m);
     trail.current = L.layerGroup().addTo(m);
+    overlay.current = L.layerGroup().addTo(m);
     map.current = m;
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(el.current);
@@ -74,6 +76,24 @@ export default function EquipmentMapPanel({ points, sites, notOnMap, selectedId,
       m.addTo(g);
     }
   }, [points, sites, selectedId, onSelect]);
+
+  // The selected item's next move, and the Near search area.
+
+  useEffect(() => {
+    const g = overlay.current;
+    const m = map.current;
+    if (!g || !m) return;
+    g.clearLayers();
+    if (route) {
+      L.polyline([[route.from.lat, route.from.lng], [route.to.lat, route.to.lng]], {
+        color: '#e67700', weight: 3, dashArray: '8 6',
+      }).bindTooltip(route.label, { permanent: true, direction: 'center', className: 'eqm-route' }).addTo(g);
+    }
+    if (near) {
+      const c = L.circle([near.lat, near.lng], { radius: near.radius * 1000, color: '#3b5bdb', weight: 1, fillOpacity: 0.05 }).addTo(g);
+      m.fitBounds(c.getBounds(), { padding: [20, 20] });
+    }
+  }, [route, near]);
 
   // Pan to the selection and draw its 7-day trail when it has a tag.
   useEffect(() => {

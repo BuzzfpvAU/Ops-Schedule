@@ -12,7 +12,9 @@ import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtShort, fmtLong, addDays, today as todayIso } from '../lib/dates.js';
 import {
   bookedIndex, planWindow, availability, availText, resolveLocation, sortRows, summary, AVAIL_TONE, LAST_JOB_DAYS,
+  jobRuns, movesFor, tagChecks, usagePct, isIdle, lastUsed, nearFilter, MOVE_LOOKAHEAD_DAYS, USAGE_DAYS,
 } from '../lib/equipmentPlan.js';
+import MovesStrip from './MovesStrip.jsx';
 
 const PLAN_KEY = 'eq.plan';
 function loadPlan() {
@@ -92,7 +94,9 @@ export default function EquipmentView({
   // The last-job rule looks back before the window, so make sure that
   // history is loaded too.
   useEffect(() => {
-    onEnsureRange?.(addDays(win.from, -LAST_JOB_DAYS), win.to);
+    const back = addDays(win.from, -LAST_JOB_DAYS);
+    const usageStart = addDays(todayIso(), -USAGE_DAYS);
+    onEnsureRange?.(back < usageStart ? back : usageStart, addDays(win.to, MOVE_LOOKAHEAD_DAYS));
   }, [win.from, win.to, onEnsureRange]);
 
   const booked = useMemo(() => bookedIndex(schedule), [schedule]);
@@ -176,15 +180,31 @@ export default function EquipmentView({
         const loc = resolveLocation(item, {
           ping: pingById.get(item.id), staleDays, booked: booked.get(item.id), jobsById, windowStart: win.from,
         });
+        const itemBooked = booked.get(item.id);
+        const jr = jobRuns(itemBooked);
+        const today = todayIso();
         return {
           id: item.id, item, bars: laid.bars, lanes: laid.lanes, bookedDays, clash: clash.size > 0,
           avail, loc, minHeight: 72,
+          moves: movesFor(item, { runs: jr, jobsById, win, today }),
+          checks: tagChecks(item, { ping: pingById.get(item.id), staleDays, runs: jr, jobsById, today }),
+          usage: usagePct(itemBooked, today),
+          idle: isIdle(item, itemBooked, today),
+          lastUsed: lastUsed(itemBooked, today),
         };
       })
       .filter(Boolean);
 
     const counts = summary(rows);
-    const shown = plan.freeOnly ? rows.filter((r) => r.avail.status === 'free') : rows;
+    const freeRows = plan.freeOnly ? rows.filter((r) => r.avail.status === 'free') : rows;
+    const near = plan.near;
+    const shown = near ? nearFilter(freeRows, near, near.radius) : freeRows;
+    const strip = {
+      moves: rows.flatMap((r) => r.moves).sort((a, b) => a.dueBy.localeCompare(b.dueBy)),
+      checks: rows.flatMap((r) => r.checks),
+      idle: rows.filter((r) => r.idle),
+      names: new Map(rows.map((r) => [r.id, r.item.name])),
+    };
 
     const keyOf = byHomeBase ? (r) => r.item.location : (r) => r.item.equipment_category;
     // Only the home-base grouping is state-based; the category grouping keeps
@@ -195,11 +215,17 @@ export default function EquipmentView({
     const buckets = bucketBy(shown, keyOf, order, fallback).map((b) => ({
       key: b.key,
       label: b.key,
-      rows: sortRows(b.rows),
+      // With Near on, rows arrive nearest-first; keep that order.
+      rows: near ? b.rows : sortRows(b.rows),
+      meta: b.rows.length ? (
+        <span className="rl-sub" style={{ marginLeft: 6 }} title="Average share of the last 30 days booked">
+          {Math.round(b.rows.reduce((n, r) => n + r.usage, 0) / b.rows.length)}% used
+        </span>
+      ) : null,
     }));
-    return { buckets, counts, visible: shown };
+    return { buckets, counts, visible: shown, strip };
   }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, activeFilter, myState, dayIndex,
-    windowStart, windowEnd, booked, win, pingById, staleDays, jobsById, plan.freeOnly]);
+    windowStart, windowEnd, booked, win, pingById, staleDays, jobsById, plan.freeOnly, plan.near]);
   const groups = grouped.buckets;
 
   // What the map shows: exactly the rows the timeline is showing.
@@ -225,6 +251,16 @@ export default function EquipmentView({
       .map((j) => ({ code: j.code, lat: j.site_lat, lng: j.site_lng }));
     return { points, notOnMap, sites };
   }, [grouped.visible, booked, win.from, win.to, jobsById]);
+
+  // The selected item's next move, drawn as an arrow on the map.
+  const route = useMemo(() => {
+    const m = grouped.strip.moves.find((x) => x.itemId === selectedId && x.from.lat != null && x.to.lat != null);
+    if (!m) return null;
+    return {
+      from: m.from, to: m.to,
+      label: `${m.leaveAfter ? `leave ${fmtShort(m.leaveAfter)} → ` : ''}due ${fmtShort(m.dueBy)}`,
+    };
+  }, [grouped, selectedId]);
 
   // One selection shared by the row list and the map.
   const onSelect = useCallback((id) => {
@@ -376,9 +412,19 @@ export default function EquipmentView({
           </span>
         </button>
         <button type="button" className="rl-loc" onClick={() => onSelect(row.id)} title="Show on map">
-          {row.loc.label}
+          {row.loc.label}{row.distKm != null ? ` · ${row.distKm} km` : ''}
         </button>
-        <span className={`tag tag-${AVAIL_TONE[row.avail.status]} eq-chip`}>{availText(row.avail)}</span>
+        <span className="eq-chips">
+          <span className={`tag tag-${AVAIL_TONE[row.avail.status]} eq-chip`}>{availText(row.avail)}</span>
+          {row.moves.length > 0 && (
+            <span className={`tag ${row.moves.some((m) => m.tight) ? 'tag-danger' : 'tag-warn'} eq-chip`}
+              title={row.moves.map((m) => `${m.from.label} → ${m.to.label}, due ${fmtShort(m.dueBy)}`).join('\n')}>🚚</span>
+          )}
+          {row.checks.length > 0 && (
+            <span className="tag tag-danger eq-chip" title={row.checks.map((c) => c.text).join('\n')}>⚠</span>
+          )}
+          <span className="rl-sub eq-usage">Used {row.usage}%</span>
+        </span>
       </div>
     );
   };
@@ -407,7 +453,9 @@ export default function EquipmentView({
 
   return (
     <>
-      <PlanningBar plan={plan} onPlan={setPlan} win={win} counts={grouped.counts} />
+      <PlanningBar plan={plan} onPlan={setPlan} win={win} counts={grouped.counts} jobs={jobs} />
+      <MovesStrip moves={grouped.strip.moves} checks={grouped.strip.checks} idle={grouped.strip.idle}
+        names={grouped.strip.names} onSelect={onSelect} />
       <div className="toolbar" style={{ borderTop: '1px solid var(--line-soft)' }}>
         <div className="chips" role="group" aria-label="Filter by status">
           {[['active', 'Active'], ['inactive', 'Inactive'], ['all', 'All']].map(([v, l]) => (
@@ -488,6 +536,7 @@ export default function EquipmentView({
             <EquipmentMapPanel
               points={mapData.points} sites={mapData.sites} notOnMap={mapData.notOnMap}
               selectedId={selectedId} onSelect={onSelect}
+              route={route} near={plan.near || null}
             />
           </Suspense>
         </div>

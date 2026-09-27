@@ -133,6 +133,7 @@ export const clearMemberDay = (memberId, date) =>
 export const getEquipmentLocations = () => api('/equipment/locations');
 export const getTrackingStatus = () => api('/equipment/tracking-status');
 export const getStaleDays = () => api('/equipment/tracker/stale-days');
+export const geocodePlace = (q) => api(`/geocode?q=${encodeURIComponent(q)}`);
 export const getEquipmentLocationHistory = (id, days = 7) => api(`/equipment/locations/${id}/history?days=${days}`);
 export const getTrackerItems = () => api('/equipment/tracker/items');
 export const updateTrackerItem = (identifier, data) =>

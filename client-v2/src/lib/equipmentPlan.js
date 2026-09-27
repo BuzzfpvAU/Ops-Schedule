@@ -175,7 +175,8 @@ function makeMove(itemId, from, to, leaveAfter, dueBy, gapDays) {
 
 export function movesFor(item, { runs, jobsById, win, today }) {
   const until = addDays(win.to, MOVE_LOOKAHEAD_DAYS);
-  const inRange = (d) => d >= win.from && d <= until;
+  // Only moves still ahead: a job that has started already has its kit.
+  const inRange = (d) => d >= win.from && d <= until && d > today;
   const out = [];
   for (let i = 1; i < runs.length; i++) {
     const a = runs[i - 1];

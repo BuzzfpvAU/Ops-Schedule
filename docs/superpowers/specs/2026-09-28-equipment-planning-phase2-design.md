@@ -23,6 +23,7 @@ Constants: `ROAD_FACTOR = 1.3`, `KM_PER_DAY = 800`, `MOVE_LOOKAHEAD_DAYS = 14`, 
 - `haversineKm(a, b)` — great-circle km between `{lat,lng}` points.
 - `jobRuns(booked: Map<date, entry>)` → consecutive date runs per job, sorted: `[{jobId, from, to}]` (a run breaks on a change of job or a gap of more than one day).
 - `movesFor(item, { runs, jobsById, win, today })` → `Move[]`:
+  - Only moves still ahead: the destination job starts after `today` (a started job already has its kit).
   - For consecutive runs A→B with A.jobId ≠ B.jobId and B.from in `[win.from, win.to + MOVE_LOOKAHEAD_DAYS]`: sites differ when both have positions and `haversineKm > SAME_SITE_KM`, or when either lacks a position and the jobs' states differ. Same site → no move.
   - Base move: for the first run R with `R.from` in that range and no earlier run within 14 days, if `BASE_CITIES[item.location]` exists and the site is > `BASE_MOVE_KM` from it → move from `{kind:'base'}`.
   - `Move = { itemId, from: {label, lat, lng, jobId?}, to: {label, lat, lng, jobId}, leaveAfter, dueBy, gapDays, km|null, needDays|null, tight }`
