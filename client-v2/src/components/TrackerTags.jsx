@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Section } from './ui.jsx';
 import {
-  getTrackerItems, updateTrackerItem, deleteTrackerItem, setTrackerStaleDays, getEquipment,
+  getTrackerItems, updateTrackerItem, deleteTrackerItem, restoreTrackerItem, setTrackerStaleDays, getEquipment,
 } from '../api.js';
 import { groupItems, headerCounts, statusText, STATUS_TONE } from '../lib/tracker.js';
 
@@ -52,9 +52,15 @@ function Row({ item, equipment, holders, onChange, onDelete, busy }) {
         })}
       </select>
       <span className={`tag tag-${STATUS_TONE[item.status] || 'mute'} tt-status`}>{statusText(item)}</span>
-      {item.status === 'missing' && (
-        <button className="btn btn-danger" disabled={busy} onClick={() => onDelete(item)}>Delete</button>
-      )}
+      <span className="tt-actions">
+        {item.equipment_id && (
+          <button className="btn" disabled={busy} onClick={() => onChange(item, { equipment_id: null })}
+            title="Stop showing this tag's position on that equipment">
+            Unlink
+          </button>
+        )}
+        <button className="btn btn-danger" disabled={busy} onClick={() => onDelete(item)}>Remove</button>
+      </span>
     </div>
   );
 }
@@ -97,7 +103,21 @@ export default function TrackerTags({ showToast }) {
   const counts = headerCounts(items);
   const holders = new Map(items.filter((i) => i.equipment_id).map((i) => [i.equipment_id, i]));
   const onChange = (item, patch) => run(() => updateTrackerItem(item.identifier, patch), `${item.name} updated — applies on the next sync`);
-  const onDelete = (item) => run(() => deleteTrackerItem(item.identifier), `${item.name} removed`);
+  const onDelete = (item) => {
+    const name = item.name || item.identifier;
+    if (!window.confirm(
+      `Remove "${name}" permanently?\n\nIts keys are deleted from the tracker Mac on the next sync and it `
+      + 'won\'t come back, even if the account is exported again.'
+    )) return;
+    run(() => deleteTrackerItem(item.identifier), `${name} removed — keys go on the next sync`);
+  };
+  const onRestore = (item) => {
+    if (!window.confirm(
+      `Allow "${item.name || item.identifier}" again?\n\nIts keys were already deleted, so it only comes back `
+      + 'the next time that Apple ID is exported.'
+    )) return;
+    run(() => restoreTrackerItem(item.identifier), `${item.name} allowed again`);
+  };
 
   return (
     <Section title="Tags">
@@ -144,6 +164,19 @@ export default function TrackerTags({ showToast }) {
           )}
         </div>
       ))}
+      {data.removed?.length > 0 && (
+        <details className="tt-devices">
+          <summary>Removed ({data.removed.length})</summary>
+          {data.removed.map((it) => (
+            <div className="entry-row" key={it.identifier}>
+              <span>{it.emoji || (it.kind === 'device' ? '💻' : '🏷')}</span>
+              <span className="entry-name">{it.name || it.identifier}</span>
+              <span className="rl-sub">{it.account}</span>
+              <button className="btn" disabled={busy} onClick={() => onRestore(it)}>Allow again</button>
+            </div>
+          ))}
+        </details>
+      )}
     </Section>
   );
 }

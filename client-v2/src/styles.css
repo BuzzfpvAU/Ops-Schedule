@@ -1540,3 +1540,4 @@ body.is-resizing { cursor: row-resize; user-select: none; }
 .inv-link { display: grid; gap: 6px; }
 .inv-url { word-break: break-all; user-select: all; }
 .inv-list .entry-row { gap: 8px; }
+.tt-actions { display: inline-flex; gap: 6px; justify-content: flex-end; }
