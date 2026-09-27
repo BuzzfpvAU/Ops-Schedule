@@ -135,6 +135,7 @@ def load_account(acct_dir: Path, lookup=None):
     for path in sorted(keys_dir.glob("*.json")):
         try:
             meta = json.loads(path.read_text())
+            meta["_path"] = str(path)
             pairs.append((FindMyAccessory.from_json(path), meta))
         except Exception as exc:  # noqa: BLE001
             log.warning("[%s] skipping bad key file %s: %s", slug, path.name, exc)
@@ -220,9 +221,10 @@ def portal_health() -> dict:
         return {"ok": False, "version": ""}
 
 
-def post_inventory(rows: list[dict], portal: dict | None = None) -> set[str] | None:
-    """Report every held key; returns the identifiers to locate, or None on
-    any failure (the caller must then locate nothing)."""
+def post_inventory(rows: list[dict], portal: dict | None = None) -> dict | None:
+    """Report every held key. Returns {"included": ids to locate, "remove":
+    ids an admin removed (delete their keys)}, or None on any failure — the
+    caller must then locate nothing."""
     req = urllib.request.Request(
         f"{API_URL}/api/equipment/tracker/inventory",
         data=json.dumps({"items": rows, **({"portal": portal} if portal else {})}).encode(),
@@ -232,12 +234,30 @@ def post_inventory(rows: list[dict], portal: dict | None = None) -> set[str] | N
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             body = json.loads(resp.read())
-        return set(body["included"])
+        return {"included": set(body["included"]), "remove": set(body.get("remove") or [])}
     except urllib.error.HTTPError as exc:
         log.error("Inventory rejected (HTTP %s): %s", exc.code, exc.read()[:300])
     except Exception as exc:  # noqa: BLE001
         log.error("Inventory failed: %s", exc)
     return None
+
+
+def delete_key_files(json_path: Path) -> bool:
+    """Delete one accessory's key pair (.json + .plist). Refuses anything that
+    is not a key file inside ACCOUNTS_ROOT; removes an emptied shared dir."""
+    root = ACCOUNTS_ROOT.resolve()
+    path = Path(json_path).resolve()
+    if path.suffix != ".json" or path.parent.name != "keys" or root not in path.parents:
+        log.error("Refusing to delete %s — not a key file under %s", path, root)
+        return False
+    for f in (path, path.with_suffix(".plist")):
+        f.unlink(missing_ok=True)
+    keys_dir = path.parent
+    if keys_dir.parent.parent.name == "shared" and not any(keys_dir.iterdir()):
+        keys_dir.rmdir()
+        if not any(keys_dir.parent.iterdir()):
+            keys_dir.parent.rmdir()
+    return True
 
 
 def push(locations: list[dict]) -> bool:
@@ -298,10 +318,18 @@ def main(argv: list[str] | None = None) -> int:
         loaded.append((slug_of(acct_dir), account, pairs))
 
     rows = [r for slug, _, pairs in loaded for r in inventory_rows(slug, pairs)]
-    included = post_inventory(rows, portal_health()) if rows else set()
-    if included is None:
+    reply = post_inventory(rows, portal_health()) if rows else {"included": set(), "remove": set()}
+    if reply is None:
         log.error("Inventory not accepted — locating nothing this run")
         return 1
+    included, remove = reply["included"], reply["remove"]
+
+    # Items an admin removed in Settings: delete their keys for good.
+    for slug, _, pairs in loaded:
+        for acc, meta in pairs:
+            if getattr(acc, "identifier", None) in remove and meta.get("_path"):
+                if delete_key_files(Path(meta["_path"])):
+                    log.info("[%s] removed keys for %s", slug, getattr(acc, "name", None) or acc.identifier)
 
     locations: list[dict] = []
     for slug, account, pairs in loaded:
