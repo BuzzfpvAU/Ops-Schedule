@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -16,6 +17,7 @@ from pathlib import Path
 from portal.exporter_driver import ExporterDriver, delete_bottle
 
 DEVICE_NAME = "Taskz Tag Export"
+log = logging.getLogger("portal.session")
 DEVICE_MODELS = ("iPhone", "iPad", "Mac", "Watch", "AirPods")
 TERMINAL = {"done", "error"}
 
@@ -89,20 +91,30 @@ class ExportSession:
             self.tmp = Path(tempfile.mkdtemp(prefix="export-", dir=self.cfg.work_root))
             self.tmp.chmod(0o700)
             self._write_profile()
-            self.client.attempt(self.invite["id"])
+            self._tell("attempt", self.invite["id"])
             self._spawn()
             return self.state
 
     def _spawn(self) -> None:
         self.driver = ExporterDriver(self._argv(), self._env(), silence_timeout=self.cfg.silence_timeout)
-        self._apply(self.driver.start())
+        self._apply(self._guard(self.driver.start))
+
+    def _guard(self, fn, *args):
+        # Any unexpected failure ends the session through the normal failure
+        # path, so the attempt is recorded and cleanup still runs.
+        try:
+            return fn(*args)
+        except Exception as exc:  # noqa: BLE001
+            log.error("export session %s: %s", self.invite["id"], type(exc).__name__)
+            from portal.exporter_driver import Step
+            return Step("error", error="unknown", detail=type(exc).__name__)
 
     def answer(self, value: str) -> dict:
         with self._lock:
             self.last_touch = time.monotonic()
             if self.finished or self.driver is None:
                 return self.state
-            step = self.driver.answer(value)
+            step = self._guard(self.driver.answer, value)
             self._joined = self._joined or self.driver.passcode_sent
             if step.kind == "error" and step.error == "bad_password" and not self._retried_password:
                 self._retried_password = True
@@ -157,8 +169,8 @@ class ExportSession:
                         "model": meta.get("model") or "", "serial_number": meta.get("serial_number") or "",
                         "kind": classify(meta.get("model") or "", meta.get("identifier") or ""),
                     })
-                self.client.inventory(rows)
-            self.client.complete(self.invite["id"], len(rows))
+                self._tell("inventory", rows)
+            self._tell("complete", self.invite["id"], len(rows))
             self.state = {"step": "done", "saved": len(rows), "remove_device": DEVICE_NAME}
             self._cleanup()
             return self.state
@@ -177,9 +189,17 @@ class ExportSession:
                 return True
             return False
 
+    def _tell(self, name: str, *args) -> None:
+        # taskz.id being unreachable must never stop an export from cleaning
+        # up; the sync re-reports kept keys on its next run anyway.
+        try:
+            getattr(self.client, name)(*args)
+        except Exception as exc:  # noqa: BLE001
+            log.error("taskz %s failed for %s: %s", name, self.invite["id"], type(exc).__name__)
+
     def _fail(self, error: str, detail: str | None = None) -> None:
         self.state = {"step": "error", "error": error, "remove_device": DEVICE_NAME if self._joined else None}
-        self.client.failed(self.invite["id"], error)
+        self._tell("failed", self.invite["id"], error)
         self._cleanup()
 
     def _cleanup(self) -> None:
@@ -190,10 +210,13 @@ class ExportSession:
             self.driver.close()
         try:
             if self._joined and self.tmp is not None:
-                ok, why = delete_bottle(self._argv(), self._env(), self.serial,
-                                        timeout=self.cfg.silence_timeout)
+                try:
+                    ok, why = delete_bottle(self._argv(), self._env(), self.serial,
+                                            timeout=self.cfg.silence_timeout)
+                except Exception as exc:  # noqa: BLE001
+                    ok, why = False, type(exc).__name__
                 if not ok:
-                    self.client.cleanup_failed(self.invite["id"], why)
+                    self._tell("cleanup_failed", self.invite["id"], why)
         finally:
             if self.tmp is not None:
                 shutil.rmtree(self.tmp, ignore_errors=True)

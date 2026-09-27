@@ -110,6 +110,28 @@ class Session(unittest.TestCase):
         self.s.start()
         self.assertEqual(self.client.calls[0], ("attempt", ("inv123456",)))
 
+    def test_exporter_that_cannot_start_fails_cleanly(self):
+        cfg = SessionConfig(exporter_argv=["/nonexistent/export-findmy"], template_profile=self.cfg.template_profile,
+                            shared_root=self.root / "shared", work_root=self.root / "work")
+        s = ExportSession({"id": "inv999999", "label": "X"}, "x@example.com", cfg, self.client)
+        st = s.start()
+        self.assertEqual((st["step"], st["error"]), ("error", "unknown"))
+        self.assertIn(("failed", ("inv999999", "unknown")), self.client.calls)
+        self.assertFalse(s.tmp.exists())
+
+    def test_taskz_outage_does_not_block_cleanup(self):
+        class Down:
+            def __getattr__(self, name):
+                def boom(*a):
+                    raise OSError("network down")
+                return boom
+        s = ExportSession({"id": "inv777777", "label": "Y"}, "y@example.com", self.cfg, Down())
+        s.start(); s.answer("pw"); s.answer("0"); s.answer("123456")
+        st = s.answer("1234")
+        st = s.save([st["items"][0]["file"]])
+        self.assertEqual(st["step"], "done")
+        self.assertFalse(s.tmp.exists())
+
     def tearDown(self):
         for k in ("FAKE_BOTTLE_SERIALS",):
             os.environ.pop(k, None)
