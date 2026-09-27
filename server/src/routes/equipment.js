@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import {
-  upsertInventory, listItems, setStaleDays, removedAmong, removeItem, restoreItem,
+  upsertInventory, listItems, setStaleDays, removedAmong, removeItem, restoreItem, purgeItem,
 } from '../services/trackerItems.js';
 import {
   createInvite, listInvites, checkInvite, recordAttempt, completeInvite, failInvite,
@@ -277,6 +277,13 @@ router.patch('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res)
 router.delete('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res) => {
   if (!removeItem(req.db, req.params.identifier, new Date().toISOString())) {
     return res.status(404).json({ error: 'Unknown item' });
+  }
+  res.json({ success: true });
+});
+
+router.post('/tracker/items/:identifier/purge', requireAuth, requireAdmin, (req, res) => {
+  if (!purgeItem(req.db, req.params.identifier, new Date().toISOString())) {
+    return res.status(409).json({ error: 'Only removed items can be deleted' });
   }
   res.json({ success: true });
 });

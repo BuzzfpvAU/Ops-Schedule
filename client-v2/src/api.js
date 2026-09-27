@@ -133,6 +133,8 @@ export const getTrackingStatus = () => api('/equipment/tracking-status');
 export const getTrackerItems = () => api('/equipment/tracker/items');
 export const updateTrackerItem = (identifier, data) =>
   api(`/equipment/tracker/items/${encodeURIComponent(identifier)}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const purgeTrackerItem = (identifier) =>
+  api(`/equipment/tracker/items/${encodeURIComponent(identifier)}/purge`, { method: 'POST' });
 export const restoreTrackerItem = (identifier) =>
   api(`/equipment/tracker/items/${encodeURIComponent(identifier)}/restore`, { method: 'POST' });
 export const deleteTrackerItem = (identifier) =>

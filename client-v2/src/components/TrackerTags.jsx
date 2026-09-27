@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Section } from './ui.jsx';
 import {
-  getTrackerItems, updateTrackerItem, deleteTrackerItem, restoreTrackerItem, setTrackerStaleDays, getEquipment,
+  getTrackerItems, updateTrackerItem, deleteTrackerItem, restoreTrackerItem, purgeTrackerItem, setTrackerStaleDays, getEquipment,
 } from '../api.js';
 import { groupItems, headerCounts, statusText, STATUS_TONE } from '../lib/tracker.js';
 
@@ -111,6 +111,18 @@ export default function TrackerTags({ showToast }) {
     )) return;
     run(() => deleteTrackerItem(item.identifier), `${name} removed — keys go on the next sync`);
   };
+  const PURGE_NOTE = 'It disappears from this list for good and cannot be allowed again. '
+    + 'It still stays removed if the account is exported again.';
+  const onPurge = (item) => {
+    if (!window.confirm(`Delete "${item.name || item.identifier}" permanently?\n\n${PURGE_NOTE}`)) return;
+    run(() => purgeTrackerItem(item.identifier), `${item.name || 'Item'} deleted`);
+  };
+  const onPurgeAll = (list) => {
+    if (!window.confirm(`Delete all ${list.length} removed items permanently?\n\n${PURGE_NOTE}`)) return;
+    run(async () => {
+      for (const it of list) await purgeTrackerItem(it.identifier);
+    }, `${list.length} removed item${list.length === 1 ? '' : 's'} deleted`);
+  };
   const onRestore = (item) => {
     if (!window.confirm(
       `Allow "${item.name || item.identifier}" again?\n\nIts keys were already deleted, so it only comes back `
@@ -167,12 +179,18 @@ export default function TrackerTags({ showToast }) {
       {data.removed?.length > 0 && (
         <details className="tt-devices">
           <summary>Removed ({data.removed.length})</summary>
+          {data.removed.length > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '4px 0' }}>
+              <button className="btn btn-danger" disabled={busy} onClick={() => onPurgeAll(data.removed)}>Delete all</button>
+            </div>
+          )}
           {data.removed.map((it) => (
             <div className="entry-row" key={it.identifier}>
               <span>{it.emoji || (it.kind === 'device' ? '💻' : '🏷')}</span>
               <span className="entry-name">{it.name || it.identifier}</span>
               <span className="rl-sub">{it.account}</span>
               <button className="btn" disabled={busy} onClick={() => onRestore(it)}>Allow again</button>
+              <button className="btn btn-danger" disabled={busy} onClick={() => onPurge(it)}>Delete</button>
             </div>
           ))}
         </details>

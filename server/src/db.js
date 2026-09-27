@@ -491,6 +491,8 @@ export function initDb() {
   // the tracker Mac is told to delete their key files.
   const trackerCols = db.prepare('PRAGMA table_info(tracker_items)').all().map((c) => c.name);
   if (!trackerCols.includes('removed_at')) db.exec('ALTER TABLE tracker_items ADD COLUMN removed_at TEXT');
+  // Purged: gone from every list; only the identifier is kept so it stays removed.
+  if (!trackerCols.includes('purged_at')) db.exec('ALTER TABLE tracker_items ADD COLUMN purged_at TEXT');
 
   // New tables for auth
   db.exec(`

@@ -161,6 +161,21 @@ test('a removed item can be allowed again, and cannot be edited while removed', 
   assert.equal(body.items[0].included, 0, 'comes back excluded');
 });
 
+test('a removed item can be deleted from the list for good, and still never comes back', async () => {
+  await inv([tagItem('t1', 'x')]);
+  assert.equal((await asAdmin('/tracker/items/t1/purge', 'POST')).status, 409, 'must be removed first');
+  await asAdmin('/tracker/items/t1', 'DELETE');
+  assert.equal((await asAdmin('/tracker/items/t1/purge', 'POST')).status, 200);
+  const body = await (await asAdmin('/tracker/items')).json();
+  assert.deepEqual(body.removed, []);
+  assert.deepEqual(body.items, []);
+  assert.equal((await asAdmin('/tracker/items/t1/restore', 'POST')).status, 404, 'cannot be allowed again');
+  const r = await (await inv([tagItem('t1', 'x')])).json();
+  assert.deepEqual(r.remove, ['t1'], 'a re-export is still told to delete its keys');
+  assert.equal(db.prepare("SELECT name FROM tracker_items WHERE identifier = 't1'").get().name, '', 'details are not refilled');
+  assert.equal((await asAdmin('/tracker/items/t1/purge', 'POST', undefined, member)).status, 403);
+});
+
 test('removing needs an admin', async () => {
   await inv([tagItem('t1', 'x')]);
   assert.equal((await asAdmin('/tracker/items/t1', 'DELETE', undefined, member)).status, 403);

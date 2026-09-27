@@ -36,7 +36,7 @@ export function upsertInventory(db, items, nowIso) {
   const update = db.prepare(`
     UPDATE tracker_items SET account = ?, name = ?, emoji = ?, model = ?, serial_number = ?,
                              kind = ?, last_inventory_at = ?
-    WHERE identifier = ?
+    WHERE identifier = ? AND purged_at IS NULL
   `);
   db.transaction(() => {
     for (const it of items) {
@@ -76,8 +76,21 @@ export function removeItem(db, identifier, nowIso) {
 }
 
 export function restoreItem(db, identifier) {
-  const r = db.prepare('UPDATE tracker_items SET removed_at = NULL WHERE identifier = ? AND removed_at IS NOT NULL')
-    .run(identifier);
+  const r = db.prepare(`
+    UPDATE tracker_items SET removed_at = NULL
+    WHERE identifier = ? AND removed_at IS NOT NULL AND purged_at IS NULL
+  `).run(identifier);
+  return r.changes > 0;
+}
+
+// Take a removed item off every list for good. Only the identifier matters
+// from here on — it keeps the item removed if the account is exported again.
+export function purgeItem(db, identifier, nowIso) {
+  const r = db.prepare(`
+    UPDATE tracker_items SET purged_at = ?, name = '', emoji = '', model = '', serial_number = '',
+                             last_seen_at = NULL, battery = NULL
+    WHERE identifier = ? AND removed_at IS NOT NULL AND purged_at IS NULL
+  `).run(nowIso, identifier);
   return r.changes > 0;
 }
 
@@ -123,7 +136,7 @@ export function listItems(db, nowMs = Date.now()) {
   }
   const removed = db.prepare(`
     SELECT identifier, account, name, emoji, kind, removed_at FROM tracker_items
-    WHERE removed_at IS NOT NULL ORDER BY removed_at DESC
+    WHERE removed_at IS NOT NULL AND purged_at IS NULL ORDER BY removed_at DESC
   `).all();
   return {
     stale_days: staleDays,
