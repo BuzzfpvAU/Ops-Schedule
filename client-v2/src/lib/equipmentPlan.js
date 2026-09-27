@@ -112,3 +112,15 @@ export function summary(rows) {
   for (const r of rows) out[r.avail.status] += 1;
   return out;
 }
+
+// Every map location is one numbered bubble — "1" included, so a lone item is
+// as easy to spot as a busy site. Colour is the shared availability of what
+// is there, or "mixed"; approximate (home-base) only if every item is.
+export function bubbleFor(list) {
+  const tones = new Set(list.map((p) => p.tone));
+  return {
+    count: list.length,
+    tone: tones.size === 1 ? list[0].tone : 'mixed',
+    approx: list.every((p) => p.approx),
+  };
+}

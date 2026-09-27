@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getEquipmentLocationHistory } from '../api.js';
+import { bubbleFor } from '../lib/equipmentPlan.js';
 
 const TONE_COLOR = { ok: '#2b8a3e', warn: '#e67700', danger: '#c92a2a', mute: '#868e96' };
 const keyOf = (p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
@@ -50,25 +51,27 @@ export default function EquipmentMapPanel({ points, sites, notOnMap, selectedId,
     for (const list of groups.values()) {
       const p = list[0];
       const sel = list.some((x) => x.id === selectedId);
+      const b = bubbleFor(list);
+      const cls = `eqm-count tone-${b.tone}${b.approx ? ' is-approx' : ''}${sel ? ' is-sel' : ''}`;
+      const m = L.marker([p.lat, p.lng], {
+        icon: L.divIcon({ className: 'eqm-group', html: `<span class="${cls}">${b.count}</span>`, iconSize: [26, 26] }),
+        zIndexOffset: sel ? 1000 : 0,
+      });
       if (list.length === 1) {
-        L.circleMarker([p.lat, p.lng], {
-          radius: sel ? 10 : 7, weight: sel ? 4 : 2, color: sel ? '#3b5bdb' : '#fff',
-          fillColor: TONE_COLOR[p.tone] || TONE_COLOR.mute, fillOpacity: p.approx ? 0.35 : 0.95,
-        }).on('click', () => onSelect(p.id)).bindTooltip(p.name).addTo(g);
+        m.on('click', () => onSelect(p.id)).bindTooltip(p.name);
       } else {
-        const html = `<span class="eqm-count${sel ? ' is-sel' : ''}">${list.length}</span>`;
-        const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'eqm-group', html, iconSize: [26, 26] }) });
         const box = document.createElement('div');
         box.className = 'eqm-popup';
         for (const x of list) {
-          const b = document.createElement('button');
-          b.type = 'button';
-          b.textContent = x.name;
-          b.onclick = () => onSelect(x.id);
-          box.appendChild(b);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = x.name;
+          btn.onclick = () => onSelect(x.id);
+          box.appendChild(btn);
         }
-        m.bindPopup(box).addTo(g);
+        m.bindPopup(box).bindTooltip(`${list.length} items`);
       }
+      m.addTo(g);
     }
   }, [points, sites, selectedId, onSelect]);
 

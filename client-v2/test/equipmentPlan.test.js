@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  bookedIndex, planWindow, availability, availText, resolveLocation, sortRows, summary, BASE_CITIES,
+  bookedIndex, planWindow, availability, availText, resolveLocation, sortRows, summary, BASE_CITIES, bubbleFor,
 } from '../src/lib/equipmentPlan.js';
 
 const e = (item, date, job = 'j1', status = 'tentative') => ({ team_member_id: item, date, job_id: job, status, job_code: 'HUN-24' });
@@ -86,4 +86,10 @@ test('sortRows and summary', () => {
   ];
   assert.deepEqual(sortRows(rows).map((r) => r.item.name), ['A', 'Z', 'C', 'B', 'D']);
   assert.deepEqual(summary(rows), { free: 2, partial: 1, booked: 1, unserviceable: 1 });
+});
+
+test('bubbleFor: count, shared tone or mixed, and approx only when all are approx', () => {
+  assert.deepEqual(bubbleFor([{ tone: 'ok', approx: false }]), { count: 1, tone: 'ok', approx: false });
+  assert.deepEqual(bubbleFor([{ tone: 'ok', approx: true }, { tone: 'ok', approx: true }]), { count: 2, tone: 'ok', approx: true });
+  assert.deepEqual(bubbleFor([{ tone: 'ok', approx: true }, { tone: 'danger', approx: false }]), { count: 2, tone: 'mixed', approx: false });
 });

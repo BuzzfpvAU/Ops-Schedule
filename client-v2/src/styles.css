@@ -1690,3 +1690,12 @@ body.is-report #root { height: auto; }
 /* Leaflet's panes use z-index 400–1000; keep them inside the map's own
    stacking context so drawers and dialogs (z 200+) always sit above it. */
 .eqm-map { isolation: isolate; z-index: 0; }
+
+/* Map bubbles: one per location, coloured by availability */
+.eqm-count.tone-ok { background: #2b8a3e; }
+.eqm-count.tone-warn { background: #e67700; }
+.eqm-count.tone-danger { background: #c92a2a; }
+.eqm-count.tone-mute { background: #868e96; }
+.eqm-count.tone-mixed { background: #3b5bdb; }
+.eqm-count.is-approx { opacity: 0.6; border-style: dashed; }
+.eqm-count.is-sel { box-shadow: 0 0 0 4px #3b5bdb, 0 0 0 6px #fff; opacity: 1; }
