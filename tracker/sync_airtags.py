@@ -33,6 +33,7 @@ from pathlib import Path
 TRACKER_DIR = Path(__file__).resolve().parent
 ACCOUNTS_ROOT = TRACKER_DIR / "accounts"
 ENV_FILE = TRACKER_DIR / ".env"
+ANISETTE_LIBS = TRACKER_DIR / "ani_libs.bin"
 
 
 def _load_env() -> None:
@@ -86,7 +87,7 @@ def load_account(acct_dir: Path):
             f"[{slug}] no session — run ./findmy_login.py {slug} (Apple ID + 2FA)"
         )
     try:
-        account = AppleAccount.from_json(session_file)
+        account = AppleAccount.from_json(session_file, anisette_libs_path=ANISETTE_LIBS)
     except Exception as exc:  # noqa: BLE001
         raise AccountError(
             f"[{slug}] session restore failed ({exc}) — re-run ./findmy_login.py {slug}"

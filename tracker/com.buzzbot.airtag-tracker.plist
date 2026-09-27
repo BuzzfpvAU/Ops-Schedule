@@ -14,7 +14,7 @@
     <key>API_URL</key>
     <string>https://taskz.id</string>
     <key>TRACKER_INGEST_KEY</key>
-    <string>a662d3a0d8d7b257641874314eff155c8c1c0301b36004da</string>
+    <string>REPLACE_WITH_SERVER_TRACKER_INGEST_KEY</string>
   </dict>
   <key>StartInterval</key>
   <integer>1200</integer>
