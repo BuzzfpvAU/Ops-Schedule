@@ -1,6 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import PlanningBar from './PlanningBar.jsx';
+// Leaflet is ~150 KB; load it only when the map is actually shown.
+const EquipmentMapPanel = lazy(() => import('./EquipmentMapPanel.jsx'));
 import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
 import {
   STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, getEquipmentLocations, getStaleDays,
@@ -20,6 +22,19 @@ function loadPlan() {
   } catch { /* storage unavailable */ }
   return { preset: '14', freeOnly: false };
 }
+
+function stored(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : JSON.parse(v);
+  } catch {
+    return fallback;
+  }
+}
+function store(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
+}
+const clampMap = (w) => Math.max(280, Math.min(900, Math.round(w)));
 
 const CATEGORY_ORDER = EQUIPMENT_CATEGORIES;
 
@@ -47,6 +62,19 @@ export default function EquipmentView({
   const [locations, setLocations] = useState([]);
   const [staleDays, setStaleDays] = useState(3);
   const [selectedId, setSelectedId] = useState(null);
+  const [mapOpen, setMapOpen] = useState(() => stored('eq.mapOpen', true));
+  const [mapWidth, setMapWidth] = useState(() => clampMap(stored('eq.mapWidth', window.innerWidth * 0.38)));
+  const [pane, setPane] = useState('timeline'); // phone only: which half is showing
+  useEffect(() => { store('eq.mapOpen', mapOpen); }, [mapOpen]);
+  useEffect(() => { store('eq.mapWidth', mapWidth); }, [mapWidth]);
+
+  const startDrag = (e) => {
+    e.preventDefault();
+    const move = (ev) => setMapWidth(clampMap(window.innerWidth - ev.clientX));
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   useEffect(() => {
     try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch { /* storage unavailable */ }
@@ -174,9 +202,34 @@ export default function EquipmentView({
     windowStart, windowEnd, booked, win, pingById, staleDays, jobsById, plan.freeOnly]);
   const groups = grouped.buckets;
 
+  // What the map shows: exactly the rows the timeline is showing.
+  const mapData = useMemo(() => {
+    const points = [];
+    const notOnMap = [];
+    for (const r of grouped.visible) {
+      if (r.loc.lat != null && r.loc.lng != null) {
+        points.push({
+          id: r.id, name: r.item.name, lat: r.loc.lat, lng: r.loc.lng, approx: r.loc.approx,
+          tone: AVAIL_TONE[r.avail.status], source: r.loc.source,
+        });
+      } else {
+        notOnMap.push({ id: r.id, name: r.item.name, label: r.loc.label.replace('📍 ', '') });
+      }
+    }
+    const siteIds = new Set();
+    for (const r of grouped.visible) {
+      for (const [d, en] of booked.get(r.id) || []) if (d >= win.from && d <= win.to) siteIds.add(en.job_id);
+    }
+    const sites = [...siteIds].map((id) => jobsById.get(id))
+      .filter((j) => j && Number.isFinite(j.site_lat) && Number.isFinite(j.site_lng))
+      .map((j) => ({ code: j.code, lat: j.site_lat, lng: j.site_lng }));
+    return { points, notOnMap, sites };
+  }, [grouped.visible, booked, win.from, win.to, jobsById]);
+
   // One selection shared by the row list and the map.
   const onSelect = useCallback((id) => {
     setSelectedId(id);
+    setPane((p) => (p === 'map' ? 'timeline' : p));
     document.querySelector(`[data-row-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, []);
 
@@ -376,8 +429,17 @@ export default function EquipmentView({
           </span>
         </div>
         <span className="count-pill">{totalRows} items</span>
+        <button type="button" className={`chip${mapOpen ? ' is-active' : ''}`} onClick={() => setMapOpen((v) => !v)}
+          title={mapOpen ? 'Hide the map' : 'Show the map'}>🗺 Map</button>
+        <span className="chips eq-pane-toggle" role="group" aria-label="Show">
+          <button type="button" className={`chip${pane === 'timeline' ? ' is-active' : ''}`} onClick={() => setPane('timeline')}>Timeline</button>
+          <button type="button" className={`chip${pane === 'map' ? ' is-active' : ''}`}
+            onClick={() => { setMapOpen(true); setPane('map'); }}>Map</button>
+        </span>
       </div>
 
+      <div className={`eq-split${mapOpen ? '' : ' is-collapsed'}`} style={{ '--mapw': `${mapWidth}px` }} data-pane={pane}>
+      <div className="eq-left">
       <Timeline
         days={days}
         colW={zoom.colW}
@@ -393,6 +455,19 @@ export default function EquipmentView({
         highlight={win}
         emptyMessage={plan.freeOnly ? 'Nothing is free for the whole window.' : 'No equipment matches these filters.'}
       />
+      </div>
+      {mapOpen && <div className="eq-divider" onPointerDown={startDrag} role="separator" aria-label="Resize map" />}
+      {mapOpen && (
+        <div className="eq-right">
+          <Suspense fallback={<div className="eqm-broken">Loading map…</div>}>
+            <EquipmentMapPanel
+              points={mapData.points} sites={mapData.sites} notOnMap={mapData.notOnMap}
+              selectedId={selectedId} onSelect={onSelect}
+            />
+          </Suspense>
+        </div>
+      )}
+      </div>
 
       {editing && form && (
         <Drawer
