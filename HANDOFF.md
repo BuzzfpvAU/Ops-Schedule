@@ -3,7 +3,12 @@
 ## Deploying
 
 **A push to `origin/main` is the deploy.** Hostinger's hbuilds watcher rebuilds
-and swaps the live app; no SSH is needed (and SSH from this Mac does not work).
+and swaps the live app. For server files use `ssh tagz-host` (shared hosting
+u882499788, port 65002, `~/.ssh/config`) — the `hermes@srv1713679` VPS in older
+notes is wrong. `.htaccess` is `~/domains/taskz.id/public_html/.htaccess`.
+Env changes there need an app restart: touching `tmp/restart.txt` did NOT
+work; kill the `lsnode:` process (`ps -u $(id -u) -o pid,args | grep lsnode`)
+and LiteSpeed respawns it on the next request.
 Verify by comparing the `/v2/assets/index-*.js` hash on https://taskz.id/v2/
 with a local `cd client-v2 && npx vite build`. See `.agent-status.md` → Deploy notes.
 
@@ -21,19 +26,16 @@ with a local `cd client-v2 && npx vite build`. See `.agent-status.md` → Deploy
 - **Job card fix** — crew can be added to a job with no planned end / no
   planned dates (uses the crew's dates, as kit already did).
 
-## Blocking the tracker going live
+## Tracker status (live 27 Sep)
 
-1. **Server ingest key.** `.htaccess` still holds the OLD key, which is in
-   this public repo's git history. Replace the `SetEnv TRACKER_INGEST_KEY`
-   line (hPanel → File Manager → `domains/taskz.id/.htaccess`) with the value
-   in `~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist`, then restart
-   the Node app in hPanel. Until then syncs get 401 and locate nothing.
-2. **No active tags.** The four droneops tags (Car, Luggage ×2, Backpack) were
-   last aligned Aug 2023 and return no reports. Pair real equipment tags to
-   the droneops Apple ID, re-run `./export_keys.sh droneops <email>`, sync,
-   include + link them in Settings.
-3. **launchd job** is installed (`~/Library/LaunchAgents/…`, key inside, mode
-   600) but **not loaded** — load it once a real tag is included.
+- Server key rotated in `.htaccess` (backup `~/htaccess.taskz.bak-20260927`
+  on the host); the old key from git history is rejected (401).
+- launchd job loaded — syncs every 20 min, logs in
+  `~/Library/Logs/airtag-tracker/`. Each run posts the inventory (8 droneops
+  items, all excluded) and locates only included items.
+- **No active tags.** The four droneops tags were last aligned Aug 2023. Pair
+  real equipment tags to the droneops Apple ID, re-run
+  `./export_keys.sh droneops <email>`, then include + link in Settings.
 
 ## Open
 

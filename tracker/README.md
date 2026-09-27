@@ -85,10 +85,10 @@ sign-ins with `Error response for GSA request: 503`.
 .venv/bin/python sync_airtags.py <acct>   # one account
 ```
 
-launchd (every 20 min, logs to `logs/`):
+launchd (every 20 min, logs to `~/Library/Logs/airtag-tracker/` — launchd cannot write logs on the external /Volumes/Data disk, exit code 78):
 
 ```bash
-mkdir -p logs
+mkdir -p ~/Library/Logs/airtag-tracker
 cp com.buzzbot.airtag-tracker.plist ~/Library/LaunchAgents/
 chmod 600 ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist
 # set TRACKER_INGEST_KEY in the INSTALLED copy only — never in the repo copy

@@ -45,7 +45,7 @@ const STEPS = [
   {
     title: 'Poll every 20 minutes',
     body: 'Copy the plist, set TRACKER_INGEST_KEY in the installed copy only, then load it.',
-    cmd: 'mkdir -p logs\ncp com.buzzbot.airtag-tracker.plist ~/Library/LaunchAgents/\nchmod 600 ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist\nlaunchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist',
+    cmd: 'mkdir -p ~/Library/Logs/airtag-tracker\ncp com.buzzbot.airtag-tracker.plist ~/Library/LaunchAgents/\nchmod 600 ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist\nlaunchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist',
   },
   {
     title: 'Include and link tags',

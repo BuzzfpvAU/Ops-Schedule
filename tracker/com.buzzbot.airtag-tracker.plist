@@ -21,8 +21,8 @@
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Users/buzzbot/Dev/Ops-Schedule/tracker/logs/sync.log</string>
+  <string>/Users/buzzbot/Library/Logs/airtag-tracker/sync.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/buzzbot/Dev/Ops-Schedule/tracker/logs/sync.err.log</string>
+  <string>/Users/buzzbot/Library/Logs/airtag-tracker/sync.err.log</string>
 </dict>
 </plist>
