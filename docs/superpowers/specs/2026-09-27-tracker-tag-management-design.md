@@ -136,7 +136,7 @@ Every change saves immediately with a toast (existing V2 pattern) and takes effe
 - status computation incl. stale threshold from `app_settings`
 - ingest key required on inventory; admin required on admin endpoints
 
-**Tracker** — `tracker/test_sync.py` (pytest, added to the venv): classification cases (AirTag, Kmart tag, `l:/` Mac, `me:/` iPhone, iPad model), and inventory failure → zero fetches.
+**Tracker** — `tracker/test_sync.py` (stdlib `unittest`; the venv has no pytest): classification cases (AirTag, Kmart tag, `l:/` Mac, `me:/` iPhone, iPad model), and inventory failure → zero fetches.
 
 **End to end** — one real sync against taskz.id; Settings → Tracking lists the droneops tags and devices, all excluded except any auto-linked by name.
 
