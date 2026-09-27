@@ -62,5 +62,31 @@ class InventoryFailure(unittest.TestCase):
         account.fetch_location.assert_called_once_with([b])
 
 
+import tempfile
+from pathlib import Path
+
+
+class SharedAccounts(unittest.TestCase):
+    def test_shared_dirs_are_listed_with_prefix(self):
+        root = Path(tempfile.mkdtemp())
+        (root / "droneops").mkdir()
+        (root / "shared" / "sam-wa-abc123" / "keys").mkdir(parents=True)
+        with mock.patch.object(s, "ACCOUNTS_ROOT", root):
+            names = [s.slug_of(p) for p in s.list_accounts()]
+        self.assertEqual(names, ["droneops", "shared/sam-wa-abc123"])
+
+    def test_portal_health_reports_down_when_unreachable(self):
+        with mock.patch.object(s, "PORTAL_URL", "http://127.0.0.1:9"):
+            self.assertEqual(s.portal_health(), {"ok": False, "version": ""})
+
+class SharedSession(unittest.TestCase):
+    def test_shared_fetch_never_writes_a_session_copy(self):
+        account = mock.Mock()
+        account.fetch_location.return_value = {}
+        s.fetch_account("shared/sam-wa-abc123", account, [mock.Mock()])
+        account.to_json.assert_not_called()
+        s.fetch_account("droneops", account, [mock.Mock()])
+        account.to_json.assert_called_once()
+
 if __name__ == "__main__":
     unittest.main()

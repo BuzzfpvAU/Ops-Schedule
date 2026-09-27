@@ -49,6 +49,10 @@ _load_env()
 
 API_URL = (os.environ.get("API_URL") or "http://localhost:3000").rstrip("/")
 INGEST_KEY = os.environ.get("TRACKER_INGEST_KEY") or ""
+# Keys saved by the export portal (accounts/shared/<slug>/keys) have no
+# session of their own; they are located with this account's session.
+LOOKUP_ACCOUNT = os.environ.get("LOOKUP_ACCOUNT") or "droneops"
+PORTAL_URL = (os.environ.get("PORTAL_HEALTH_URL") or "http://127.0.0.1:8765").rstrip("/")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("airtag-tracker")
@@ -73,17 +77,29 @@ class AccountError(Exception):
     """Account dir exists but is not usable yet (missing session/keys)."""
 
 
+def slug_of(acct_dir: Path) -> str:
+    return f"shared/{acct_dir.name}" if acct_dir.parent.name == "shared" else acct_dir.name
+
+
+def is_shared(acct_dir: Path) -> bool:
+    return acct_dir.parent.name == "shared"
+
+
 def list_accounts(only: list[str] | None = None) -> list[Path]:
+    """Apple ID accounts first, then portal-shared key dirs."""
     if not ACCOUNTS_ROOT.is_dir():
         return []
-    dirs = sorted(p for p in ACCOUNTS_ROOT.iterdir() if p.is_dir())
+    dirs = sorted(p for p in ACCOUNTS_ROOT.iterdir() if p.is_dir() and p.name != "shared")
+    shared = ACCOUNTS_ROOT / "shared"
+    if shared.is_dir():
+        dirs += sorted(p for p in shared.iterdir() if p.is_dir())
     if only:
         wanted = set(only)
-        dirs = [p for p in dirs if p.name in wanted]
+        dirs = [p for p in dirs if slug_of(p) in wanted]
     return dirs
 
 
-def load_account(acct_dir: Path):
+def load_account(acct_dir: Path, lookup=None):
     """Load one account's session + accessory keys.
 
     Returns (account, [(accessory, key_file_json)]) or raises AccountError
@@ -91,20 +107,25 @@ def load_account(acct_dir: Path):
     """
     from findmy import AppleAccount, FindMyAccessory
 
-    slug = acct_dir.name
+    slug = slug_of(acct_dir)
     session_file = acct_dir / "account.json"
     keys_dir = acct_dir / "keys"
 
-    if not session_file.exists():
+    if is_shared(acct_dir):
+        if lookup is None:
+            raise AccountError(f"[{slug}] no {LOOKUP_ACCOUNT} session to locate shared keys")
+        account = lookup
+    elif not session_file.exists():
         raise AccountError(
             f"[{slug}] no session — run ./findmy_login.py {slug} (Apple ID + 2FA)"
         )
-    try:
-        account = AppleAccount.from_json(session_file, anisette_libs_path=ANISETTE_LIBS)
-    except Exception as exc:  # noqa: BLE001
-        raise AccountError(
-            f"[{slug}] session restore failed ({exc}) — re-run ./findmy_login.py {slug}"
-        ) from exc
+    else:
+        try:
+            account = AppleAccount.from_json(session_file, anisette_libs_path=ANISETTE_LIBS)
+        except Exception as exc:  # noqa: BLE001
+            raise AccountError(
+                f"[{slug}] session restore failed ({exc}) — re-run ./findmy_login.py {slug}"
+            ) from exc
 
     if not keys_dir.is_dir():
         raise AccountError(
@@ -138,10 +159,11 @@ def fetch_account(slug: str, account, accessories) -> list[dict]:
 
     # Persist refreshed session tokens — do this on every successful fetch so
     # an expired session is noticed early instead of mid-rotation.
-    try:
-        account.to_json(ACCOUNTS_ROOT / slug / "account.json")
-    except Exception:  # noqa: BLE001
-        log.warning("[%s] could not persist refreshed session", slug)
+    if not slug.startswith("shared/"):  # shared keys borrow LOOKUP_ACCOUNT's session
+        try:
+            account.to_json(ACCOUNTS_ROOT / slug / "account.json")
+        except Exception:  # noqa: BLE001
+            log.warning("[%s] could not persist refreshed session", slug)
 
     locations: list[dict] = []
     for accessory, report in (results or {}).items():
@@ -188,12 +210,22 @@ def inventory_rows(slug: str, pairs) -> list[dict]:
     return rows
 
 
-def post_inventory(rows: list[dict]) -> set[str] | None:
+def portal_health() -> dict:
+    """Whether the export portal on this Mac answers, for Settings' tile."""
+    try:
+        with urllib.request.urlopen(f"{PORTAL_URL}/healthz", timeout=3) as resp:
+            body = json.loads(resp.read())
+        return {"ok": bool(body.get("ok")), "version": str(body.get("version") or "")}
+    except Exception:  # noqa: BLE001
+        return {"ok": False, "version": ""}
+
+
+def post_inventory(rows: list[dict], portal: dict | None = None) -> set[str] | None:
     """Report every held key; returns the identifiers to locate, or None on
     any failure (the caller must then locate nothing)."""
     req = urllib.request.Request(
         f"{API_URL}/api/equipment/tracker/inventory",
-        data=json.dumps({"items": rows}).encode(),
+        data=json.dumps({"items": rows, **({"portal": portal} if portal else {})}).encode(),
         headers={"Content-Type": "application/json", "X-Ingest-Key": INGEST_KEY},
         method="POST",
     )
@@ -251,17 +283,22 @@ def main(argv: list[str] | None = None) -> int:
 
     loaded = []
     failed = 0
+    lookup = None
     for acct_dir in acct_dirs:
+        # Apple ID dirs sort before shared ones, so the lookup session is
+        # loaded by the time shared keys need it.
         try:
-            account, pairs = load_account(acct_dir)
+            account, pairs = load_account(acct_dir, lookup)
         except AccountError as exc:
             log.error("%s", exc)
             failed += 1
             continue
-        loaded.append((acct_dir.name, account, pairs))
+        if acct_dir.name == LOOKUP_ACCOUNT and not is_shared(acct_dir):
+            lookup = account
+        loaded.append((slug_of(acct_dir), account, pairs))
 
     rows = [r for slug, _, pairs in loaded for r in inventory_rows(slug, pairs)]
-    included = post_inventory(rows) if rows else set()
+    included = post_inventory(rows, portal_health()) if rows else set()
     if included is None:
         log.error("Inventory not accepted — locating nothing this run")
         return 1

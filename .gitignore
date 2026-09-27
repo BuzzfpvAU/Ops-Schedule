@@ -13,6 +13,8 @@ tracker/ani_libs.bin
 tracker/logs/
 tracker/.venv/
 tracker/__pycache__/
+tracker/portal/**/__pycache__/
+tracker/portal/__pycache__/
 
 # Local agent state
 .claude/
