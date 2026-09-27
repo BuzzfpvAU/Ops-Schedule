@@ -46,3 +46,24 @@ export function statusText(item, nowMs = Date.now()) {
       return `Seen ${ageText(item.last_seen_at, nowMs)}${item.battery ? ` · ${item.battery}` : ''}`;
   }
 }
+export const INVITE_TONE = {
+  pending: 'warn', in_progress: 'warn', done: 'ok', expired: 'mute', cancelled: 'mute', failed: 'danger', cleanup_needed: 'danger',
+};
+
+export function inviteStatusText(inv) {
+  switch (inv.status) {
+    case 'pending': return inv.attempts_left < 3 ? `Waiting · ${inv.attempts_left} ${inv.attempts_left === 1 ? 'try' : 'tries'} left` : 'Waiting';
+    case 'in_progress': return 'In progress';
+    case 'done': return `Done · ${inv.tags_saved} tag${inv.tags_saved === 1 ? '' : 's'}`;
+    case 'expired': return 'Expired';
+    case 'cancelled': return 'Cancelled';
+    case 'failed': return 'Failed';
+    case 'cleanup_needed': return 'Cleanup needed';
+    default: return inv.status;
+  }
+}
+
+export function portalOnline(status, nowMs = Date.now()) {
+  const at = status?.portal_last_ok_at;
+  return !!at && nowMs - Date.parse(at) < 3600000;
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupItems, headerCounts, statusText } from '../src/lib/tracker.js';
+import { groupItems, headerCounts, statusText, inviteStatusText, portalOnline } from '../src/lib/tracker.js';
 
 const items = [
   { identifier: 'd1', account: 'droneops', kind: 'device', included: 0, status: 'excluded' },
@@ -24,4 +24,20 @@ test('statusText', () => {
   assert.equal(statusText({ status: 'stale', last_seen_at: '2026-09-20T00:00:00Z' }, Date.parse('2026-09-25T00:00:00Z')), 'Stale · 5 days');
   assert.equal(statusText({ status: 'unlinked' }), 'Not linked');
   assert.equal(statusText({ status: 'ok', last_seen_at: '2026-09-25T00:00:00Z', battery: 'Full' }, Date.parse('2026-09-25T02:00:00Z')), 'Seen 2 h ago · Full');
+});
+
+
+test('inviteStatusText', () => {
+  assert.equal(inviteStatusText({ status: 'pending', attempts_left: 3 }), 'Waiting');
+  assert.equal(inviteStatusText({ status: 'pending', attempts_left: 1 }), 'Waiting · 1 try left');
+  assert.equal(inviteStatusText({ status: 'done', tags_saved: 2 }), 'Done · 2 tags');
+  assert.equal(inviteStatusText({ status: 'cleanup_needed' }), 'Cleanup needed');
+  assert.equal(inviteStatusText({ status: 'expired' }), 'Expired');
+});
+
+test('portalOnline is true within an hour of the last good report', () => {
+  const now = Date.parse('2026-09-27T12:00:00Z');
+  assert.equal(portalOnline({ portal_last_ok_at: '2026-09-27T11:30:00Z' }, now), true);
+  assert.equal(portalOnline({ portal_last_ok_at: '2026-09-27T10:30:00Z' }, now), false);
+  assert.equal(portalOnline({ portal_last_ok_at: null }, now), false);
 });

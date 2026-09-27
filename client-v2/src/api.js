@@ -134,6 +134,10 @@ export const deleteTrackerItem = (identifier) =>
   api(`/equipment/tracker/items/${encodeURIComponent(identifier)}`, { method: 'DELETE' });
 export const setTrackerStaleDays = (stale_days) =>
   api('/equipment/tracker/settings', { method: 'PUT', body: JSON.stringify({ stale_days }) });
+export const getInvites = () => api('/equipment/tracker/invites');
+export const createInvite = (label) =>
+  api('/equipment/tracker/invites', { method: 'POST', body: JSON.stringify({ label }) });
+export const cancelInvite = (id) => api(`/equipment/tracker/invites/${id}`, { method: 'DELETE' });
 
 // ── Single project ──
 export const getJobPlanner = (id, from, to) => {
