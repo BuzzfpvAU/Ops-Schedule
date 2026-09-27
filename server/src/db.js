@@ -143,6 +143,11 @@ export function initDb() {
   if (!columns.includes('serial_number')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN serial_number TEXT DEFAULT ''`);
   }
+  // What is in the box, one line per item ("1 x Controller") — printed on
+  // the equipment packing list sent to clients.
+  if (!columns.includes('contents')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN contents TEXT DEFAULT ''`);
+  }
   if (!columns.includes('dimensions')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN dimensions TEXT DEFAULT ''`);
   }
