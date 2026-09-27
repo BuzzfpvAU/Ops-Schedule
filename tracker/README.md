@@ -109,3 +109,37 @@ launchctl load ~/Library/LaunchAgents/com.buzzbot.airtag-tracker.plist
   stores the escrow password — keep it private.
 - Never commit `accounts/`, `account.json`, `keys/`, `.env` (gitignored), or
   a real key in `com.buzzbot.airtag-tracker.plist` — this repo is public.
+
+## Phone export portal (`portal/`)
+
+Staff with only a phone add their tags through a one-time link: an admin
+creates it in V2 Settings → Tracking → "Add tags from a phone". The link
+opens `https://tags.keyz.au/i/<token>`, served by `portal/server.py` on
+`127.0.0.1:8787` through a Cloudflare Tunnel. The portal runs export-findmy
+for them, keeps only the tags they tick (in `accounts/shared/<slug>/keys/`,
+located with the `droneops` session), then deletes the escrow bottle and its
+temp dir (`~/Library/Application Support/taskz-portal/`).
+
+Install once:
+
+```bash
+.venv/bin/pip install 'pexpect>=4.9'
+cp com.buzzbot.tracker-portal.plist ~/Library/LaunchAgents/
+# set TRACKER_INGEST_KEY in the INSTALLED copy only (same value as the sync plist)
+chmod 600 ~/Library/LaunchAgents/com.buzzbot.tracker-portal.plist
+launchctl load ~/Library/LaunchAgents/com.buzzbot.tracker-portal.plist
+curl -s 127.0.0.1:8787/healthz
+```
+
+Server: `SetEnv TRACKER_PORTAL_URL https://tags.keyz.au` in `.htaccess`
+(then restart the app). Setting it shows the Invites section and hides the
+Mac setup steps in Settings.
+
+Tests: `.venv/bin/python -m unittest discover -s portal/tests -t .`
+(runs against `portal/tests/fake_exporter.py`, never Apple).
+
+**"Cleanup needed" on an invite** means the portal could not delete the
+escrow bottle it created in that person's iCloud. With them present, run
+export-findmy `--delete-own-escrow-bottle` against a profile whose serial
+matches (the portal logs it), and have them remove "Taskz Tag Export" from
+their Apple ID's device list.
