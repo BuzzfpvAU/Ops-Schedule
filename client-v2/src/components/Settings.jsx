@@ -166,10 +166,18 @@ export default function Settings({ onClose, showToast }) {
               </div>
             )}
 
-            {keyOk && status.pings_total === 0 && (
+            {keyOk && status.pings_total === 0 && (status.tags_total || 0) === 0 && (
               <div className="banner banner-warn">
                 The key is set but nothing has ever been received, so the Mac side
                 has not run successfully yet. Work through the steps below.
+              </div>
+            )}
+
+            {keyOk && status.pings_total === 0 && status.tags_total > 0 && (
+              <div className="banner banner-warn">
+                The tracker Mac is reporting its tags, but no positions yet. Include
+                and link tags below; positions arrive on the next sync once a
+                tracked tag has been near an Apple device.
               </div>
             )}
           </>

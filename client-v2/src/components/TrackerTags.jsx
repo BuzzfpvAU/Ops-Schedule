@@ -29,7 +29,8 @@ function Row({ item, equipment, holders, onChange, onDelete, busy }) {
   return (
     <div className={`tt-row${item.included ? '' : ' is-off'}`}>
       <label className="tt-name">
-        <input type="checkbox" checked={!!item.included} onChange={toggle} disabled={busy} />
+        <input type="checkbox" checked={!!item.included} onChange={toggle} disabled={busy}
+          aria-label={`Track ${item.name || item.identifier}`} />
         <span className="tt-emoji">{item.emoji || (isDevice ? '💻' : '🏷')}</span>
         <span>
           <span className="entry-name">{item.name || item.identifier}</span>
@@ -37,7 +38,8 @@ function Row({ item, equipment, holders, onChange, onDelete, busy }) {
           <span className="rl-sub tt-serial">{item.serial_number || item.model || item.identifier}</span>
         </span>
       </label>
-      <select className="tt-link" value={item.equipment_id || ''} onChange={link} disabled={busy}>
+      <select className="tt-link" value={item.equipment_id || ''} onChange={link} disabled={busy}
+        aria-label={`Equipment for ${item.name || item.identifier}`}>
         <option value="">Not linked</option>
         {equipment.map((eq) => {
           const holder = holders.get(eq.id);
