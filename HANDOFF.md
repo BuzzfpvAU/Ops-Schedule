@@ -39,10 +39,14 @@ with a local `cd client-v2 && npx vite build`. See `.agent-status.md` → Deploy
 
 ## Open
 
-- **Part 2 — remote export portal** (staff sign in via a portal on this Mac;
-  Cloudflare Tunnel + Access; cleans up escrow bottle/profile afterwards).
-  Not specced yet. When it ships, remove the terminal steps from Settings
-  entirely (keep them in `tracker/README.md`).
+- **Part 2 — export portal: LIVE 27 Sep, awaiting first real test.**
+  `https://tags.keyz.au` → Cloudflare tunnel `tags-portal`
+  (`~/.cloudflared/tags-portal-config.yml`, launchd `com.cloudflared.tags-portal`)
+  → `127.0.0.1:8787` (launchd `com.buzzbot.tracker-portal`, logs in
+  `~/Library/Logs/airtag-tracker/`). Server has `SetEnv TRACKER_PORTAL_URL`.
+  Before sending staff links: one real export with a spare Apple ID, and
+  update `portal/exporter_driver.py` ERROR_PATTERNS with Apple's real error
+  strings (only the fake exporter's guesses are tested).
 - The new key was typed into a zsh session — delete that line from
   `~/.zsh_history`, or rotate the key again.
 - Spun off as separate tasks: hard-coded viewer password in
