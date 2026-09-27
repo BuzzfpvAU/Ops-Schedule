@@ -469,6 +469,18 @@ export function initDb() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS tracker_invites (
+      id TEXT PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      attempts_left INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      tags_saved INTEGER NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT ''
+    );
   `);
 
   // New tables for auth

@@ -4,6 +4,10 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { upsertInventory, listItems, setStaleDays } from '../services/trackerItems.js';
+import {
+  createInvite, listInvites, checkInvite, recordAttempt, completeInvite, failInvite,
+  markCleanupFailed, cancelInvite, recordPortalStatus, portalLastOkAt,
+} from '../services/trackerInvites.js';
 
 const router = Router();
 
@@ -94,6 +98,8 @@ router.get('/tracking-status', requireAuth, requireAdmin, (req, res) => {
     tags_tracked: tags.filter((i) => i.included && i.equipment_id).length,
     tags_stale: tags.filter((i) => i.status === 'stale').length,
     devices_hidden: items.filter((i) => i.kind === 'device' && !i.included).length,
+    portal_url: process.env.TRACKER_PORTAL_URL || null,
+    portal_last_ok_at: portalLastOkAt(req.db),
     tracker_last_report_at: items.reduce((m, i) => (i.last_inventory_at > (m || '') ? i.last_inventory_at : m), null),
   });
 });
@@ -228,6 +234,7 @@ router.post('/tracker/inventory', (req, res) => {
   if (!ingestKeyMatches(req)) return res.status(401).json({ error: 'Valid X-Ingest-Key required' });
   const items = req.body?.items;
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' });
+  recordPortalStatus(req.db, req.body.portal, new Date().toISOString());
   res.json({ included: upsertInventory(req.db, items, new Date().toISOString()) });
 });
 
@@ -278,6 +285,47 @@ router.put('/tracker/settings', requireAuth, requireAdmin, (req, res) => {
     if (e instanceof RangeError) return res.status(400).json({ error: e.message });
     throw e;
   }
+});
+
+// ── Export portal invites ────────────────────────────────────────────
+router.post('/tracker/invites', requireAuth, requireAdmin, (req, res) => {
+  const portal = process.env.TRACKER_PORTAL_URL;
+  if (!portal) return res.status(400).json({ error: 'TRACKER_PORTAL_URL is not set on the server' });
+  const label = String(req.body?.label || '').trim().slice(0, 60);
+  if (!label) return res.status(400).json({ error: 'A label is required' });
+  const { id, token } = createInvite(req.db, { label, createdBy: req.user?.memberId });
+  res.status(201).json({ id, url: `${portal.replace(/\/$/, '')}/i/${token}` });
+});
+
+router.get('/tracker/invites', requireAuth, requireAdmin, (req, res) => {
+  res.json(listInvites(req.db));
+});
+
+router.delete('/tracker/invites/:id', requireAuth, requireAdmin, (req, res) => {
+  const status = cancelInvite(req.db, req.params.id);
+  if (!status) return res.status(409).json({ error: 'Only pending invites can be cancelled' });
+  res.json({ status });
+});
+
+router.post('/tracker/invites/check', (req, res) => {
+  if (!ingestKeyMatches(req)) return res.status(401).json({ error: 'Valid X-Ingest-Key required' });
+  res.json(checkInvite(req.db, req.body?.token));
+});
+
+const INVITE_STEPS = {
+  attempt: (db, id) => recordAttempt(db, id),
+  complete: (db, id, body) => completeInvite(db, id, body?.tags_saved),
+  failed: (db, id, body) => failInvite(db, id, body?.note),
+  'cleanup-failed': (db, id, body) => markCleanupFailed(db, id, body?.note),
+};
+
+router.post('/tracker/invites/:id/:step', (req, res) => {
+  if (!ingestKeyMatches(req)) return res.status(401).json({ error: 'Valid X-Ingest-Key required' });
+  const fn = INVITE_STEPS[req.params.step];
+  if (!fn) return res.status(404).json({ error: 'Unknown step' });
+  const status = fn(req.db, req.params.id, req.body);
+  if (!status) return res.status(409).json({ error: 'Invite is not in a state for that step' });
+  res.json({ status });
 });
 
 // ── Booking index (V2 equipment timeline) ────────────────────────────
