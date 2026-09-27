@@ -39,8 +39,17 @@ router.get('/:id', (req, res) => {
 // POST create team member or equipment (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name, role, location, timezone, color, sort_order, is_equipment, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category, contents } = req.body;
+    const { role, location, timezone, color, sort_order, is_equipment, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category, contents } = req.body;
+    const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Name is required' });
+    // Two active items with the same name are indistinguishable in every
+    // picker and on the map, so equipment names must be unique.
+    if (is_equipment) {
+      const dup = req.db.prepare(
+        'SELECT id FROM team_members WHERE is_equipment = 1 AND active = 1 AND LOWER(TRIM(name)) = LOWER(?)'
+      ).get(name);
+      if (dup) return res.status(409).json({ error: `Equipment called "${name}" already exists` });
+    }
 
     const id = uuidv4();
     req.db.prepare(`

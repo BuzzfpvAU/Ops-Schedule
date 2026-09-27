@@ -5,7 +5,7 @@ import PlanningBar from './PlanningBar.jsx';
 const EquipmentMapPanel = lazy(() => import('./EquipmentMapPanel.jsx'));
 import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
 import {
-  STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, getEquipmentLocations, getStaleDays,
+  STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, createEquipment, getEquipmentLocations, getStaleDays,
 } from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
@@ -277,6 +277,17 @@ export default function EquipmentView({
     });
   };
 
+  // Adding uses the same drawer, blank, with the user's own state and the
+  // most common category filled in.
+  const openNew = () => {
+    setEditing({ isNew: true });
+    setForm({
+      name: '', equipment_category: 'Drones', location: STATES.includes(myState) ? myState : '',
+      serial_number: '', dimensions: '', weight: '', contents: '', info_url: '', sds_url: '', airtag_name: '',
+      serviceable: true, active: true,
+    });
+  };
+
   const saveEditor = async () => {
     if (!form.name.trim()) {
       showToast?.('A name is required', 'error');
@@ -284,6 +295,17 @@ export default function EquipmentView({
     }
     setBusy(true);
     try {
+      if (editing.isNew) {
+        const created = await createEquipment({ ...form, name: form.name.trim() });
+        setEditing(null);
+        await onChanged?.();
+        // Show it straight away: selected on both panes, scrolled into view
+        // once the refreshed list has rendered.
+        setSelectedId(created.id);
+        setTimeout(() => onSelect(created.id), 150);
+        showToast?.(`${created.name} added`, 'success');
+        return;
+      }
       await updateEquipment(editing.id, { ...form, name: form.name.trim() });
       setEditing(null);
       await onChanged?.();
@@ -429,6 +451,9 @@ export default function EquipmentView({
           </span>
         </div>
         <span className="count-pill">{totalRows} items</span>
+        {isAdmin && (
+          <button type="button" className="btn btn-primary" onClick={openNew}>+ Add equipment</button>
+        )}
         <button type="button" className={`chip${mapOpen ? ' is-active' : ''}`} onClick={() => setMapOpen((v) => !v)}
           title={mapOpen ? 'Hide the map' : 'Show the map'}>🗺 Map</button>
         <span className="chips eq-pane-toggle" role="group" aria-label="Show">
@@ -471,14 +496,15 @@ export default function EquipmentView({
 
       {editing && form && (
         <Drawer
-          title={editing.name}
-          subtitle={editing.active === 0 ? 'Inactive — hidden from the default list' : 'Equipment details'}
+          title={editing.isNew ? 'New equipment' : editing.name}
+          subtitle={editing.isNew ? 'Add an item to the register'
+            : editing.active === 0 ? 'Inactive — hidden from the default list' : 'Equipment details'}
           onClose={() => setEditing(null)}
           footer={
             <>
               <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
               <button className="btn btn-primary" disabled={busy || !isAdmin} onClick={saveEditor}>
-                {busy ? 'Saving…' : 'Save'}
+                {busy ? 'Saving…' : editing.isNew ? 'Add' : 'Save'}
               </button>
             </>
           }
@@ -543,15 +569,17 @@ export default function EquipmentView({
                   <span className="opt-name">Serviceable</span>
                   <span className="opt-hint">usable right now</span>
                 </label>
-                <label className="opt" style={{ cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={form.active}
-                    onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
-                  />
-                  <span className="opt-name">Active</span>
-                  <span className="opt-hint">in the register</span>
-                </label>
+                {!editing.isNew && (
+                  <label className="opt" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.active}
+                      onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+                    />
+                    <span className="opt-name">Active</span>
+                    <span className="opt-hint">in the register</span>
+                  </label>
+                )}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-mute)', marginTop: 10, lineHeight: 1.5 }}>
                 Unserviceable kit stays in the list — it is still yours, just not

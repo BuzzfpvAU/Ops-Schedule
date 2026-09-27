@@ -52,6 +52,8 @@ export const getTeamMembers = () => api('/team-members');
 export const getEquipment = (includeInactive = false) =>
   api(`/team-members/equipment${includeInactive ? '?include_inactive=1' : ''}`);
 
+export const createEquipment = (data) =>
+  api('/team-members', { method: 'POST', body: JSON.stringify({ ...data, is_equipment: 1 }) });
 export const updateEquipment = (id, data) =>
   api(`/team-members/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const getJobs = () => api('/jobs');
