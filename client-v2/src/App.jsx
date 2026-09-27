@@ -127,6 +127,7 @@ export default function App() {
     };
 
     setBusy(true);
+    let done = false;
     (async () => {
       try {
         const chunks = await Promise.all(gaps.map(([a, b]) => getSchedule(a, b)));
@@ -138,14 +139,23 @@ export default function App() {
         if (!alive) return;
         setSchedule((cur) => [...cur, ...added]);
         setBookings(b);
+        done = true;
       } catch (e) {
         if (alive) showToast(e.message, 'error');
+        // Un-mark so the next pass retries these dates.
+        if (alive) loadedRef.current = prev;
       } finally {
         if (alive) setBusy(false);
       }
     })();
 
-    return () => { alive = false; };
+    // A pass cancelled before its data landed (a re-run, or React's dev
+    // double-invoke) must not leave its range marked as loaded, or those
+    // dates would never be fetched and the timeline would stay empty.
+    return () => {
+      alive = false;
+      if (!done) loadedRef.current = prev;
+    };
   }, [user, win.start, win.end, showToast]);
 
   // After a write both the window data and the roll-ups on jobs can change,
@@ -313,6 +323,8 @@ export default function App() {
           isAdmin={!!user.isAdmin}
           activeFilter={equipFilter}
           onActiveFilter={setEquipFilter}
+          jobs={jobs}
+          onEnsureRange={onEnsureRange}
           {...common}
         />
       )}
