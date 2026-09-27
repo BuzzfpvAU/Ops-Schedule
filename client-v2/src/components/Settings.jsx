@@ -155,6 +155,12 @@ export default function Settings({ onClose, showToast }) {
                 value={ago(status.last_seen_at) || 'never'}
                 tone={status.last_seen_at ? undefined : 'warn'}
               />
+              <Stat
+                label="Tracker Mac last reported"
+                value={ago(status.tracker_last_report_at) || 'never'}
+                tone={!status.tracker_last_report_at ? 'warn'
+                  : Date.now() - Date.parse(status.tracker_last_report_at) > 3600000 ? 'danger' : 'ok'}
+              />
             </div>
 
             {!keyOk && (
@@ -169,7 +175,7 @@ export default function Settings({ onClose, showToast }) {
             {keyOk && status.pings_total === 0 && (status.tags_total || 0) === 0 && (
               <div className="banner banner-warn">
                 The key is set but nothing has ever been received, so the Mac side
-                has not run successfully yet. Work through the steps below.
+                has not run successfully yet. See Tracker Mac setup at the bottom of this page.
               </div>
             )}
 
@@ -185,36 +191,43 @@ export default function Settings({ onClose, showToast }) {
 
         <TrackerTags showToast={showToast} />
 
-        <Section title="Adding an Apple ID">
-          <div className="banner banner-warn">
-            These steps run on the Mac, not here. Signing in to Apple needs a 2FA
-            prompt at a real terminal and the key export needs that Mac&rsquo;s
-            iCloud keychain, so none of it can be done from a browser.
-          </div>
+        <details className="admin-setup">
+          <summary>Tracker Mac setup (admins)</summary>
+          <p className="settings-lead" style={{ margin: '8px 0 0' }}>
+            Only needed by whoever looks after the tracker Mac. Full notes are in
+            <code> tracker/README.md</code>.
+          </p>
+          <Section title="Adding an Apple ID">
+            <div className="banner banner-warn">
+              These steps run on the Mac, not here. Signing in to Apple needs a 2FA
+              prompt at a real terminal and the key export needs that Mac&rsquo;s
+              iCloud keychain, so none of it can be done from a browser.
+            </div>
 
-          <ol className="steps">
-            {STEPS.map((s, i) => (
-              <li className="step" key={s.title}>
-                <div className="step-head">
-                  <span className="step-num">{i + 1}</span>
-                  <span className="step-title">{s.title}</span>
-                  <Copy text={s.cmd} />
-                </div>
-                <p className="step-body">{s.body}</p>
-                {s.cmd && <pre className="step-cmd">{s.cmd}</pre>}
-              </li>
-            ))}
-          </ol>
-        </Section>
+            <ol className="steps">
+              {STEPS.map((s, i) => (
+                <li className="step" key={s.title}>
+                  <div className="step-head">
+                    <span className="step-num">{i + 1}</span>
+                    <span className="step-title">{s.title}</span>
+                    <Copy text={s.cmd} />
+                  </div>
+                  <p className="step-body">{s.body}</p>
+                  {s.cmd && <pre className="step-cmd">{s.cmd}</pre>}
+                </li>
+              ))}
+            </ol>
+          </Section>
 
-        <Section title="Known limits">
-          <ul className="notes">
-            <li>Tags report only when an Apple device passes near them — remote sites go quiet until someone walks past.</li>
-            <li>Items are matched by their permanent Find My identifier, so renaming a tag in Find My changes nothing here.</li>
-            <li>Equipment marked inactive stops matching, so its tag goes quiet with no error.</li>
-            <li>FindMy.py is unofficial. If a session stops working, re-run step 3 for that account.</li>
-          </ul>
-        </Section>
+          <Section title="Known limits">
+            <ul className="notes">
+              <li>Tags report only when an Apple device passes near them — remote sites go quiet until someone walks past.</li>
+              <li>Items are matched by their permanent Find My identifier, so renaming a tag in Find My changes nothing here.</li>
+              <li>Equipment marked inactive stops matching, so its tag goes quiet with no error.</li>
+              <li>FindMy.py is unofficial. If a session stops working, re-run step 3 for that account.</li>
+            </ul>
+          </Section>
+        </details>
       </div>
     </div>
   );

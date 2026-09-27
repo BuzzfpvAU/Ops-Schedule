@@ -1529,3 +1529,7 @@ body.is-resizing { cursor: row-resize; user-select: none; }
   .tt-row { grid-template-columns: 1fr auto; }
   .tt-link { grid-column: 1 / -1; }
 }
+
+/* Settings → Tracking: Mac setup steps, collapsed for non-maintainers */
+.admin-setup { margin-top: 18px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.admin-setup > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }

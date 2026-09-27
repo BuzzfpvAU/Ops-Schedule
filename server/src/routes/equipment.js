@@ -94,6 +94,7 @@ router.get('/tracking-status', requireAuth, requireAdmin, (req, res) => {
     tags_tracked: tags.filter((i) => i.included && i.equipment_id).length,
     tags_stale: tags.filter((i) => i.status === 'stale').length,
     devices_hidden: items.filter((i) => i.kind === 'device' && !i.included).length,
+    tracker_last_report_at: items.reduce((m, i) => (i.last_inventory_at > (m || '') ? i.last_inventory_at : m), null),
   });
 });
 

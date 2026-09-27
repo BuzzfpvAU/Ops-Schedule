@@ -154,3 +154,11 @@ test('tracking-status counts tags and hidden devices', async () => {
   assert.equal(s.tags_stale, 0);
   assert.equal(s.devices_hidden, 1);
 });
+
+test('tracking-status reports when the tracker Mac last sent its inventory', async () => {
+  let s = await (await asAdmin('/tracking-status')).json();
+  assert.equal(s.tracker_last_report_at, null);
+  await inv([tagItem('t1', 'a')]);
+  s = await (await asAdmin('/tracking-status')).json();
+  assert.match(s.tracker_last_report_at, /^\d{4}-\d{2}-\d{2}T/);
+});
