@@ -131,12 +131,40 @@ test('PATCH refuses equipment that does not exist', async () => {
   assert.equal((await asAdmin('/tracker/items/zzz', 'PATCH', { included: true })).status, 404);
 });
 
-test('DELETE only removes items missing from the latest inventory', async () => {
-  await inv([tagItem('t1', 'a'), tagItem('t2', 'b')]);
-  assert.equal((await asAdmin('/tracker/items/t1', 'DELETE')).status, 409);
-  db.prepare("UPDATE tracker_items SET last_inventory_at = '2000-01-01T00:00:00Z' WHERE identifier = 't1'").run();
+test('DELETE removes an item permanently: hidden, unlinked, and told to the Mac', async () => {
+  await inv([tagItem('t1', 'Drone A Tag'), tagItem('t2', 'b')]);
+  assert.equal(db.prepare("SELECT equipment_id FROM tracker_items WHERE identifier = 't1'").get().equipment_id, 'eq1');
   assert.equal((await asAdmin('/tracker/items/t1', 'DELETE')).status, 200);
-  assert.equal(db.prepare("SELECT COUNT(*) AS c FROM tracker_items WHERE identifier = 't1'").get().c, 0);
+  const row = db.prepare("SELECT included, equipment_id, removed_at FROM tracker_items WHERE identifier = 't1'").get();
+  assert.deepEqual([row.included, row.equipment_id], [0, null]);
+  assert.ok(row.removed_at);
+  const body = await (await asAdmin('/tracker/items')).json();
+  assert.deepEqual(body.items.map((i) => i.identifier), ['t2']);
+  assert.deepEqual(body.removed.map((i) => i.identifier), ['t1']);
+  // A later inventory (e.g. after a re-export) still carries it: it stays removed
+  // and the Mac is told again to delete its keys.
+  const r = await (await inv([tagItem('t1', 'Drone A Tag'), tagItem('t2', 'b')])).json();
+  assert.deepEqual(r.remove, ['t1']);
+  assert.deepEqual(r.included, []);
+  assert.equal(db.prepare("SELECT included FROM tracker_items WHERE identifier = 't1'").get().included, 0);
+});
+
+test('a removed item can be allowed again, and cannot be edited while removed', async () => {
+  await inv([tagItem('t1', 'x')]);
+  await asAdmin('/tracker/items/t1', 'DELETE');
+  assert.equal((await asAdmin('/tracker/items/t1', 'PATCH', { included: true })).status, 409);
+  assert.equal((await asAdmin('/tracker/items/t1/restore', 'POST')).status, 200);
+  const r = await (await inv([tagItem('t1', 'x')])).json();
+  assert.deepEqual(r.remove, []);
+  const body = await (await asAdmin('/tracker/items')).json();
+  assert.deepEqual(body.items.map((i) => i.identifier), ['t1']);
+  assert.equal(body.items[0].included, 0, 'comes back excluded');
+});
+
+test('removing needs an admin', async () => {
+  await inv([tagItem('t1', 'x')]);
+  assert.equal((await asAdmin('/tracker/items/t1', 'DELETE', undefined, member)).status, 403);
+  assert.equal((await asAdmin('/tracker/items/zzz', 'DELETE')).status, 404);
 });
 
 test('stale days can be set within 1-60', async () => {

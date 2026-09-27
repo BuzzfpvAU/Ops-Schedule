@@ -482,6 +482,10 @@ export function initDb() {
       note TEXT NOT NULL DEFAULT ''
     );
   `);
+  // Removed items stay as a record so a re-export cannot bring them back;
+  // the tracker Mac is told to delete their key files.
+  const trackerCols = db.prepare('PRAGMA table_info(tracker_items)').all().map((c) => c.name);
+  if (!trackerCols.includes('removed_at')) db.exec('ALTER TABLE tracker_items ADD COLUMN removed_at TEXT');
 
   // New tables for auth
   db.exec(`

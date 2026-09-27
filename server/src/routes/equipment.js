@@ -3,7 +3,9 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { upsertInventory, listItems, setStaleDays } from '../services/trackerItems.js';
+import {
+  upsertInventory, listItems, setStaleDays, removedAmong, removeItem, restoreItem,
+} from '../services/trackerItems.js';
 import {
   createInvite, listInvites, checkInvite, recordAttempt, completeInvite, failInvite,
   markCleanupFailed, cancelInvite, recordPortalStatus, portalLastOkAt,
@@ -235,7 +237,8 @@ router.post('/tracker/inventory', (req, res) => {
   const items = req.body?.items;
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' });
   recordPortalStatus(req.db, req.body.portal, new Date().toISOString());
-  res.json({ included: upsertInventory(req.db, items, new Date().toISOString()) });
+  const included = upsertInventory(req.db, items, new Date().toISOString());
+  res.json({ included, remove: removedAmong(req.db, items.map((i) => String(i?.identifier || ''))) });
 });
 
 router.get('/tracker/items', requireAuth, requireAdmin, (req, res) => {
@@ -247,6 +250,7 @@ router.patch('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res)
   const id = req.params.identifier;
   const item = db.prepare('SELECT * FROM tracker_items WHERE identifier = ?').get(id);
   if (!item) return res.status(404).json({ error: 'Unknown item' });
+  if (item.removed_at) return res.status(409).json({ error: 'Item was removed — allow it again first' });
   const { included, equipment_id, move } = req.body || {};
 
   if (equipment_id !== undefined && equipment_id !== null) {
@@ -268,13 +272,17 @@ router.patch('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res)
   res.json(listItems(db).items.find((i) => i.identifier === id));
 });
 
+// Permanent removal: the row stays as a record so a re-export cannot bring
+// the item back, and the tracker Mac deletes its key files on the next sync.
 router.delete('/tracker/items/:identifier', requireAuth, requireAdmin, (req, res) => {
-  const item = listItems(req.db).items.find((i) => i.identifier === req.params.identifier);
-  if (!item) return res.status(404).json({ error: 'Unknown item' });
-  if (item.status !== 'missing') {
-    return res.status(409).json({ error: 'Only items missing from the latest export can be removed' });
+  if (!removeItem(req.db, req.params.identifier, new Date().toISOString())) {
+    return res.status(404).json({ error: 'Unknown item' });
   }
-  req.db.prepare('DELETE FROM tracker_items WHERE identifier = ?').run(item.identifier);
+  res.json({ success: true });
+});
+
+router.post('/tracker/items/:identifier/restore', requireAuth, requireAdmin, (req, res) => {
+  if (!restoreItem(req.db, req.params.identifier)) return res.status(404).json({ error: 'Not a removed item' });
   res.json({ success: true });
 });
 

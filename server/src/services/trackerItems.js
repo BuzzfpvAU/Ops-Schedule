@@ -55,8 +55,30 @@ export function upsertInventory(db, items, nowIso) {
       }
     }
   })();
-  return db.prepare('SELECT identifier FROM tracker_items WHERE included = 1 ORDER BY identifier')
+  return db.prepare('SELECT identifier FROM tracker_items WHERE included = 1 AND removed_at IS NULL ORDER BY identifier')
     .all().map((r) => r.identifier);
+}
+
+// Of the identifiers the Mac just reported, those an admin removed — the Mac
+// deletes their key files.
+export function removedAmong(db, identifiers) {
+  const removed = new Set(db.prepare('SELECT identifier FROM tracker_items WHERE removed_at IS NOT NULL')
+    .all().map((r) => r.identifier));
+  return [...new Set(identifiers)].filter((id) => removed.has(id)).sort();
+}
+
+export function removeItem(db, identifier, nowIso) {
+  const r = db.prepare(`
+    UPDATE tracker_items SET removed_at = ?, included = 0, equipment_id = NULL
+    WHERE identifier = ?
+  `).run(nowIso, identifier);
+  return r.changes > 0;
+}
+
+export function restoreItem(db, identifier) {
+  const r = db.prepare('UPDATE tracker_items SET removed_at = NULL WHERE identifier = ? AND removed_at IS NOT NULL')
+    .run(identifier);
+  return r.changes > 0;
 }
 
 export function getStaleDays(db) {
@@ -90,6 +112,7 @@ export function listItems(db, nowMs = Date.now()) {
     SELECT ti.*, tm.name AS equipment_name
     FROM tracker_items ti
     LEFT JOIN team_members tm ON tm.id = ti.equipment_id
+    WHERE ti.removed_at IS NULL
     ORDER BY ti.account, ti.kind = 'device', ti.name COLLATE NOCASE, ti.identifier
   `).all();
   const latestByAccount = {};
@@ -98,8 +121,13 @@ export function listItems(db, nowMs = Date.now()) {
       latestByAccount[r.account] = r.last_inventory_at;
     }
   }
+  const removed = db.prepare(`
+    SELECT identifier, account, name, emoji, kind, removed_at FROM tracker_items
+    WHERE removed_at IS NOT NULL ORDER BY removed_at DESC
+  `).all();
   return {
     stale_days: staleDays,
     items: rows.map((r) => ({ ...r, status: itemStatus(r, latestByAccount, staleDays, nowMs) })),
+    removed,
   };
 }
