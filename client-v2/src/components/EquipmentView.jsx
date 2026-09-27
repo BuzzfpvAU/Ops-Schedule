@@ -151,6 +151,7 @@ export default function EquipmentView({
       serial_number: item.serial_number || '',
       dimensions: item.dimensions || '',
       weight: item.weight || '',
+      contents: item.contents || '',
       info_url: item.info_url || '',
       sds_url: item.sds_url || '',
       airtag_name: item.airtag_name || '',
@@ -371,6 +372,16 @@ export default function EquipmentView({
             <Section title="Physical">
               {field('dimensions', 'Dimensions', { placeholder: 'e.g. 60 × 40 × 30 cm' })}
               {field('weight', 'Weight', { placeholder: 'e.g. 12 kg' })}
+              <label className="form-row">
+                <span className="form-label">Box contents</span>
+                <textarea
+                  className="note-input"
+                  rows={4}
+                  value={form.contents}
+                  onChange={(e) => setForm((f) => ({ ...f, contents: e.target.value }))}
+                  placeholder={'One item per line, e.g.\n1 x Controller\n1 x Tablet, charger, cables'}
+                />
+              </label>
               {field('airtag_name', 'AirTag name', { placeholder: 'as it appears in Find My' })}
             </Section>
 

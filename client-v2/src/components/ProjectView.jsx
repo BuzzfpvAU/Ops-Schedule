@@ -323,6 +323,13 @@ export default function ProjectView({
           </div>
         )}
         <div className="toolbar-spacer" />
+        <button
+          className="btn"
+          onClick={() => window.open(`${import.meta.env.BASE_URL}?packing=${encodeURIComponent(jobId)}`, '_blank')}
+          title="Open a printable equipment list for the client"
+        >
+          Equipment packing list
+        </button>
         {data && (
           <span className="count-pill">{(data.day_notes || []).length} notes</span>
         )}

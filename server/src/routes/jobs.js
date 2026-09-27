@@ -267,7 +267,8 @@ router.get('/:id', (req, res) => {
            (SELECT COUNT(DISTINCT se.date) FROM schedule_entries se
              WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_days,
            tm.name AS equipment_name, tm.equipment_category AS category,
-           tm.role AS equipment_type, tm.serial_number
+           tm.role AS equipment_type, tm.serial_number,
+           tm.dimensions, tm.weight, tm.contents
     FROM job_equipment je
     JOIN team_members tm ON tm.id = je.equipment_id
     WHERE je.job_id = ?
