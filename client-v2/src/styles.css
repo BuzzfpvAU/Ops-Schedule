@@ -1687,3 +1687,6 @@ body.is-report #root { height: auto; }
   .eq-split[data-pane="map"] .eq-left { display: none; }
   .eq-pane-toggle { display: inline-flex; }
 }
+/* Leaflet's panes use z-index 400–1000; keep them inside the map's own
+   stacking context so drawers and dialogs (z 200+) always sit above it. */
+.eqm-map { isolation: isolate; z-index: 0; }
