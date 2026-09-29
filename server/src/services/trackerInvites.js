@@ -4,6 +4,9 @@ import crypto from 'crypto';
 
 export const INVITE_TTL_MS = 24 * 3600 * 1000;
 export const INVITE_ATTEMPTS = 3;
+// Longer than any export can run (the portal gives up on a session after
+// 10 idle minutes), so an attempt still in progress after this was cut off.
+export const STUCK_ATTEMPT_MS = 30 * 60 * 1000;
 const PORTAL_KEY = 'tracker_portal_status';
 
 export function hashToken(token) {
@@ -21,9 +24,27 @@ export function createInvite(db, { label, createdBy }, nowMs = Date.now()) {
   return { id, token };
 }
 
+function isStuck(row, nowMs) {
+  if (row.status !== 'in_progress') return false;
+  const at = Date.parse(row.attempted_at || '');
+  return !Number.isFinite(at) || nowMs - at > STUCK_ATTEMPT_MS;
+}
+
+// An attempt the portal never reported back on (it restarted, or the Mac
+// slept) counts as a failed attempt, so the link works again while it has
+// attempts left instead of reading "expired" for good.
+function releaseStuck(db, row, nowMs) {
+  if (!isStuck(row, nowMs)) return row;
+  const status = row.attempts_left > 0 ? 'pending' : 'failed';
+  db.prepare("UPDATE tracker_invites SET status = ?, note = 'attempt interrupted' WHERE id = ? AND status = 'in_progress'")
+    .run(status, row.id);
+  return { ...row, status, note: 'attempt interrupted' };
+}
+
 export function effectiveStatus(row, nowMs = Date.now()) {
-  if (row.status === 'pending' && Date.parse(row.expires_at) <= nowMs) return 'expired';
-  return row.status;
+  const status = isStuck(row, nowMs) ? (row.attempts_left > 0 ? 'pending' : 'failed') : row.status;
+  if (status === 'pending' && Date.parse(row.expires_at) <= nowMs) return 'expired';
+  return status;
 }
 
 export function listInvites(db, nowMs = Date.now()) {
@@ -35,7 +56,8 @@ export function listInvites(db, nowMs = Date.now()) {
 
 export function checkInvite(db, token, nowMs = Date.now()) {
   if (!token) return { ok: false };
-  const row = db.prepare('SELECT * FROM tracker_invites WHERE token_hash = ?').get(hashToken(token));
+  let row = db.prepare('SELECT * FROM tracker_invites WHERE token_hash = ?').get(hashToken(token));
+  if (row) row = releaseStuck(db, row, nowMs);
   if (!row || effectiveStatus(row, nowMs) !== 'pending' || row.attempts_left < 1) return { ok: false };
   return { ok: true, id: row.id, label: row.label, attempts_left: row.attempts_left };
 }
@@ -46,9 +68,11 @@ function get(db, id) {
 
 // Each returns the new status, or null when the transition is not allowed.
 export function recordAttempt(db, id, nowMs = Date.now()) {
-  const row = get(db, id);
+  let row = get(db, id);
+  if (row) row = releaseStuck(db, row, nowMs);
   if (!row || effectiveStatus(row, nowMs) !== 'pending' || row.attempts_left < 1) return null;
-  db.prepare("UPDATE tracker_invites SET attempts_left = attempts_left - 1, status = 'in_progress' WHERE id = ?").run(id);
+  db.prepare("UPDATE tracker_invites SET attempts_left = attempts_left - 1, status = 'in_progress', attempted_at = ? WHERE id = ?")
+    .run(new Date(nowMs).toISOString(), id);
   return 'in_progress';
 }
 

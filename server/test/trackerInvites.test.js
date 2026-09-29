@@ -138,3 +138,31 @@ test('portal status from the inventory call shows in tracking-status', async () 
   assert.equal(s.portal_url, 'https://tags.example.test');
   assert.match(s.portal_last_ok_at, /^\d{4}-/);
 });
+
+test('an attempt the portal never finished frees the link after 30 minutes', async () => {
+  const { id, url } = await create();
+  const token = tokenOf(url);
+  await call(`/tracker/invites/${id}/attempt`, { method: 'POST', key: KEY });
+  const check = async () => (await call('/tracker/invites/check', { method: 'POST', body: { token }, key: KEY })).json();
+
+  // Mid-attempt the link is held, so a second phone cannot start over it.
+  assert.equal((await check()).ok, false);
+
+  // The portal restarted and never reported back: 31 minutes on, it is usable again.
+  const stale = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  db.prepare('UPDATE tracker_invites SET attempted_at = ? WHERE id = ?').run(stale, id);
+  const r = await check();
+  assert.equal(r.ok, true);
+  assert.equal(r.attempts_left, 2);
+  const row = db.prepare('SELECT status, note FROM tracker_invites WHERE id = ?').get(id);
+  assert.deepEqual({ ...row }, { status: 'pending', note: 'attempt interrupted' });
+  assert.equal((await call(`/tracker/invites/${id}/attempt`, { method: 'POST', key: KEY })).status, 200);
+});
+
+test('a stuck final attempt reads as failed, not in progress', async () => {
+  const { id } = await create();
+  db.prepare("UPDATE tracker_invites SET status = 'in_progress', attempts_left = 0, attempted_at = ? WHERE id = ?")
+    .run(new Date(Date.now() - 31 * 60 * 1000).toISOString(), id);
+  const list = await (await call('/tracker/invites', { cookie: admin })).json();
+  assert.equal(list.find((i) => i.id === id).status, 'failed');
+});
