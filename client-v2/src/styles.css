@@ -1714,3 +1714,39 @@ body.is-report #root { height: auto; }
 .eqm-route { background: #fff; color: #333; border: 0; font-size: 10px; padding: 1px 4px; }
 .eq-label > .eq-chips { grid-column: 2; display: inline-flex; gap: 4px; align-items: center; justify-self: start; }
 .eq-usage { font-size: 10.5px; }
+
+/* ── New project dialog ──────────────────────────────────────────────── */
+.picker.np { width: min(620px, calc(100% - 32px)); }
+.np-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+  padding: 16px;
+  overflow: auto;
+}
+.np-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+.np-field > span { color: var(--text-dim); font-weight: 600; }
+.np-field input, .np-field select {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 5px;
+  padding: 7px 8px;
+}
+.np-wide { grid-column: 1 / -1; }
+.np-err { color: var(--danger); font-style: normal; font-size: 11px; }
+.np-colours { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.np-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
+.np-swatch.is-on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg-raised) inset; }
+@media (max-width: 560px) { .np-body { grid-template-columns: 1fr; } }
+
+/* ── Draggable timeline bars ─────────────────────────────────────────── */
+.bar.is-draggable { cursor: grab; touch-action: none; }
+.bar.is-resizable::before,
+.bar.is-resizable::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; width: 7px;
+  cursor: ew-resize;
+}
+.bar.is-resizable { position: relative; }
+.bar.is-resizable::before { left: 0; }
+.bar.is-resizable::after { right: 0; }
+body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user-select: none; }

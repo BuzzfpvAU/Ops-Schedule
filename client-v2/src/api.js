@@ -59,6 +59,17 @@ export const updateEquipment = (id, data) =>
 export const getJobs = () => api('/jobs');
 export const getJobCard = (id) => api(`/jobs/${id}`);
 
+export const createJob = (data) =>
+  api('/jobs', { method: 'POST', body: JSON.stringify(data) });
+
+// Move a whole project — planned dates and every booking — by n days.
+export const shiftJob = (id, days) =>
+  api(`/jobs/${id}/shift`, { method: 'POST', body: JSON.stringify({ days }) });
+
+// Move one person's or item's run of days on a job, or drag one end of it.
+export const shiftJobBooking = (jobId, data) =>
+  api(`/jobs/${jobId}/bookings/shift`, { method: 'POST', body: JSON.stringify(data) });
+
 // ── Schedule ──
 export const getSchedule = (start, end) =>
   api(`/schedule?start=${start}&end=${end}`);

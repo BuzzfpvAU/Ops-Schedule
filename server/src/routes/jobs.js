@@ -926,6 +926,18 @@ function bookingRange(db, jobId, equipmentId) {
   `).get(jobId, equipmentId);
 }
 
+// One entry for this member on this job and day, with the given status.
+function ensureDay(db, jobId, memberId, date, status) {
+  const exists = db.prepare(
+    'SELECT id FROM schedule_entries WHERE job_id = ? AND team_member_id = ? AND date = ? LIMIT 1'
+  ).get(jobId, memberId, date);
+  if (exists) return false;
+  db.prepare(`
+    INSERT INTO schedule_entries (id, team_member_id, job_id, date, status) VALUES (?, ?, ?, ?, ?)
+  `).run(uuidv4(), memberId, jobId, date, status || 'tentative');
+  return true;
+}
+
 function ensureBookingDay(db, jobId, equipmentId, date) {
   const exists = db.prepare(
     'SELECT id FROM schedule_entries WHERE job_id = ? AND team_member_id = ? AND date = ? LIMIT 1'
@@ -1013,8 +1025,13 @@ function shiftBookings(db, jobId, prev, next) {
   }
 
   // Moved anyway, clashes reported: the caller decides what to do about them.
+  return { members: touched.size, clashes: clashesFor(db, jobId, touched) };
+}
+
+// Other jobs each member now overlaps, over their booked span on this job.
+function clashesFor(db, jobId, memberIds) {
   const clashes = [];
-  for (const memberId of touched) {
+  for (const memberId of memberIds) {
     const range = bookingRange(db, jobId, memberId);
     if (!range?.from_date) continue;
     const member = db.prepare('SELECT name, is_equipment FROM team_members WHERE id = ?').get(memberId);
@@ -1025,8 +1042,97 @@ function shiftBookings(db, jobId, prev, next) {
       });
     }
   }
-  return { members: touched.size, clashes };
+  return clashes;
 }
+
+const MAX_SHIFT = 366 * 2;
+const parseShift = (v) => (Number.isInteger(v) && v !== 0 && Math.abs(v) <= MAX_SHIFT ? v : null);
+
+// Drag a whole project on the Projects timeline: planned dates (when set)
+// and every crew and kit day move by the same number of days.
+// Body: { days } — non-zero whole days, either direction.
+router.post('/:id/shift', requireAdmin, (req, res) => {
+  const job = req.db.prepare('SELECT id, planned_start, planned_end FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const days = parseShift(req.body?.days);
+  if (days === null) return res.status(400).json({ error: 'days must be a non-zero whole number' });
+
+  const members = req.db.transaction(() => {
+    if (job.planned_start) {
+      req.db.prepare(`
+        UPDATE jobs SET planned_start = ?, planned_end = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?
+      `).run(addDays(job.planned_start, days), job.planned_end ? addDays(job.planned_end, days) : '', job.id);
+    }
+    const entries = req.db.prepare('SELECT id, team_member_id, date FROM schedule_entries WHERE job_id = ?').all(job.id);
+    const move = req.db.prepare(
+      "UPDATE schedule_entries SET date = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?"
+    );
+    for (const e of entries) move.run(addDays(e.date, days), e.id);
+    return new Set(entries.map((e) => e.team_member_id));
+  })();
+
+  res.json({
+    job: req.db.prepare(`${JOB_SELECT} WHERE j.id = ?`).get(job.id),
+    members: members.size,
+    clashes: clashesFor(req.db, job.id, members),
+  });
+});
+
+// Drag one person's or item's bar on the project page. The bar is a run of
+// days (from–to) on this job; without an edge the run moves, with an edge
+// that end is dragged — lengthening adds days with the run's status,
+// shortening removes them, but never past the run's other end.
+// Body: { member_id, from, to, days, edge?: 'start' | 'end' }
+router.post('/:id/bookings/shift', requireAdmin, (req, res) => {
+  const { member_id, from, to, edge } = req.body || {};
+  const days = parseShift(req.body?.days);
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!member_id || !iso.test(from || '') || !iso.test(to || '') || to < from) {
+    return res.status(400).json({ error: 'member_id, from and to (YYYY-MM-DD) are required' });
+  }
+  if (days === null) return res.status(400).json({ error: 'days must be a non-zero whole number' });
+  if (edge !== undefined && edge !== 'start' && edge !== 'end') {
+    return res.status(400).json({ error: "edge must be 'start' or 'end'" });
+  }
+  const job = req.db.prepare('SELECT id FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const run = req.db.prepare(`
+    SELECT id, date, status FROM schedule_entries
+    WHERE job_id = ? AND team_member_id = ? AND date >= ? AND date <= ? ORDER BY date
+  `).all(job.id, member_id, from, to);
+  if (!run.length) return res.status(404).json({ error: 'No booking on those days' });
+
+  const first = run[0];
+  const last = run[run.length - 1];
+  const move = req.db.prepare(
+    "UPDATE schedule_entries SET date = ?, updated_at = datetime('now', '+10 hours') WHERE id = ?"
+  );
+  const drop = req.db.prepare('DELETE FROM schedule_entries WHERE id = ?');
+  const add = (d, status) => ensureDay(req.db, job.id, member_id, d, status);
+
+  req.db.transaction(() => {
+    if (!edge) {
+      for (const e of run) move.run(addDays(e.date, days), e.id);
+    } else if (edge === 'start') {
+      const next = addDays(first.date, days);
+      if (days < 0) for (const d of dateRange(next, addDays(first.date, -1))) add(d, first.status);
+      else for (const e of run) if (e.date < next && e.id !== last.id) drop.run(e.id);
+    } else {
+      const next = addDays(last.date, days);
+      if (days > 0) for (const d of dateRange(addDays(last.date, 1), next)) add(d, last.status);
+      else for (const e of run) if (e.date > next && e.id !== first.id) drop.run(e.id);
+    }
+  })();
+
+  const after = bookingRange(req.db, job.id, member_id);
+  res.json({
+    booked_from: after.from_date || null,
+    booked_to: after.to_date || null,
+    booked_days: after.days || 0,
+    clashes: clashesFor(req.db, job.id, [member_id]),
+  });
+});
 
 // ── Equipment kit / owned vehicles ──────────────────────────────────────────
 

@@ -301,6 +301,7 @@ export default function App() {
           jobs={jobs}
           schedule={schedule}
           onOpenProject={setOpenProjectId}
+          currentUser={user}
           {...common}
         />
       )}
