@@ -4,9 +4,10 @@ import { Drawer, Section, KV, Avatar } from './ui.jsx';
 import JobCard from './JobCard.jsx';
 import {
   JOB_STATUSES, STATUSES, getJobPlanner, addJobDayNote, deleteJobDayNote,
-  getJobCard, getJobReadiness,
+  getJobCard, getJobReadiness, shiftJobBooking,
 } from '../api.js';
 import { buildBars, layoutLanes } from '../lib/model.js';
+import useBarDrag from '../lib/useBarDrag.js';
 import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
 
 // ── View 4: one project in detail ───────────────────────────────────────
@@ -218,7 +219,35 @@ export default function ProjectView({
     );
   };
 
-  const renderBar = (bar) => {
+  // Drag a person's or item's bar to move their days, or drag either end
+  // to lengthen or shorten the booking. A plain click still opens the day
+  // log for the day under the pointer.
+  const canEdit = !!currentUser?.isAdmin;
+  const { bind, dragStyle } = useBarDrag({ colW: zoom.colW, enabled: canEdit, resizable: true });
+
+  const moveBooking = async (bar, days, edge) => {
+    const name = bar.row.name;
+    try {
+      const r = await shiftJobBooking(jobId, {
+        member_id: bar.row.id, from: bar.run.start, to: bar.run.end, days, ...(edge ? { edge } : {}),
+      });
+      await refreshAll();
+      if (r?.clashes?.length) {
+        showToast?.(`${name} now clashes with ${r.clashes.map((c) => c.job_code).join(', ')}`, 'error');
+      } else {
+        showToast?.(`${name}: ${fmtShort(r.booked_from)}–${fmtShort(r.booked_to)}`, 'success');
+      }
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    }
+  };
+
+  const dayUnder = (bar, press) => {
+    const idx = bar.startIdx + Math.floor((press.clientX - press.rect.left) / zoom.colW);
+    return days[Math.min(Math.max(idx, 0), days.length - 1)];
+  };
+
+  const renderBar = (bar, row) => {
     if (bar.kind === 'other') {
       const o = bar.run.sample;
       return (
@@ -236,14 +265,18 @@ export default function ProjectView({
     const colour = status === 'confirmed' || status === 'tentative'
       ? (data?.job?.color || '#3b82f6')
       : meta.color;
+    const runDays = diffDays(bar.run.start, bar.run.end) + 1;
     return (
-      // No click handler: the click falls through to the day cell underneath,
-      // so clicking a bar opens the log for the day you actually clicked
-      // rather than for the day the bar happens to start.
+      // A click opens the log for the day actually clicked, not the day the
+      // bar happens to start.
       <div
-        className={`bar${status === 'tentative' ? ' is-tentative' : ''}`}
-        style={{ background: colour, pointerEvents: 'none' }}
-        title={`${meta.label}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}`}
+        className={`bar${status === 'tentative' ? ' is-tentative' : ''}${canEdit ? ' is-draggable is-resizable' : ''}`}
+        style={{ background: colour, ...dragStyle(bar.key) }}
+        title={`${meta.label}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}${canEdit ? '\nDrag to move · drag an end to lengthen or shorten' : ''}`}
+        {...bind(bar.key, runDays, {
+          onCommit: (d, edge) => moveBooking(bar, d, edge),
+          onClick: (press) => openCell(row, dayUnder(bar, press)),
+        })}
       >
         <span className="bar-text">
           {meta.label} · {fmtShort(bar.run.start)}–{fmtShort(bar.run.end)}

@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { SearchBox } from './ui.jsx';
-import { JOB_STATUSES, STATES } from '../api.js';
+import NewProjectDialog from './NewProjectDialog.jsx';
+import { JOB_STATUSES, STATES, shiftJob } from '../api.js';
+import useBarDrag from '../lib/useBarDrag.js';
 import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtLong } from '../lib/dates.js';
@@ -13,7 +15,9 @@ import { diffDays, fmtLong } from '../lib/dates.js';
 // really booked — draws solid on top. Where they disagree, the gap is the
 // point of the view.
 
-export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, showToast }) {
+export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, onChanged, currentUser, showToast }) {
+  const isAdmin = !!currentUser?.isAdmin;
+  const [creating, setCreating] = useState(false);
   const [collapsed, setCollapsed] = useState({});
   const [statusFilter, setStatusFilter] = useState('open');
   const [search, setSearch] = useState('');
@@ -137,15 +141,42 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     );
   };
 
+  // Dragging any of a project's bars moves the whole project: every bar of
+  // that job previews together, keyed by the job.
+  const { bind, dragStyle } = useBarDrag({ colW: zoom.colW, enabled: isAdmin });
+
+  const moveProject = async (job, days) => {
+    try {
+      const r = await shiftJob(job.id, days);
+      await onChanged?.();
+      const when = `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ${days > 0 ? 'later' : 'earlier'}`;
+      if (r?.clashes?.length) {
+        const list = r.clashes.map((c) => `${c.name} (${c.job_code})`).join(', ');
+        showToast?.(`${job.code} moved ${when} — now clashing: ${list}`, 'error');
+      } else {
+        showToast?.(`${job.code} moved ${when}`, 'success');
+      }
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    }
+  };
+
+  const barProps = (job) => bind(job.id, Infinity, {
+    onCommit: (days) => moveProject(job, days),
+    onClick: () => openCard(job),
+  });
+
   const renderBar = (bar) => {
     const job = bar.job;
+    const drag = dragStyle(job.id);
+    const grab = isAdmin ? ' is-draggable' : '';
     if (bar.kind === 'planned') {
       return (
         <div
-          className="bar is-ghost"
-          style={{ color: job.color || '#8d9bb0' }}
-          title={`Planned: ${fmtLong(job.planned_start)} → ${fmtLong(job.planned_end || job.planned_start)}`}
-          onClick={(e) => { e.stopPropagation(); openCard(job); }}
+          className={`bar is-ghost${grab}`}
+          style={{ color: job.color || '#8d9bb0', ...drag }}
+          title={`Planned: ${fmtLong(job.planned_start)} → ${fmtLong(job.planned_end || job.planned_start)}${isAdmin ? '\nDrag to move the project' : ''}`}
+          {...barProps(job)}
         >
           <span className="bar-text">Planned</span>
         </div>
@@ -154,10 +185,10 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     const crew = new Set(bar.run.entries.map((e) => e.team_member_id)).size;
     return (
       <div
-        className="bar"
-        style={{ background: job.color || '#3b82f6' }}
-        title={`${job.code} ${job.name}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}\n${crew} rostered`}
-        onClick={(e) => { e.stopPropagation(); openCard(job); }}
+        className={`bar${grab}`}
+        style={{ background: job.color || '#3b82f6', ...drag }}
+        title={`${job.code} ${job.name}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}\n${crew} rostered${isAdmin ? '\nDrag to move the project' : ''}`}
+        {...barProps(job)}
       >
         <span className="bar-text">{job.name}</span>
       </div>
@@ -190,6 +221,9 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
             </button>
           ))}
         </div>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New project</button>
+        )}
         <div className="toolbar-spacer" />
         <div className="legend">
           <span className="legend-item">
@@ -216,6 +250,21 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         renderBar={renderBar}
         emptyMessage="No jobs fall inside this date window."
       />
+
+      {creating && (
+        <NewProjectDialog
+          jobs={jobs}
+          myState={myState}
+          onClose={() => setCreating(false)}
+          onCreated={async (job) => {
+            setCreating(false);
+            await onChanged?.();
+            showToast?.(`${job.code} created`, 'success');
+            onOpenProject?.(job.id);
+          }}
+          showToast={showToast}
+        />
+      )}
 
     </>
   );
