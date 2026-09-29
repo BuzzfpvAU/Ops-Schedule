@@ -19,7 +19,8 @@
   ul { padding-left: 20px; margin: 10px 0 16px; }
   label { display: block; font-weight: 600; margin: 14px 0 6px; }
   input[type=email], input[type=password], input[type=text] { width: 100%; font-size: 17px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); }
-  button { width: 100%; font-size: 17px; font-weight: 600; padding: 13px; margin-top: 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; }
+  a.button { display: block; box-sizing: border-box; text-align: center; text-decoration: none; }
+  button, a.button { width: 100%; font-size: 17px; font-weight: 600; padding: 13px; margin-top: 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; }
   button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
   button:disabled { opacity: .55; }
   .msg { color: var(--danger); margin: 8px 0 0; }
@@ -80,6 +81,9 @@ const removeLine = () => (state.remove_device
 const SCREENS = {
   loading: () => 'Loading…',
   expired: () => `<h1>Link expired</h1><p>This link has expired or was already used. Ask the office for a new one.</p>`,
+  unavailable: () => `<h1>Can't check your link right now</h1>
+    <p>The office system didn't answer. Your link is still fine — try again in a minute.</p>
+    ${state.retry ? `<a class="button" href="${esc(state.retry)}">Try again</a>` : '<p>Open the link from your message again.</p>'}`,
   intro: () => `<h1>Add your tags</h1>
     <p>This adds your Find My tags to the company equipment tracker${state.label ? ` (for <strong>${esc(state.label)}</strong>)` : ''}.</p>
     <ul>
@@ -150,7 +154,12 @@ $app.addEventListener('click', (e) => {
   if (act === 'cancel') { e.preventDefault(); if (confirm('Cancel adding tags?')) call('/api/cancel', {}); }
 });
 
-if (location.search.includes('expired')) { state = { step: 'expired' }; render(); } else { call('/api/state'); }
+if (location.search.includes('unavailable')) {
+  const token = location.hash.slice(1);
+  state = { step: 'unavailable', retry: /^[\w-]+$/.test(token) ? `/i/${token}` : null };
+  history.replaceState(null, '', '/');
+  render();
+} else if (location.search.includes('expired')) { state = { step: 'expired' }; render(); } else { call('/api/state'); }
 </script>
 </body>
 </html>

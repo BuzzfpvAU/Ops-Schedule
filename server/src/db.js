@@ -490,6 +490,11 @@ export function initDb() {
       note TEXT NOT NULL DEFAULT ''
     );
   `);
+  // When the current attempt started, so an attempt the portal never
+  // finished (it restarted mid-export) does not hold the invite forever.
+  if (!db.pragma('table_info(tracker_invites)').some((c) => c.name === 'attempted_at')) {
+    db.exec(`ALTER TABLE tracker_invites ADD COLUMN attempted_at TEXT`);
+  }
   // Removed items stay as a record so a re-export cannot bring them back;
   // the tracker Mac is told to delete their key files.
   const trackerCols = db.prepare('PRAGMA table_info(tracker_items)').all().map((c) => c.name);

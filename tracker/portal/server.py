@@ -12,6 +12,7 @@ import os
 import secrets
 import threading
 import time
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -55,6 +56,18 @@ class Portal:
                 del self.visitors[k]
 
 
+def check_failure(exc: Exception) -> str:
+    """Why taskz.id could not check an invite, in words for the log."""
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code == 401:
+            return ("taskz.id refused the portal's key (401) — TRACKER_INGEST_KEY in "
+                    "com.buzzbot.tracker-portal.plist does not match the server's")
+        return f"taskz.id answered HTTP {exc.code}"
+    if isinstance(exc, urllib.error.URLError):
+        return f"could not reach taskz.id ({exc.reason})"
+    return type(exc).__name__
+
+
 def make_handler(portal: Portal):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # never log bodies or query strings
@@ -94,7 +107,16 @@ def make_handler(portal: Portal):
             if self.path.startswith("/i/"):
                 ip = self.headers.get("CF-Connecting-IP") or self.client_address[0]
                 token = self.path[3:].split("?")[0]
-                res = portal.client.check(token) if portal.rate_ok(ip) else {"ok": False}
+                # If taskz.id can't be asked, say so; an exception here would
+                # drop the connection and the phone would get Cloudflare's
+                # "Bad gateway" instead of a page. The token goes back in the
+                # fragment (never sent to a server) so the page can retry.
+                try:
+                    res = portal.client.check(token) if portal.rate_ok(ip) else {"ok": False}
+                except Exception as exc:  # noqa: BLE001
+                    log.error("invite check failed: %s", check_failure(exc))
+                    self._headers(303, "text/plain", {"Location": f"/?unavailable=1#{token}"})
+                    return
                 if res.get("ok"):
                     inv = res
                     cookie = secrets.token_urlsafe(24)

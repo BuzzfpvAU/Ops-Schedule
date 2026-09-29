@@ -143,3 +143,21 @@ escrow bottle it created in that person's iCloud. With them present, run
 export-findmy `--delete-own-escrow-bottle` against a profile whose serial
 matches (the portal logs it), and have them remove "Taskz Tag Export" from
 their Apple ID's device list.
+
+**An invite link won't open.** Check, in order:
+
+1. `curl -s 127.0.0.1:8787/healthz` on the Mac. No answer: the portal is
+   not running (`launchctl list | grep tracker-portal`, and
+   `~/Library/Logs/airtag-tracker/portal.err.log`). Cloudflare then shows a
+   "Bad gateway" / 1033 page on the phone. Also check the tunnel
+   (`launchctl list | grep cloudflared`).
+2. The phone says **"Can't check your link right now"**: the portal is up
+   but could not ask taskz.id. `portal.err.log` says why. *"refused the
+   portal's key (401)"* means `TRACKER_INGEST_KEY` in the installed
+   `~/Library/LaunchAgents/com.buzzbot.tracker-portal.plist` no longer
+   matches the server's `.htaccess` (it has its own copy — update it after
+   every key rotation, then `launchctl unload` / `load` the plist).
+3. The phone says **"Link expired"**: taskz.id answered but the invite is
+   not usable — past 24 hours, already used, cancelled, or out of attempts.
+   Settings → Tracking → Invites shows which. An attempt the portal never
+   finished frees the link again after 30 minutes.

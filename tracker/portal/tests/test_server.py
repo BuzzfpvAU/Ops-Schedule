@@ -97,3 +97,50 @@ class Server(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Unreachable(unittest.TestCase):
+    """taskz.id refusing or not answering must not drop the phone's request."""
+
+    def serve(self, exc):
+        root = Path(tempfile.mkdtemp())
+        tpl = root / "t.toml"
+        tpl.write_text('[device]\nname = "x"\nserial = "y"\n')
+        cfg = SessionConfig([sys.executable, str(HERE / "fake_exporter.py")], tpl, root / "shared", root / "work")
+
+        class Failing(FakeTaskz):
+            def check(self, token):
+                raise exc
+
+        httpd = make_server(cfg, Failing(), port=0, secure_cookie=False)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.shutdown)
+        return f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def open_link(self, base, token):
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        opener = urllib.request.build_opener(NoRedirect)
+        try:
+            opener.open(f"{base}/i/{token}")
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Location")
+        self.fail("expected a redirect")
+
+    def test_wrong_key_gives_a_page_and_a_clear_log(self):
+        err = urllib.error.HTTPError("https://taskz.id", 401, "Unauthorized", {}, None)
+        base = self.serve(err)
+        with self.assertLogs("portal", level="ERROR") as logs:
+            code, loc = self.open_link(base, "tok-123")
+        self.assertEqual((code, loc), (303, "/?unavailable=1#tok-123"))
+        self.assertIn("TRACKER_INGEST_KEY", "\n".join(logs.output))
+        # Still serving afterwards.
+        self.assertEqual(json.loads(urllib.request.urlopen(base + "/healthz").read())["ok"], True)
+
+    def test_network_failure_gives_a_page(self):
+        base = self.serve(urllib.error.URLError("timed out"))
+        with self.assertLogs("portal", level="ERROR") as logs:
+            code, loc = self.open_link(base, "abc")
+        self.assertEqual((code, loc), (303, "/?unavailable=1#abc"))
+        self.assertIn("could not reach taskz.id", "\n".join(logs.output))
