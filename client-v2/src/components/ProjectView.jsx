@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Timeline from './Timeline.jsx';
-import { Drawer, Section, KV, Avatar } from './ui.jsx';
+import Timeline, { rowHeight } from './Timeline.jsx';
+import { Avatar } from './ui.jsx';
 import JobCard from './JobCard.jsx';
+import NotesPanel from './NotesPanel.jsx';
 import {
   JOB_STATUSES, STATUSES, getJobPlanner, addJobDayNote, deleteJobDayNote,
   getJobCard, getJobReadiness, shiftJobBooking,
@@ -31,13 +32,17 @@ export default function ProjectView({
   // state are remembered per browser.
   const [cardOpen, setCardOpen] = useState(() => readPref('pv.cardOpen', '1') === '1');
   const [cardH, setCardH] = useState(() => Number(readPref('pv.cardH', '')) || 360);
+  const [notesOpen, setNotesOpen] = useState(() => readPref('pv.notesOpen', '1') === '1');
+  const [notesW, setNotesW] = useState(() => Number(readPref('pv.notesW', '')) || 380);
   const splitRef = useRef(null);
+  const bottomRef = useRef(null);
   const [card, setCard] = useState(null);
   const [readiness, setReadiness] = useState(null);
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState({});
-  const [cell, setCell] = useState(null); // { row, date }
-  const [draft, setDraft] = useState('');
+  // The timeline cell the notes composer is linked to: { rowId, date }.
+  const [link, setLink] = useState(null);
+  const [focusTick, setFocusTick] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const isViewer = !!currentUser?.isViewer;
@@ -104,12 +109,21 @@ export default function ProjectView({
   const notesByCell = useMemo(() => {
     const m = new Map();
     for (const n of data?.day_notes || []) {
+      if (!n.entity_id) continue; // standalone: lives in the panel only
       const key = `${n.entity_id}|${n.date}`;
       const list = m.get(key);
       if (list) list.push(n);
       else m.set(key, [n]);
     }
     return m;
+  }, [data]);
+
+  const showSnippets = zoom.colW >= SNIPPET_MIN_COL_W;
+
+  const notesByRow = useMemo(() => {
+    const s = new Set();
+    for (const n of data?.day_notes || []) if (n.entity_id) s.add(n.entity_id);
+    return s;
   }, [data]);
 
   const buildRow = (r, kind) => {
@@ -134,6 +148,9 @@ export default function ProjectView({
       bars: laid.bars,
       lanes: laid.lanes,
       noteCount: (data?.day_notes || []).filter((n) => n.entity_id === r.id).length,
+      // Room under the bars for the note snippet, once days are wide enough
+      // to read it.
+      minHeight: showSnippets && notesByRow.has(r.id) ? rowHeight(laid.lanes || 1) + SNIPPET_H : 0,
     };
   };
 
@@ -158,25 +175,32 @@ export default function ProjectView({
       });
     }
     return out;
-  }, [data, dayIndex, windowStart, windowEnd]);
+  }, [data, dayIndex, windowStart, windowEnd, showSnippets]);
 
+  // A click on the timeline links the notes composer to that row and day.
   const openCell = (row, date) => {
-    setDraft('');
-    setCell({ row, date });
+    setLink({ rowId: row.id, date });
+    setNotesOpen(true);
+    setFocusTick((t) => t + 1);
   };
 
-  const cellNotes = cell ? (notesByCell.get(`${cell.row.id}|${cell.date}`) || []) : [];
+  const noteRows = useMemo(
+    () => groups.flatMap((g) => g.rows.map((r) => ({ id: r.id, name: r.entity.name }))),
+    [groups],
+  );
 
-  const addNote = async () => {
-    if (!draft.trim()) return;
+  const addNote = async (text, to) => {
     setBusy(true);
     try {
-      await addJobDayNote(jobId, { entity_id: cell.row.id, date: cell.date, text: draft.trim() });
-      setDraft('');
+      await addJobDayNote(jobId, to
+        ? { entity_id: to.rowId, date: to.date, text }
+        : { text });
       await load();
       showToast?.('Note added', 'success');
+      return true;
     } catch (e) {
       showToast?.(e.message, 'error');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -285,8 +309,9 @@ export default function ProjectView({
     );
   };
 
-  // Note markers sit under the bars so a day carrying a log entry is visible
-  // without opening anything.
+  // Linked notes show under the bars on their day: a short snippet when days
+  // are wide enough to read it, otherwise just a marker. Either opens the
+  // composer on that day.
   const renderOverlay = (row) => {
     const marks = [];
     for (const [key, list] of notesByCell) {
@@ -294,21 +319,55 @@ export default function ProjectView({
       if (entityId !== row.id) continue;
       const idx = dayIndex.get(date);
       if (idx === undefined) continue;
-      marks.push(
+      const title = list.map((n) => `${n.text} — ${n.author_name || 'unknown'}`).join('\n');
+      const open = (e) => { e.stopPropagation(); openCell(row, date); };
+      marks.push(showSnippets ? (
+        <span
+          key={key}
+          className="note-snip"
+          style={{ left: idx * zoom.colW, width: zoom.colW - 2 }}
+          title={title}
+          onClick={open}
+        >
+          {list.length > 1 && <b>{list.length}</b>}
+          {list[list.length - 1].text}
+        </span>
+      ) : (
         <span
           key={key}
           className="note-mark"
           style={{ left: idx * zoom.colW, width: zoom.colW }}
-          title={list.map((n) => `${n.text} — ${n.author_name || 'unknown'}`).join('\n')}
-          onClick={(e) => { e.stopPropagation(); openCell(row, date); }}
+          title={title}
+          onClick={open}
         />
-      );
+      ));
     }
     return marks;
   };
 
   useEffect(() => { writePref('pv.cardOpen', cardOpen ? '1' : '0'); }, [cardOpen]);
   useEffect(() => { writePref('pv.cardH', String(Math.round(cardH))); }, [cardH]);
+  useEffect(() => { writePref('pv.notesOpen', notesOpen ? '1' : '0'); }, [notesOpen]);
+  useEffect(() => { writePref('pv.notesW', String(Math.round(notesW))); }, [notesW]);
+
+  // Drag the vertical divider to trade job-card width for notes width.
+  const startResizeNotes = (e) => {
+    e.preventDefault();
+    const box = bottomRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const onMove = (ev) => {
+      const w = box.right - ev.clientX;
+      setNotesW(Math.min(Math.max(w, 260), box.width - 320));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.classList.remove('is-resizing-x');
+    };
+    document.body.classList.add('is-resizing-x');
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   // Drag the divider to trade timeline height for card height. Both keep a
   // usable minimum so neither can be dragged out of sight.
@@ -392,7 +451,7 @@ export default function ProjectView({
           />
         ) : <div className="pv-spacer" />}
 
-        {cardOpen && (
+        {(cardOpen || notesOpen) && (
           <div
             className="pv-divider"
             role="separator"
@@ -401,91 +460,84 @@ export default function ProjectView({
             onPointerDown={startResize}
           />
         )}
-        <div className={`pv-card${cardOpen ? '' : ' is-collapsed'}`} style={cardOpen ? { height: cardH } : undefined}>
-          <button
-            type="button"
-            className="pv-card-head"
-            onClick={() => setCardOpen((o) => !o)}
-            aria-expanded={cardOpen}
-          >
-            <span className={`tl-caret${cardOpen ? '' : ' is-collapsed'}`} aria-hidden="true">▾</span>
-            Job card
-            {!cardOpen && <span className="rl-sub">— click to open</span>}
-          </button>
-          {cardOpen && (
-            <div className="card-pane">
-              <JobCard
-                jobId={jobId}
-                card={card}
-                readiness={readiness}
-                members={members}
-                equipment={equipment}
-                isAdmin={!!currentUser?.isAdmin}
-                onChanged={refreshAll}
-                showToast={showToast}
-              />
+        <div
+          className={`pv-card${cardOpen || notesOpen ? '' : ' is-collapsed'}`}
+          style={cardOpen || notesOpen ? { height: cardH } : undefined}
+        >
+          <div className="pv-bottom" ref={bottomRef}>
+            <div className={`pv-pane${cardOpen ? '' : ' is-collapsed'}`}>
+              <button
+                type="button"
+                className="pv-card-head"
+                onClick={() => setCardOpen((o) => !o)}
+                aria-expanded={cardOpen}
+              >
+                <span className={`tl-caret${cardOpen ? '' : ' is-collapsed'}`} aria-hidden="true">▾</span>
+                Job card
+              </button>
+              {cardOpen && (
+                <div className="card-pane">
+                  <JobCard
+                    jobId={jobId}
+                    card={card}
+                    readiness={readiness}
+                    members={members}
+                    equipment={equipment}
+                    isAdmin={!!currentUser?.isAdmin}
+                    onChanged={refreshAll}
+                    showToast={showToast}
+                  />
+                </div>
+              )}
             </div>
-          )}
+
+            {notesOpen && cardOpen && (
+              <div
+                className="pv-vdivider"
+                role="separator"
+                aria-orientation="vertical"
+                title="Drag to resize"
+                onPointerDown={startResizeNotes}
+              />
+            )}
+            <div
+              className={`pv-pane pv-notes${notesOpen ? '' : ' is-collapsed'}`}
+              style={notesOpen ? (cardOpen ? { width: notesW, flex: 'none' } : { flex: 1 }) : undefined}
+            >
+              <button
+                type="button"
+                className="pv-card-head"
+                onClick={() => setNotesOpen((o) => !o)}
+                aria-expanded={notesOpen}
+              >
+                <span className={`tl-caret${notesOpen ? '' : ' is-collapsed'}`} aria-hidden="true">▾</span>
+                Notes
+                {data && <span className="count-pill">{(data.day_notes || []).length}</span>}
+              </button>
+              {notesOpen && (
+                <NotesPanel
+                  notes={data?.day_notes || []}
+                  rows={noteRows}
+                  link={link}
+                  onLinkChange={setLink}
+                  focusTick={focusTick}
+                  onAdd={addNote}
+                  onRemove={removeNote}
+                  isViewer={isViewer}
+                  busy={busy}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {cell && (
-        <Drawer
-          title={cell.row.entity.name}
-          subtitle={`${job?.code} · ${fmtLong(cell.date)}`}
-          onClose={() => setCell(null)}
-        >
-          <Section title={`Day log (${cellNotes.length})`}>
-            {cellNotes.length === 0 && (
-              <div style={{ color: 'var(--text-mute)', fontSize: 12 }}>
-                Nothing logged for this day yet.
-              </div>
-            )}
-            {cellNotes.map((n) => (
-              <div className="log-entry" key={n.id}>
-                <div className="log-text">{n.text}</div>
-                <div className="log-meta">
-                  <span>{n.author_name || 'unknown'} · {n.created_at}</span>
-                  {!isViewer && (
-                    <button className="btn btn-danger" disabled={busy} onClick={() => removeNote(n.id)}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </Section>
-
-          {!isViewer && (
-            <Section title="Add to the log">
-              <textarea
-                className="note-input"
-                placeholder="e.g. Dispatched to KTA, tracking 12345"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') addNote();
-                }}
-              />
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
-                <button className="btn btn-primary" disabled={busy || !draft.trim()} onClick={addNote}>
-                  Add note
-                </button>
-                <span className="rl-sub">⌘/Ctrl + Enter</span>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-mute)', marginTop: 10, lineHeight: 1.5 }}>
-                The log only ever appends, so a movement keeps its history —
-                dispatched one day, arrived the next.
-              </div>
-            </Section>
-          )}
-
-          {isViewer && <div className="banner banner-warn">Viewers cannot add notes.</div>}
-        </Drawer>
-      )}
     </>
   );
 }
+
+const SNIPPET_H = 16;
+const SNIPPET_MIN_COL_W = 60;
 
 function readPref(key, fallback) {
   try { return window.localStorage.getItem(key) ?? fallback; } catch { return fallback; }

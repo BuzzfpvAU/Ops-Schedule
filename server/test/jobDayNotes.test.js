@@ -165,3 +165,18 @@ test('notes are scoped to their job', async () => {
   assert.equal(day_notes.length, 1);
   assert.equal(day_notes[0].text, 'on job one');
 });
+
+test('a standalone note needs no entity or day', async () => {
+  const res = await post('j1', { text: 'Client prefers morning flights' });
+  assert.equal(res.status, 200);
+  const note = await res.json();
+  assert.equal(note.entity_id, null);
+  assert.equal(note.date, null);
+  const { day_notes } = await planner();
+  assert.equal(day_notes.length, 1);
+});
+
+test('a link needs both the entity and the day', async () => {
+  assert.equal((await post('j1', { entity_id: 'eq1', text: 'x' })).status, 400);
+  assert.equal((await post('j1', { date: '2026-09-27', text: 'x' })).status, 400);
+});

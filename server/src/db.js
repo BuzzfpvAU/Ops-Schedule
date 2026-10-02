@@ -433,6 +433,32 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_job_day_notes_cell ON job_day_notes(job_id, entity_id, date);
   `);
 
+  // Project notes panel: a note may now stand alone (no person/kit, no day) or
+  // link to the timeline. SQLite cannot drop NOT NULL in place, so rebuild the
+  // table once, keeping every existing row (they all stay linked).
+  const noteCols = db.pragma('table_info(job_day_notes)');
+  if (noteCols.some((c) => c.name === 'entity_id' && c.notnull)) {
+    db.exec(`
+      CREATE TABLE job_day_notes_new (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        entity_id TEXT,
+        date TEXT,
+        text TEXT NOT NULL,
+        author_id TEXT DEFAULT '',
+        author_name TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now', '+10 hours')),
+        FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+        FOREIGN KEY (entity_id) REFERENCES team_members(id) ON DELETE CASCADE
+      );
+      INSERT INTO job_day_notes_new SELECT id, job_id, entity_id, date, text, author_id, author_name, created_at FROM job_day_notes;
+      DROP TABLE job_day_notes;
+      ALTER TABLE job_day_notes_new RENAME TO job_day_notes;
+      CREATE INDEX IF NOT EXISTS idx_job_day_notes_job ON job_day_notes(job_id, date);
+      CREATE INDEX IF NOT EXISTS idx_job_day_notes_cell ON job_day_notes(job_id, entity_id, date);
+    `);
+  }
+
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`
     CREATE TABLE IF NOT EXISTS equipment_locations (
