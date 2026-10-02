@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  bookedIndex, planWindow, availability, availText, resolveLocation, sortRows, summary, BASE_CITIES, bubbleFor,
+  bookedIndex, outIndex, withOut, planWindow, availability, availText, resolveLocation, sortRows, summary, BASE_CITIES, bubbleFor,
   haversineKm, jobRuns, movesFor, tagChecks, usagePct, isIdle, lastUsed, nearFilter,
 } from '../src/lib/equipmentPlan.js';
 
@@ -210,4 +210,14 @@ test('moves into a job that has already started are not listed', () => {
   assert.equal(movesFor({ id: 'x', location: 'WA' }, { runs: jobRuns(started), jobsById: J, win: W, today: '2026-10-01' }).length, 0);
   const b = bookedIndex([...days('a', '2026-09-28', '2026-09-30'), ...days('b', '2026-10-01', '2026-10-02')]).get('x');
   assert.equal(movesFor({ id: 'x' }, { runs: jobRuns(b), jobsById: J, win: W, today: '2026-10-01' }).length, 0);
+});
+
+test('days booked out with a note make the kit unavailable but are not job bookings', () => {
+  const sched = [e('k1', '2026-10-01', 'svc', 'note'), e('k1', '2026-10-02', 'svc', 'note'), e('k1', '2026-10-05', 'j1', 'confirmed')];
+  assert.deepEqual([...bookedIndex(sched).get('k1').keys()], ['2026-10-05'], 'not counted as usage');
+  const out = outIndex(sched);
+  assert.deepEqual([...out.get('k1').keys()], ['2026-10-01', '2026-10-02']);
+  const a = availability({ id: 'k1' }, withOut(bookedIndex(sched).get('k1'), out.get('k1')), win);
+  assert.equal(a.freeDays, 11, 'two service days and one job day are taken');
+  assert.equal(withOut(undefined, undefined), undefined);
 });

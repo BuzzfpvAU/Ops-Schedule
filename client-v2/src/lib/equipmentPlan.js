@@ -2,7 +2,7 @@
 // Pure functions over data the V2 app already loads. See
 // docs/superpowers/specs/2026-09-28-equipment-planning-view-design.md.
 import { addDays, diffDays, rangeOf } from './dates.js';
-import { isWork } from './model.js';
+import { isWork, NON_WORK } from './model.js';
 
 export const LAST_JOB_DAYS = 14;
 
@@ -28,6 +28,27 @@ export function bookedIndex(schedule) {
     idx.get(en.team_member_id).set(en.date, en);
   }
   return idx;
+}
+
+/**
+ * Days a kit item is booked out for something that is not a job — servicing,
+ * non-project work. Kept apart from bookedIndex because those days make the
+ * item unavailable but are not usage, movement or a last-used site.
+ */
+export function outIndex(schedule) {
+  const idx = new Map();
+  for (const en of schedule || []) {
+    if (!en.job_id || !NON_WORK.has(en.status)) continue;
+    if (!idx.has(en.team_member_id)) idx.set(en.team_member_id, new Map());
+    idx.get(en.team_member_id).set(en.date, en);
+  }
+  return idx;
+}
+
+/** Union of two date→entry maps (either may be undefined). */
+export function withOut(booked, out) {
+  if (!out) return booked;
+  return new Map([...(booked || []), ...out]);
 }
 
 export function planWindow(preset, today, custom) {

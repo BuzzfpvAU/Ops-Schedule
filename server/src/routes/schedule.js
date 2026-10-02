@@ -262,6 +262,61 @@ router.post('/quick', (req, res) => {
   res.json(entry);
 });
 
+// POST book a piece of kit out over a date range with just a note (servicing,
+// non-project work). Stored as 'note' entries against the same note job the
+// quick entry uses, so conflicts with job allocations are caught by the
+// existing clash check.
+const MAX_OUT_DAYS = 366;
+
+router.post('/equipment-out', (req, res) => {
+  const { equipment_id, from, to, text } = req.body;
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: 'Only admins can book equipment out' });
+  }
+  if (!equipment_id || !from || !to || !String(text || '').trim()) {
+    return res.status(400).json({ error: 'equipment_id, from, to and text are required' });
+  }
+  const isoDay = /^\d{4}-\d{2}-\d{2}$/;
+  if (!isoDay.test(from) || !isoDay.test(to)) {
+    return res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
+  }
+  if (to < from) {
+    return res.status(400).json({ error: 'to must not be before from' });
+  }
+  const item = req.db.prepare('SELECT id, is_equipment FROM team_members WHERE id = ?').get(equipment_id);
+  if (!item || !item.is_equipment) {
+    return res.status(404).json({ error: 'Equipment not found' });
+  }
+
+  const dates = [];
+  for (let d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+    if (dates.length > MAX_OUT_DAYS) {
+      return res.status(400).json({ error: `Book out at most ${MAX_OUT_DAYS} days at a time` });
+    }
+  }
+
+  const result = req.db.transaction(() => {
+    const job = resolveQuickJob(req.db, 'note', String(text));
+    const has = req.db.prepare(
+      'SELECT 1 FROM schedule_entries WHERE team_member_id = ? AND date = ? AND job_id = ?'
+    );
+    const insert = req.db.prepare(`
+      INSERT INTO schedule_entries (id, team_member_id, job_id, date, notes, status)
+      VALUES (?, ?, ?, ?, '', 'note')
+    `);
+    let added = 0;
+    for (const date of dates) {
+      if (has.get(equipment_id, date, job.id)) continue;
+      insert.run(uuidv4(), equipment_id, job.id, date);
+      added += 1;
+    }
+    return { job_id: job.id, added, days: dates.length };
+  })();
+
+  res.json(result);
+});
+
 // PUT update status only (by entry_id or member+date)
 router.put('/status', (req, res) => {
   const { entry_id, team_member_id, date, status } = req.body;
