@@ -930,6 +930,73 @@ input, select, textarea { font: inherit; }
 }
 .note-mark:hover { opacity: 1; height: 5px; }
 
+/* Wider days: the note's first words, under the bars. */
+.note-snip {
+  position: absolute;
+  bottom: 2px;
+  height: 14px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  border-left: 2px solid var(--warn);
+  color: var(--text);
+  font-size: 10.5px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  z-index: 2;
+}
+.note-snip b { margin-right: 4px; color: var(--warn); }
+.note-snip:hover { background: color-mix(in srgb, var(--warn) 38%, transparent); }
+
+/* Notes panel */
+.np { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.np-filters { flex: none; display: flex; gap: 4px; padding: 8px 10px 0; }
+.np-filter {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.np-filter.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.np-compose { flex: none; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
+.np-link { display: flex; gap: 6px; margin-top: 6px; }
+.np-select, .np-date {
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.np-select { flex: 1; }
+.np-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.np-list { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px 16px; }
+.np-empty { color: var(--text-mute); font-size: 12px; line-height: 1.5; padding: 6px 2px; }
+.np-chip {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 7px;
+  border: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.log-entry.is-standalone { border-left-color: var(--accent); }
+.log-entry.is-focused { box-shadow: 0 0 0 1px var(--warn); }
+
 .log-entry {
   border: 1px solid var(--line);
   border-left: 3px solid var(--warn);
@@ -1237,6 +1304,23 @@ body.is-resizing { cursor: row-resize; user-select: none; }
   background: var(--bg);
 }
 .pv-card.is-collapsed { border-top: 1px solid var(--line); }
+/* Job card and notes side by side. A collapsed pane shrinks to its heading. */
+.pv-bottom { flex: 1; min-height: 0; display: flex; }
+.pv-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.pv-pane.is-collapsed { flex: none; }
+.pv-pane.is-collapsed .pv-card-head { border-bottom: 0; border-right: 1px solid var(--line-soft); }
+.pv-notes { background: var(--bg); }
+.pv-vdivider {
+  flex: none;
+  width: 7px;
+  cursor: col-resize;
+  background: var(--line-soft);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  touch-action: none;
+}
+.pv-vdivider:hover { background: var(--line); }
+body.is-resizing-x { cursor: col-resize; user-select: none; }
 .pv-card-head {
   flex: none;
   display: flex;
@@ -1253,7 +1337,6 @@ body.is-resizing { cursor: row-resize; user-select: none; }
   text-align: left;
   cursor: pointer;
 }
-.pv-card.is-collapsed .pv-card-head { border-bottom: 0; }
 .jobcard { max-width: 900px; padding: 20px 24px 60px; }
 
 /* Workflow stepper */

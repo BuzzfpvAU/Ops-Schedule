@@ -415,20 +415,27 @@ router.get('/:id/planner', (req, res) => {
 // ── Per-day job notes (append-only log) ─────────────────────────────────
 
 router.post('/:id/day-notes', (req, res) => {
-  const { entity_id, date, text } = req.body;
-  if (!entity_id || !date || !String(text || '').trim()) {
-    return res.status(400).json({ error: 'entity_id, date and text are required' });
+  // A note either links to the timeline (entity_id AND date) or stands alone
+  // (neither). Half a link has nowhere to be drawn, so it is rejected.
+  const { text } = req.body;
+  const entity_id = req.body.entity_id || null;
+  const date = req.body.date || null;
+  if (!String(text || '').trim()) {
+    return res.status(400).json({ error: 'text is required' });
+  }
+  if (!entity_id !== !date) {
+    return res.status(400).json({ error: 'entity_id and date must be given together' });
   }
   if (req.user.isViewer) {
     return res.status(403).json({ error: 'Viewers cannot add notes' });
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
   }
   if (!req.db.prepare('SELECT 1 FROM jobs WHERE id = ?').get(req.params.id)) {
     return res.status(404).json({ error: 'Job not found' });
   }
-  if (!req.db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(entity_id)) {
+  if (entity_id && !req.db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(entity_id)) {
     return res.status(404).json({ error: 'Person or equipment not found' });
   }
 
