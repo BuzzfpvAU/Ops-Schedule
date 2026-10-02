@@ -6,12 +6,13 @@ const EquipmentMapPanel = lazy(() => import('./EquipmentMapPanel.jsx'));
 import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
 import {
   STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, createEquipment, getEquipmentLocations, getStaleDays,
+  bookEquipmentOut, deleteScheduleEntry,
 } from '../api.js';
-import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor } from '../lib/model.js';
+import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor, NON_WORK } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtShort, fmtLong, addDays, today as todayIso } from '../lib/dates.js';
 import {
-  bookedIndex, planWindow, availability, availText, resolveLocation, sortRows, summary, AVAIL_TONE, LAST_JOB_DAYS,
+  bookedIndex, outIndex, withOut, planWindow, availability, availText, resolveLocation, sortRows, summary, AVAIL_TONE, LAST_JOB_DAYS,
   jobRuns, movesFor, tagChecks, usagePct, isIdle, lastUsed, nearFilter, MOVE_LOOKAHEAD_DAYS, USAGE_DAYS,
 } from '../lib/equipmentPlan.js';
 import MovesStrip from './MovesStrip.jsx';
@@ -59,6 +60,8 @@ export default function EquipmentView({
   const [selected, setSelected] = useState(null); // { item, bar }
   const [editing, setEditing] = useState(null); // the item whose details are open
   const [form, setForm] = useState(null);
+  const [outForm, setOutForm] = useState(null); // book-out drawer: { equipment_id, from, to, text }
+  const [outSel, setOutSel] = useState(null); // an existing book-out: { item, run }
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState(loadPlan);
   const [locations, setLocations] = useState([]);
@@ -100,6 +103,7 @@ export default function EquipmentView({
   }, [win.from, win.to, onEnsureRange]);
 
   const booked = useMemo(() => bookedIndex(schedule), [schedule]);
+  const outDays = useMemo(() => outIndex(schedule), [schedule]);
   const jobsById = useMemo(() => new Map((jobs || []).map((j) => [j.id, j])), [jobs]);
   const pingById = useMemo(
     () => new Map((locations || []).filter((l) => l.seen_at).map((l) => [l.id, l])),
@@ -176,7 +180,7 @@ export default function EquipmentView({
 
         const laid = layoutLanes(bars);
         const bookedDays = runs.reduce((n, r) => n + r.entries.length, 0);
-        const avail = availability(item, booked.get(item.id), win);
+        const avail = availability(item, withOut(booked.get(item.id), outDays.get(item.id)), win);
         const loc = resolveLocation(item, {
           ping: pingById.get(item.id), staleDays, booked: booked.get(item.id), jobsById, windowStart: win.from,
         });
@@ -224,7 +228,7 @@ export default function EquipmentView({
       ) : null,
     }));
     return { buckets, counts, visible: shown, strip };
-  }, [equipment, entriesByItem, assignmentFor, byHomeBase, onlyBooked, search, activeFilter, myState, dayIndex,
+  }, [equipment, entriesByItem, outDays, assignmentFor, byHomeBase, onlyBooked, search, activeFilter, myState, dayIndex,
     windowStart, windowEnd, booked, win, pingById, staleDays, jobsById, plan.freeOnly, plan.near]);
   const groups = grouped.buckets;
 
@@ -429,8 +433,54 @@ export default function EquipmentView({
     );
   };
 
+  const openBookOut = (item, date) => {
+    const from = date || todayIso();
+    setOutForm({ equipment_id: item?.id || '', from, to: from, text: '' });
+  };
+
+  const submitBookOut = async () => {
+    setBusy(true);
+    try {
+      const r = await bookEquipmentOut(outForm);
+      setOutForm(null);
+      await onChanged?.();
+      showToast?.(`Booked out for ${r.days} day${r.days === 1 ? '' : 's'}`, 'success');
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeBookOut = async () => {
+    setBusy(true);
+    try {
+      await Promise.all(outSel.run.entries.map((e) => deleteScheduleEntry(e.id)));
+      setOutSel(null);
+      await onChanged?.();
+      showToast?.('Booking removed', 'success');
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const renderBar = (bar) => {
     const job = bar.run.sample;
+    // Booked out for servicing or non-project work: the note is the label.
+    if (NON_WORK.has(job.status)) {
+      return (
+        <div
+          className={`bar${bar.conflict ? ' is-conflict' : ''}`}
+          style={{ background: job.job_color || '#3b82f6' }}
+          title={`Out of use: ${job.job_name}\n${fmtLong(bar.start)} → ${fmtLong(bar.end)}${bar.conflict ? '\n⚠ Overlaps another booking' : ''}`}
+          onClick={(e) => { e.stopPropagation(); setOutSel({ item: bar.item, run: bar.run }); }}
+        >
+          <span className="bar-text">{job.job_name}</span>
+        </div>
+      );
+    }
     // Always the full text, truncated by CSS. Gating on day count was wrong:
     // the same span is 204px at day zoom and 72px at month zoom, so it hid
     // names that fit and showed names that did not.
@@ -500,6 +550,10 @@ export default function EquipmentView({
         </div>
         <span className="count-pill">{totalRows} items</span>
         {isAdmin && (
+          <button type="button" className="btn" onClick={() => openBookOut(null)}
+            title="Book kit out for servicing or non-project work">Book out</button>
+        )}
+        {isAdmin && (
           <button type="button" className="btn btn-primary" onClick={openNew}>+ Add equipment</button>
         )}
         <button type="button" className={`chip${mapOpen ? ' is-active' : ''}`} onClick={() => setMapOpen((v) => !v)}
@@ -526,6 +580,7 @@ export default function EquipmentView({
         renderLabel={renderLabel}
         renderBar={renderBar}
         highlight={win}
+        onCellClick={isAdmin ? (row, date) => openBookOut(row.item, date) : undefined}
         emptyMessage={plan.freeOnly ? 'Nothing is free for the whole window.' : 'No equipment matches these filters.'}
       />
       </div>
@@ -638,6 +693,82 @@ export default function EquipmentView({
               </div>
             </Section>
           </fieldset>
+        </Drawer>
+      )}
+
+      {outForm && (
+        <Drawer
+          title="Book out"
+          subtitle="Servicing or non-project work"
+          onClose={() => setOutForm(null)}
+          footer={
+            <>
+              <button className="btn" onClick={() => setOutForm(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                disabled={busy || !outForm.equipment_id || !outForm.text.trim() || !outForm.from || !outForm.to || outForm.to < outForm.from}
+                onClick={submitBookOut}
+              >
+                {busy ? 'Booking…' : 'Book out'}
+              </button>
+            </>
+          }
+        >
+          <label className="form-row">
+            <span className="form-label">Equipment</span>
+            <select
+              className="np-select"
+              value={outForm.equipment_id}
+              onChange={(e) => setOutForm((f) => ({ ...f, equipment_id: e.target.value }))}
+            >
+              <option value="">Choose an item…</option>
+              {[...equipment].sort((a, b) => a.name.localeCompare(b.name)).map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="form-row">
+            <span className="form-label">From</span>
+            <input type="date" className="np-date" value={outForm.from}
+              onChange={(e) => setOutForm((f) => ({ ...f, from: e.target.value, to: f.to < e.target.value ? e.target.value : f.to }))} />
+          </label>
+          <label className="form-row">
+            <span className="form-label">To (inclusive)</span>
+            <input type="date" className="np-date" value={outForm.to} min={outForm.from}
+              onChange={(e) => setOutForm((f) => ({ ...f, to: e.target.value }))} />
+          </label>
+          <label className="form-row">
+            <span className="form-label">Note</span>
+            <textarea
+              className="note-input"
+              rows={3}
+              value={outForm.text}
+              onChange={(e) => setOutForm((f) => ({ ...f, text: e.target.value }))}
+              placeholder="e.g. Annual service at depot"
+            />
+          </label>
+          <div style={{ fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+            The item shows as unavailable on these days, so it will not appear free in
+            the planner and allocating it to a job flags a clash.
+          </div>
+        </Drawer>
+      )}
+
+      {outSel && (
+        <Drawer
+          title={outSel.item.name}
+          subtitle="Booked out"
+          onClose={() => setOutSel(null)}
+          footer={isAdmin ? (
+            <button className="btn btn-danger" disabled={busy} onClick={removeBookOut}>Remove booking</button>
+          ) : null}
+        >
+          <Section title="Booking">
+            <KV label="Note">{outSel.run.sample.job_name}</KV>
+            <KV label="Out">{`${fmtLong(outSel.run.start)} → ${fmtLong(outSel.run.end)}`}</KV>
+            <KV label="Days">{outSel.run.entries.length}</KV>
+          </Section>
+          {!isAdmin && <div className="banner banner-warn">Only admins can change bookings.</div>}
         </Drawer>
       )}
 

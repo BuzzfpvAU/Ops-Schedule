@@ -83,6 +83,9 @@ export const bulkAssignSchedule = (data) =>
 export const quickEntry = (data) =>
   api('/schedule/quick', { method: 'POST', body: JSON.stringify(data) });
 
+export const bookEquipmentOut = (data) =>
+  api('/schedule/equipment-out', { method: 'POST', body: JSON.stringify(data) });
+
 export const deleteScheduleEntry = (id) =>
   api(`/schedule/${id}`, { method: 'DELETE' });
 
