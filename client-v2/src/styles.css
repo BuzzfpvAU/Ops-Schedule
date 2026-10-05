@@ -1851,3 +1851,5 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 }
 .cert-menu-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
 .cert-menu-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); }
+
+.cert-never { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }

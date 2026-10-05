@@ -1,20 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { Drawer, Section } from './ui.jsx';
 import { putMemberCerts, createCertType } from '../api.js';
-import { certStatus, CERT_LABEL } from '../lib/certs.js';
+import { certStatus, CERT_LABEL, NO_EXPIRY } from '../lib/certs.js';
 import { today as todayIso, fmtLong } from '../lib/dates.js';
 
 // One person's training and certifications. Anyone can read it; admins edit.
 // Ticking a certificate means "has held it" — the planner lists such people
 // and warns when the expiry has passed, so an expired record is kept.
 
-const TONE = { expired: 'danger', lapses: 'warn', soon: 'warn', nodate: 'mute', valid: 'ok' };
+const TONE = { expired: 'danger', lapses: 'warn', soon: 'warn', nodate: 'mute', valid: 'ok', never: 'ok' };
 
 export default function CertsDrawer({ member, types, held, isAdmin, onClose, onSaved, showToast }) {
   const mine = held.get(member.id) || new Map();
   const [state, setState] = useState(() => {
     const s = {};
-    for (const [id, expiry] of mine) s[id] = { on: true, expiry: expiry || '' };
+    for (const [id, expiry] of mine) {
+      s[id] = { on: true, never: expiry === NO_EXPIRY, expiry: expiry && expiry !== NO_EXPIRY ? expiry : '' };
+    }
     return s;
   });
   const [busy, setBusy] = useState(false);
@@ -27,14 +29,16 @@ export default function CertsDrawer({ member, types, held, isAdmin, onClose, onS
     [types, state],
   );
 
-  const set = (id, patch) => setState((s) => ({ ...s, [id]: { on: false, expiry: '', ...s[id], ...patch } }));
+  const set = (id, patch) => setState((s) => ({ ...s, [id]: { on: false, never: false, expiry: '', ...s[id], ...patch } }));
 
   const save = async () => {
     setBusy(true);
     try {
       const certs = Object.entries(state)
         .filter(([, v]) => v.on)
-        .map(([cert_type_id, v]) => ({ cert_type_id, expiry_date: v.expiry || null }));
+        .map(([cert_type_id, v]) => (v.never
+          ? { cert_type_id, no_expiry: true, expiry_date: null }
+          : { cert_type_id, expiry_date: v.expiry || null }));
       await putMemberCerts(member.id, certs);
       await onSaved?.();
       showToast?.('Certificates saved', 'success');
@@ -76,8 +80,8 @@ export default function CertsDrawer({ member, types, held, isAdmin, onClose, onS
       <Section title="Certificates">
         {shown.length === 0 && <div className="rl-sub">No certificates are set up yet.</div>}
         {shown.map((t) => {
-          const v = state[t.id] || { on: false, expiry: '' };
-          const status = v.on ? certStatus(v.expiry || null, { today }) : null;
+          const v = state[t.id] || { on: false, never: false, expiry: '' };
+          const status = v.on ? certStatus(v.never ? NO_EXPIRY : (v.expiry || null), { today }) : null;
           return (
             <div className="cert-row" key={t.id}>
               <label className="cert-name">
@@ -91,15 +95,26 @@ export default function CertsDrawer({ member, types, held, isAdmin, onClose, onS
                 {!t.active && <span className="rl-sub"> (retired)</span>}
               </label>
               {v.on && (isAdmin ? (
-                <input
-                  type="date"
-                  className="np-date"
-                  value={v.expiry}
-                  onChange={(e) => set(t.id, { expiry: e.target.value })}
-                  aria-label={`${t.name} expiry`}
-                />
+                <>
+                  <input
+                    type="date"
+                    className="np-date"
+                    value={v.never ? '' : v.expiry}
+                    disabled={v.never}
+                    onChange={(e) => set(t.id, { expiry: e.target.value })}
+                    aria-label={`${t.name} expiry`}
+                  />
+                  <label className="cert-never" title="This certificate does not expire">
+                    <input
+                      type="checkbox"
+                      checked={v.never}
+                      onChange={(e) => set(t.id, { never: e.target.checked })}
+                    />
+                    No expiry
+                  </label>
+                </>
               ) : (
-                <span className="rl-sub">{v.expiry ? fmtLong(v.expiry) : ''}</span>
+                <span className="rl-sub">{v.never ? '' : v.expiry ? fmtLong(v.expiry) : ''}</span>
               ))}
               {status && <span className={`tag tag-${TONE[status]}`}>{CERT_LABEL[status]}</span>}
             </div>

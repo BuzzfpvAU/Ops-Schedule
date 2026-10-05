@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { certStatus, heldIndex, candidatesFor, worstStatus } from '../src/lib/certs.js';
+import { certStatus, heldIndex, candidatesFor, worstStatus, NO_EXPIRY } from '../src/lib/certs.js';
 
 const today = '2026-10-05';
 
@@ -30,4 +30,17 @@ test('worstStatus summarises everything a person holds', () => {
   const mine = new Map([['msic', '2027-06-01'], ['asic', '2026-01-01']]);
   assert.equal(worstStatus(mine, { today }), 'expired');
   assert.equal(worstStatus(undefined, { today }), 'valid');
+});
+
+test('a certificate that never expires is current, never warned about, and sorts with the clean ones', () => {
+  assert.equal(certStatus(NO_EXPIRY, { today, jobEnd: '2030-01-01' }), 'never');
+  const held = heldIndex([
+    { member_id: 'a', cert_type_id: 'asic', expiry_date: null, no_expiry: 1 },
+    { member_id: 'b', cert_type_id: 'asic', expiry_date: null, no_expiry: 0 },
+  ]);
+  assert.equal(held.get('a').get('asic'), NO_EXPIRY);
+  assert.equal(held.get('b').get('asic'), null);
+  const got = candidatesFor([{ id: 'a', name: 'Al' }, { id: 'b', name: 'Bo' }], held, ['asic'], { today });
+  assert.deepEqual(got.map((c) => [c.member.id, c.worst]), [['a', 'valid'], ['b', 'nodate']]);
+  assert.equal(worstStatus(held.get('a'), { today }), 'valid');
 });

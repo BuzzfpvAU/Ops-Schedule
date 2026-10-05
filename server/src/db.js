@@ -486,6 +486,11 @@ export function initDb() {
       FOREIGN KEY (cert_type_id) REFERENCES cert_types(id) ON DELETE CASCADE
     );
   `);
+  // A certificate that never lapses (some licences have no expiry) is marked
+  // rather than left blank, so it is not mistaken for "expiry not recorded".
+  if (!db.pragma('table_info(member_certs)').some((c) => c.name === 'no_expiry')) {
+    db.exec('ALTER TABLE member_certs ADD COLUMN no_expiry INTEGER NOT NULL DEFAULT 0');
+  }
   if (!db.prepare('SELECT 1 FROM cert_types LIMIT 1').get()) {
     const seed = ['Confined Space', 'Working at Heights', 'RePL', 'AROC', 'BOSIET', 'MSIC', 'ASIC'];
     const ins = db.prepare('INSERT INTO cert_types (id, name, sort) VALUES (?, ?, ?)');

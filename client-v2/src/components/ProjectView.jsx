@@ -297,7 +297,7 @@ export default function ProjectView({
     const e = row.entity;
     if (row.kind === 'candidate') {
       const c = row.candidate;
-      const issues = c.checks.filter((k) => k.status !== 'valid');
+      const issues = c.checks.filter((k) => k.status !== 'valid' && k.status !== 'never');
       const tone = c.worst === 'expired' ? 'danger' : c.worst === 'nodate' ? 'mute' : 'warn';
       const typeName = (id) => certs.types.find((t) => t.id === id)?.name || 'Certificate';
       return (

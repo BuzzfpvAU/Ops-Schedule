@@ -95,3 +95,12 @@ test('a job keeps its required certificates', async () => {
   assert.deepEqual([...got.cert_type_ids].sort(), ['cert-asic', 'cert-msic']);
   assert.equal((await call('PUT', '/jobs/ghost', { cert_type_ids: [] })).status, 404);
 });
+
+test('a certificate can be saved as never expiring, and cannot also carry a date', async () => {
+  const ok = await call('PUT', '/members/m2', { certs: [{ cert_type_id: 'cert-asic', no_expiry: true }] });
+  assert.equal(ok.status, 200);
+  const held = (await (await call('GET', '/members')).json()).filter((h) => h.member_id === 'm2');
+  assert.deepEqual(held.map((h) => [h.cert_type_id, h.expiry_date, h.no_expiry]), [['cert-asic', null, 1]]);
+  const bad = await call('PUT', '/members/m2', { certs: [{ cert_type_id: 'cert-asic', no_expiry: true, expiry_date: '2027-01-01' }] });
+  assert.equal(bad.status, 400);
+});
