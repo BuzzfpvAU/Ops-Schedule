@@ -39,7 +39,7 @@ router.put('/types/:id', requireAdmin, (req, res) => {
 // ── What each person holds ──────────────────────────────────────────────
 
 router.get('/members', (req, res) => {
-  res.json(req.db.prepare('SELECT member_id, cert_type_id, expiry_date FROM member_certs').all());
+  res.json(req.db.prepare('SELECT member_id, cert_type_id, expiry_date, no_expiry FROM member_certs').all());
 });
 
 // Replace one person's set of certificates.
@@ -56,17 +56,22 @@ router.put('/members/:memberId', requireAdmin, (req, res) => {
     }
     if (seen.has(c.cert_type_id)) return res.status(400).json({ error: 'Duplicate certificate' });
     seen.add(c.cert_type_id);
+    if (c.no_expiry && c.expiry_date) {
+      return res.status(400).json({ error: 'A certificate cannot have both an expiry date and no expiry' });
+    }
     if (c.expiry_date && !ISO_DAY.test(c.expiry_date)) {
       return res.status(400).json({ error: 'expiry_date must be YYYY-MM-DD' });
     }
   }
   req.db.transaction(() => {
     req.db.prepare('DELETE FROM member_certs WHERE member_id = ?').run(req.params.memberId);
-    const ins = req.db.prepare('INSERT INTO member_certs (member_id, cert_type_id, expiry_date) VALUES (?, ?, ?)');
-    for (const c of certs) ins.run(req.params.memberId, c.cert_type_id, c.expiry_date || null);
+    const ins = req.db.prepare(
+      'INSERT INTO member_certs (member_id, cert_type_id, expiry_date, no_expiry) VALUES (?, ?, ?, ?)'
+    );
+    for (const c of certs) ins.run(req.params.memberId, c.cert_type_id, c.expiry_date || null, c.no_expiry ? 1 : 0);
   })();
   res.json(req.db.prepare(
-    'SELECT member_id, cert_type_id, expiry_date FROM member_certs WHERE member_id = ?'
+    'SELECT member_id, cert_type_id, expiry_date, no_expiry FROM member_certs WHERE member_id = ?'
   ).all(req.params.memberId));
 });
 
