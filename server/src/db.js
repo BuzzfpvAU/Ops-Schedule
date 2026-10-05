@@ -459,6 +459,39 @@ export function initDb() {
     `);
   }
 
+  // Training and certifications. cert_types is the business-wide list (admins
+  // can add to it); member_certs records who holds which, with an optional
+  // expiry. A record means "has held it" — an expired one is kept and
+  // flagged rather than hidden. job_required_certs is what a job needs.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cert_types (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1,
+      sort INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS member_certs (
+      member_id TEXT NOT NULL,
+      cert_type_id TEXT NOT NULL,
+      expiry_date TEXT,
+      PRIMARY KEY (member_id, cert_type_id),
+      FOREIGN KEY (member_id) REFERENCES team_members(id) ON DELETE CASCADE,
+      FOREIGN KEY (cert_type_id) REFERENCES cert_types(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS job_required_certs (
+      job_id TEXT NOT NULL,
+      cert_type_id TEXT NOT NULL,
+      PRIMARY KEY (job_id, cert_type_id),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+      FOREIGN KEY (cert_type_id) REFERENCES cert_types(id) ON DELETE CASCADE
+    );
+  `);
+  if (!db.prepare('SELECT 1 FROM cert_types LIMIT 1').get()) {
+    const seed = ['Confined Space', 'Working at Heights', 'RePL', 'AROC', 'BOSIET', 'MSIC', 'ASIC'];
+    const ins = db.prepare('INSERT INTO cert_types (id, name, sort) VALUES (?, ?, ?)');
+    seed.forEach((name, i) => ins.run(`cert-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, name, i));
+  }
+
   // Equipment location history (AirTag pings + manual updates)
   db.exec(`
     CREATE TABLE IF NOT EXISTS equipment_locations (

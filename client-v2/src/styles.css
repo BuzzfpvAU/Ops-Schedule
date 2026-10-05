@@ -1833,3 +1833,11 @@ body.is-report #root { height: auto; }
 .bar.is-resizable::before { left: 0; }
 .bar.is-resizable::after { right: 0; }
 body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user-select: none; }
+
+/* Training & certifications */
+.cert-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
+.cert-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.cert-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cert-btn { flex: none; padding: 1px 8px; font-size: 11px; }
+.cert-btn.is-warn { border-color: var(--warn); color: var(--warn); }
+.cert-btn.is-danger { border-color: var(--danger); color: var(--danger); }
