@@ -35,6 +35,9 @@ export default function TeamView({
   const [busy, setBusy] = useState(false);
   const [certsFor, setCertsFor] = useState(null); // member whose certificates are open
   const certs = useCerts();
+  // Certificate filter: people who have held every ticked certificate.
+  const [certFilter, setCertFilter] = useState([]);
+  const [certMenu, setCertMenu] = useState(false);
   const [noteText, setNoteText] = useState('');
 
   const isAdmin = !!currentUser?.isAdmin;
@@ -113,6 +116,7 @@ export default function TeamView({
 
     const rows = members
       .filter((m) => !stateFilter.length || stateFilter.includes(m.location || 'No state'))
+      .filter((m) => !certFilter.length || certFilter.every((id) => certs.held.get(m.id)?.has(id)))
       .filter((m) => match(m.name, m.role, m.location))
       .map((member) => {
         const entries = entriesByMember.get(member.id) || [];
@@ -163,7 +167,7 @@ export default function TeamView({
       });
     }
     return buckets;
-  }, [members, entriesByMember, unallocatedRows, search, stateFilter, myState, currentUser]);
+  }, [members, entriesByMember, unallocatedRows, search, stateFilter, myState, currentUser, certFilter, certs.held]);
 
   const canEdit = (memberId) => !isViewer && (isAdmin || memberId === currentUser?.memberId);
 
@@ -270,8 +274,15 @@ export default function TeamView({
   // Amber/red on the button when something a person holds has lapsed or is
   // about to, so it shows without opening anyone.
   const certTone = (m) => {
-    const s = worstStatus(certs.held.get(m.id), { today: todayIso() });
+    const s = worstCertStatus(m);
     return s === 'expired' ? 'danger' : s === 'soon' || s === 'lapses' ? 'warn' : '';
+  };
+  // With a certificate filter on, judge only the ones being filtered for.
+  const worstCertStatus = (m) => {
+    const ctx = { today: todayIso() };
+    const mine = certs.held.get(m.id);
+    if (!certFilter.length) return worstStatus(mine, ctx);
+    return worstStatus(new Map(certFilter.map((id) => [id, mine?.get(id) ?? null])), ctx);
   };
   const certTitle = (m) => {
     const n = certs.held.get(m.id)?.size || 0;
@@ -359,6 +370,44 @@ export default function TeamView({
               {st}
             </button>
           ))}
+        </div>
+
+        <div className="cert-filter">
+          <button
+            type="button"
+            className={`chip${certFilter.length ? ' is-active' : ''}`}
+            aria-expanded={certMenu}
+            onClick={() => setCertMenu((o) => !o)}
+            title="Show only people who have held these certificates"
+          >
+            Certs{certFilter.length ? ` · ${certFilter.length}` : ''} ▾
+          </button>
+          {certMenu && (
+            <>
+              <div className="cert-menu-scrim" onClick={() => setCertMenu(false)} />
+              <div className="cert-menu" role="group" aria-label="Filter by certificate">
+                {certs.types.filter((t) => t.active || certFilter.includes(t.id)).map((t) => (
+                  <label key={t.id} className="cert-menu-item">
+                    <input
+                      type="checkbox"
+                      checked={certFilter.includes(t.id)}
+                      onChange={() => setCertFilter((cur) => (
+                        cur.includes(t.id) ? cur.filter((x) => x !== t.id) : [...cur, t.id]
+                      ))}
+                    />
+                    {t.name}
+                  </label>
+                ))}
+                {certs.types.length === 0 && <span className="rl-sub">No certificates set up.</span>}
+                <div className="cert-menu-foot">
+                  <span className="rl-sub">Has held all ticked</span>
+                  {certFilter.length > 0 && (
+                    <button type="button" className="btn" onClick={() => setCertFilter([])}>Clear</button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="toolbar-spacer" />

@@ -17,6 +17,7 @@ import notificationRoutes from './server/src/routes/notifications.js';
 import seedRoutes from './server/src/routes/seed.js';
 import equipmentRoutes from './server/src/routes/equipment.js';
 import geocodeRoutes from './server/src/routes/geocode.js';
+import certRoutes from './server/src/routes/certs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +72,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/team-members', requireAuth, teamRoutes);
 app.use('/api/jobs', requireAuth, jobRoutes);
 app.use('/api/schedule', requireAuth, scheduleRoutes);
+app.use('/api/certs', requireAuth, certRoutes);
 app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
 app.use('/api/seed', requireAuth, requireAdmin, seedRoutes);
