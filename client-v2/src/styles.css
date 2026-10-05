@@ -1841,3 +1841,13 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 .cert-btn { flex: none; padding: 1px 8px; font-size: 11px; }
 .cert-btn.is-warn { border-color: var(--warn); color: var(--warn); }
 .cert-btn.is-danger { border-color: var(--danger); color: var(--danger); }
+.cert-filter { position: relative; flex: none; }
+.cert-menu-scrim { position: fixed; inset: 0; z-index: 40; }
+.cert-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 41;
+  min-width: 220px; padding: 8px 10px;
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.cert-menu-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+.cert-menu-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); }
