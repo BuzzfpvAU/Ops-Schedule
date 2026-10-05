@@ -189,3 +189,16 @@ export const adjustBooking = (assignmentId, edge, delta) =>
     method: 'POST',
     body: JSON.stringify({ edge, delta }),
   });
+
+// ── Training & certifications ───────────────────────────────────────────
+export const getCertTypes = () => api('/certs/types');
+export const createCertType = (name) =>
+  api('/certs/types', { method: 'POST', body: JSON.stringify({ name }) });
+export const updateCertType = (id, data) =>
+  api(`/certs/types/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+export const getMemberCerts = () => api('/certs/members');
+export const putMemberCerts = (memberId, certs) =>
+  api(`/certs/members/${memberId}`, { method: 'PUT', body: JSON.stringify({ certs }) });
+export const getJobCerts = (jobId) => api(`/certs/jobs/${jobId}`);
+export const putJobCerts = (jobId, cert_type_ids) =>
+  api(`/certs/jobs/${jobId}`, { method: 'PUT', body: JSON.stringify({ cert_type_ids }) });

@@ -1,6 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Avatar, SearchBox } from './ui.jsx';
+import CertsDrawer from './CertsDrawer.jsx';
+import useCerts from '../lib/useCerts.js';
+import { worstStatus } from '../lib/certs.js';
 import { STATES, STATUSES, quickEntry, deleteScheduleEntry } from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, isWork, isQuickJob, orderStatesFor, NON_WORK } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
@@ -30,6 +33,8 @@ export default function TeamView({
   const [stateFilter, setStateFilter] = useState([]);
   const [dayPanel, setDayPanel] = useState(null); // { member, date, entries }
   const [busy, setBusy] = useState(false);
+  const [certsFor, setCertsFor] = useState(null); // member whose certificates are open
+  const certs = useCerts();
   const [noteText, setNoteText] = useState('');
 
   const isAdmin = !!currentUser?.isAdmin;
@@ -250,8 +255,27 @@ export default function TeamView({
           <span className="rl-sub">{sub}</span>
         </span>
         <span className="rl-sub" style={{ flex: 'none' }}>{row.workDays ? `${row.workDays}d` : ''}</span>
+        <button
+          type="button"
+          className={`btn cert-btn${certTone(m) ? ` is-${certTone(m)}` : ''}`}
+          title={certTitle(m)}
+          onClick={(e) => { e.stopPropagation(); setCertsFor(m); }}
+        >
+          Certs{certs.held.get(m.id)?.size ? ` ${certs.held.get(m.id).size}` : ''}
+        </button>
       </>
     );
+  };
+
+  // Amber/red on the button when something a person holds has lapsed or is
+  // about to, so it shows without opening anyone.
+  const certTone = (m) => {
+    const s = worstStatus(certs.held.get(m.id), { today: todayIso() });
+    return s === 'expired' ? 'danger' : s === 'soon' || s === 'lapses' ? 'warn' : '';
+  };
+  const certTitle = (m) => {
+    const n = certs.held.get(m.id)?.size || 0;
+    return n ? `Training & certifications — ${n} held` : 'Training & certifications';
   };
 
   const renderBar = (bar, row) => {
@@ -367,6 +391,18 @@ export default function TeamView({
         onCellClick={(row, date) => openDay(row, date)}
         emptyMessage="No people match this filter."
       />
+
+      {certsFor && (
+        <CertsDrawer
+          member={certsFor}
+          types={certs.types}
+          held={certs.held}
+          isAdmin={!!currentUser?.isAdmin}
+          onClose={() => setCertsFor(null)}
+          onSaved={certs.reload}
+          showToast={showToast}
+        />
+      )}
 
       {dayPanel && (
         <Drawer

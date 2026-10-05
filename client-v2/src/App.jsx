@@ -312,6 +312,7 @@ export default function App() {
           currentUser={user}
           members={members}
           equipment={equipment}
+          schedule={schedule}
           onEnsureRange={onEnsureRange}
           {...common}
         />

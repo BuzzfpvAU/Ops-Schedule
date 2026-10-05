@@ -45,7 +45,10 @@ function Field({ label, children }) {
   );
 }
 
-export default function JobCard({ jobId, card, readiness, members, equipment, isAdmin, onChanged, showToast }) {
+export default function JobCard({
+  jobId, card, readiness, members, equipment, isAdmin, onChanged, showToast,
+  certTypes = [], requiredCerts = [], onToggleCert, candidateCount = 0,
+}) {
   const job = card?.job;
   const [form, setForm] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -368,6 +371,34 @@ export default function JobCard({ jobId, card, readiness, members, equipment, is
       </Section>
 
       {/* ── Crew ── */}
+      {/* ── Required certificates ── */}
+      <Section title="Required certificates">
+        <div className="cert-chips">
+          {certTypes.filter((t) => t.active || requiredCerts.includes(t.id)).map((t) => {
+            const on = requiredCerts.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                className={`chip${on ? ' is-active' : ''}`}
+                disabled={!isAdmin}
+                aria-pressed={on}
+                onClick={() => onToggleCert?.(t.id)}
+              >
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+        <div className="rl-sub" style={{ marginTop: 8, lineHeight: 1.5 }}>
+          {requiredCerts.length === 0
+            ? 'Pick what this job needs and staff who have held it are listed on the timeline above.'
+            : candidateCount === 0
+              ? 'Nobody has held all of these.'
+              : `${candidateCount} ${candidateCount === 1 ? 'person has' : 'people have'} held all of these — see “Qualified staff” on the timeline.`}
+        </div>
+      </Section>
+
       <Section title={`Crew (${crew.length} of ${job.crew_size || 1})`}>
         {crew.length === 0 && <div className="rl-sub">Nobody booked yet.</div>}
         {crew.map((c) => (

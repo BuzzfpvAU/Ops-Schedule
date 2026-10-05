@@ -5,11 +5,13 @@ import JobCard from './JobCard.jsx';
 import NotesPanel from './NotesPanel.jsx';
 import {
   JOB_STATUSES, STATUSES, getJobPlanner, addJobDayNote, deleteJobDayNote,
-  getJobCard, getJobReadiness, shiftJobBooking,
+  getJobCard, getJobReadiness, shiftJobBooking, getJobCerts, putJobCerts, bulkAssignSchedule,
 } from '../api.js';
-import { buildBars, layoutLanes } from '../lib/model.js';
+import { buildBars, layoutLanes, bookingWindow } from '../lib/model.js';
+import useCerts from '../lib/useCerts.js';
+import { candidatesFor, CERT_LABEL } from '../lib/certs.js';
 import useBarDrag from '../lib/useBarDrag.js';
-import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
+import { diffDays, fmtShort, fmtLong, rangeOf, today as todayIso } from '../lib/dates.js';
 
 // ── View 4: one project in detail ───────────────────────────────────────
 //
@@ -24,7 +26,7 @@ import { diffDays, fmtShort, fmtLong } from '../lib/dates.js';
 
 export default function ProjectView({
   jobId, onBack, days, zoom, labelWidth, scrollCmd, onReachEdge,
-  currentUser, members, equipment, onEnsureRange, onChanged, showToast,
+  currentUser, members, equipment, schedule, onEnsureRange, onChanged, showToast,
 }) {
   const [data, setData] = useState(null);
   // The card sits under the timeline rather than replacing it, so a change
@@ -44,6 +46,8 @@ export default function ProjectView({
   const [link, setLink] = useState(null);
   const [focusTick, setFocusTick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const certs = useCerts();
+  const [requiredCerts, setRequiredCerts] = useState([]);
 
   const isViewer = !!currentUser?.isViewer;
   const windowStart = days[0];
@@ -75,6 +79,23 @@ export default function ProjectView({
   }, [jobId, showToast]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    getJobCerts(jobId).then((r) => setRequiredCerts(r.cert_type_ids || [])).catch(() => setRequiredCerts([]));
+  }, [jobId]);
+
+  const toggleCert = async (typeId) => {
+    const next = requiredCerts.includes(typeId)
+      ? requiredCerts.filter((id) => id !== typeId)
+      : [...requiredCerts, typeId];
+    const before = requiredCerts;
+    setRequiredCerts(next);
+    try {
+      await putJobCerts(jobId, next);
+    } catch (e) {
+      setRequiredCerts(before);
+      showToast?.(e.message, 'error');
+    }
+  };
   useEffect(() => { loadCard(); }, [loadCard]);
 
   // An edit on the card can move the job's dates or its crew, so the timeline
@@ -154,6 +175,48 @@ export default function ProjectView({
     };
   };
 
+  const jobWindow = useMemo(
+    () => bookingWindow(data?.job, card?.crew),
+    [data?.job, card?.crew],
+  );
+
+  const candidates = useMemo(() => {
+    const onJob = new Set([...(data?.people || []), ...(data?.unbooked || [])].map((r) => r.id));
+    const pool = (members || []).filter((m) => !onJob.has(m.id));
+    return candidatesFor(pool, certs.held, requiredCerts, { today: todayIso(), jobEnd: jobWindow?.to });
+  }, [data, members, certs.held, requiredCerts, jobWindow]);
+
+  // A candidate's row shows what they are already committed to, faintly.
+  const buildCandidateRow = (c) => {
+    const entries = (schedule || []).filter((e) => e.team_member_id === c.member.id && e.job_id !== jobId);
+    const bars = [];
+    for (const run of buildBars(entries, (e) => e.job_id)) {
+      const geo = clip(run.start, run.end);
+      if (geo) bars.push({ ...geo, key: `cand-${c.member.id}-${run.start}-${run.sample.job_id}`, kind: 'other', run, row: c.member });
+    }
+    const laid = layoutLanes(bars);
+    return { id: c.member.id, entity: c.member, kind: 'candidate', candidate: c, bars: laid.bars, lanes: laid.lanes, noteCount: 0 };
+  };
+
+  const bookCandidate = async (member) => {
+    if (!jobWindow) {
+      showToast?.('Set a planned start in the job card before booking crew', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await bulkAssignSchedule({
+        team_member_id: member.id, job_id: jobId, dates: rangeOf(jobWindow.from, jobWindow.to), status: 'tentative',
+      });
+      await refreshAll();
+      showToast?.(`${member.name} booked for ${diffDays(jobWindow.from, jobWindow.to) + 1} days`, 'success');
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const groups = useMemo(() => {
     if (!data) return [];
     const out = [];
@@ -166,6 +229,17 @@ export default function ProjectView({
 
     if (people.length) out.push({ key: 'crew', label: `Crew`, rows: people });
     if (equipment.length) out.push({ key: 'equipment', label: 'Equipment', rows: equipment });
+    // Everyone who has held every required certificate and is not already on
+    // the job, with their other bookings drawn so clashes show before anyone
+    // is booked. Expired holders are included and flagged.
+    if (candidates.length) {
+      out.push({
+        key: 'candidates',
+        label: 'Qualified staff',
+        rows: candidates.map((c) => buildCandidateRow(c)),
+        meta: <span className="tag tag-mute" style={{ marginLeft: 6 }}>not on this job</span>,
+      });
+    }
     if (unbooked.length) {
       out.push({
         key: 'unbooked',
@@ -175,17 +249,18 @@ export default function ProjectView({
       });
     }
     return out;
-  }, [data, dayIndex, windowStart, windowEnd, showSnippets]);
+  }, [data, dayIndex, windowStart, windowEnd, showSnippets, candidates, schedule]);
 
   // A click on the timeline links the notes composer to that row and day.
   const openCell = (row, date) => {
+    if (row.kind === 'candidate') return; // not on this job: nothing to log against
     setLink({ rowId: row.id, date });
     setNotesOpen(true);
     setFocusTick((t) => t + 1);
   };
 
   const noteRows = useMemo(
-    () => groups.flatMap((g) => g.rows.map((r) => ({ id: r.id, name: r.entity.name }))),
+    () => groups.flatMap((g) => g.rows.filter((r) => r.kind !== 'candidate').map((r) => ({ id: r.id, name: r.entity.name }))),
     [groups],
   );
 
@@ -220,6 +295,42 @@ export default function ProjectView({
 
   const renderLabel = (row) => {
     const e = row.entity;
+    if (row.kind === 'candidate') {
+      const c = row.candidate;
+      const issues = c.checks.filter((k) => k.status !== 'valid');
+      const tone = c.worst === 'expired' ? 'danger' : c.worst === 'nodate' ? 'mute' : 'warn';
+      const typeName = (id) => certs.types.find((t) => t.id === id)?.name || 'Certificate';
+      return (
+        <>
+          <Avatar name={e.name} color={e.color} />
+          <span className="rl">
+            <span className="rl-top">
+              <span className="rl-name">{e.name}</span>
+              {issues.length > 0 && (
+                <span
+                  className={`tag tag-${tone}`}
+                  title={issues.map((k) => `${typeName(k.typeId)}: ${CERT_LABEL[k.status]}${k.expiry ? ` (${fmtShort(k.expiry)})` : ''}`).join('\n')}
+                >
+                  ⚠ {issues.length === 1 ? CERT_LABEL[issues[0].status] : `${issues.length} to check`}
+                </span>
+              )}
+            </span>
+            <span className="rl-sub">{e.role || e.location || ''}</span>
+          </span>
+          {currentUser?.isAdmin && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={(ev) => { ev.stopPropagation(); bookCandidate(e); }}
+              title={jobWindow ? `Book for ${fmtShort(jobWindow.from)} – ${fmtShort(jobWindow.to)}` : 'Set planned dates first'}
+            >
+              + Book
+            </button>
+          )}
+        </>
+      );
+    }
     return (
       <>
         {row.kind === 'person'
@@ -446,6 +557,7 @@ export default function ProjectView({
             renderLabel={renderLabel}
             renderBar={renderBar}
             renderOverlay={renderOverlay}
+            highlight={jobWindow && jobWindow.to >= jobWindow.from ? jobWindow : undefined}
             onCellClick={(row, date) => openCell(row, date)}
             emptyMessage="Nobody and nothing is booked on this project yet."
           />
@@ -486,6 +598,10 @@ export default function ProjectView({
                     isAdmin={!!currentUser?.isAdmin}
                     onChanged={refreshAll}
                     showToast={showToast}
+                    certTypes={certs.types}
+                    requiredCerts={requiredCerts}
+                    onToggleCert={toggleCert}
+                    candidateCount={candidates.length}
                   />
                 </div>
               )}
