@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react';
 import Timeline, { rowHeight } from './Timeline.jsx';
 import { SearchBox } from './ui.jsx';
 import NewProjectDialog from './NewProjectDialog.jsx';
+import CleanupDrawer from './CleanupDrawer.jsx';
+import { pastJobs } from '../lib/cleanup.js';
 import { JOB_STATUSES, STATES, shiftJob } from '../api.js';
 import useBarDrag from '../lib/useBarDrag.js';
 import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor, splitAroundSpan } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
-import { diffDays, fmtLong } from '../lib/dates.js';
+import { diffDays, fmtLong, today as todayIso } from '../lib/dates.js';
 
 // ── View 1: jobs on a timeline, grouped by the state managing them ──────
 //
@@ -20,6 +22,8 @@ const KIT_H = 10;
 export default function ProjectsView({ jobs, schedule, equipment = [], days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, onChanged, currentUser, showToast }) {
   const isAdmin = !!currentUser?.isAdmin;
   const [creating, setCreating] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const past = useMemo(() => pastJobs(jobs, todayIso()), [jobs]);
   const [collapsed, setCollapsed] = useState({});
   const [statusFilter, setStatusFilter] = useState('open');
   const [search, setSearch] = useState('');
@@ -293,6 +297,15 @@ export default function ProjectsView({ jobs, schedule, equipment = [], days, zoo
         {isAdmin && (
           <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New project</button>
         )}
+        {isAdmin && (
+          <button
+            className="btn"
+            onClick={() => setCleaning(true)}
+            title="Archive projects whose last scheduled day has passed"
+          >
+            Clean up{past.length ? ` (${past.length})` : ''}
+          </button>
+        )}
         {picked.size > 0 && !focus && (
           <>
             <button className="btn btn-primary" onClick={() => setFocus(true)}>
@@ -339,6 +352,15 @@ export default function ProjectsView({ jobs, schedule, equipment = [], days, zoo
         renderOverlay={renderOverlay}
         emptyMessage={focus ? 'None of the selected projects fall inside this date window — scroll the timeline or press Show all.' : 'No jobs fall inside this date window.'}
       />
+
+      {cleaning && (
+        <CleanupDrawer
+          jobs={past}
+          onClose={() => setCleaning(false)}
+          onDone={() => onChanged?.()}
+          showToast={showToast}
+        />
+      )}
 
       {creating && (
         <NewProjectDialog
