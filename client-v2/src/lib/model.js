@@ -109,6 +109,22 @@ export function groupByEntity(entries) {
   return map;
 }
 
+/**
+ * Split a run of kit days around the crew's span: the part inside it and any
+ * parts before or after, flagged `beyond`. With no crew span there is nothing
+ * to be beyond, so the run comes back whole.
+ */
+export function splitAroundSpan(start, end, span) {
+  if (!span) return [{ start, end, beyond: false }];
+  const out = [];
+  if (start < span.start) out.push({ start, end: end < span.start ? end : addDays(span.start, -1), beyond: true });
+  const from = start > span.start ? start : span.start;
+  const to = end < span.end ? end : span.end;
+  if (from <= to) out.push({ start: from, end: to, beyond: false });
+  if (end > span.end) out.push({ start: start > span.end ? start : addDays(span.end, 1), end, beyond: true });
+  return out;
+}
+
 /** Group entries by job. */
 export function groupByJob(entries) {
   const map = new Map();

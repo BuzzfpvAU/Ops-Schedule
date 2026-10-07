@@ -1855,3 +1855,18 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 .cert-never { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
 
 .proj-pick { flex: none; margin: 0 2px 0 0; cursor: pointer; }
+
+/* Projects page: kit as a thin line under the crew bar; amber where it runs
+   outside the crew's dates. */
+.kit-line {
+  position: absolute;
+  bottom: 3px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-mute);
+  opacity: 0.75;
+  cursor: pointer;
+  z-index: 2;
+}
+.kit-line.is-beyond { background: var(--warn); opacity: 1; }
+.kit-line:hover { height: 6px; }

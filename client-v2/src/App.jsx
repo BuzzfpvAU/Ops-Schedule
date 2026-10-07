@@ -300,6 +300,7 @@ export default function App() {
         <ProjectsView
           jobs={jobs}
           schedule={schedule}
+          equipment={equipment}
           onOpenProject={setOpenProjectId}
           currentUser={user}
           {...common}
