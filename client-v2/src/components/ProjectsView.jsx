@@ -21,6 +21,19 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
   const [collapsed, setCollapsed] = useState({});
   const [statusFilter, setStatusFilter] = useState('open');
   const [search, setSearch] = useState('');
+  // Projects ticked for a side-by-side look. Ticking only marks them; the
+  // list narrows when "Show only selected" is pressed, so several can be
+  // picked without the rest vanishing after the first tick.
+  const [picked, setPicked] = useState(() => new Set());
+  const [focus, setFocus] = useState(false);
+
+  const togglePick = (id) => setPicked((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.size === 0) setFocus(false);
+    return next;
+  });
+  const clearPicks = () => { setPicked(new Set()); setFocus(false); };
 
   const dayIndex = useMemo(() => {
     const m = new Map();
@@ -49,6 +62,9 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     const match = makeMatcher(search);
     const visible = jobs.filter((j) => {
       if (j.archived || isQuickJob(j)) return false;
+      // Focused on a selection: exactly those projects, whatever the search
+      // and status filters say, so a ticked project can never be filtered away.
+      if (focus) return picked.has(j.id);
       if (!match(j.code, j.name, j.description, j.client, j.lead_name, j.state, j.job_number)) return false;
       if (statusFilter === 'open') return !['complete', 'cancelled'].includes(j.status);
       if (statusFilter === 'all') return true;
@@ -92,16 +108,20 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
 
     // A job's managing state — explicit on the job, else inherited from the
     // lead's base location, which is what the server already does.
+    const byStart = (a, z) => {
+      const as = a.job.planned_start || a.job.roster_start || '9999';
+      const zs = z.job.planned_start || z.job.roster_start || '9999';
+      return as.localeCompare(zs) || (a.job.code || '').localeCompare(z.job.code || '');
+    };
+    // The selection is listed together as one group rather than split by state.
+    if (focus) return [{ key: 'selected', label: 'Selected projects', rows: rows.sort(byStart) }];
+
     return bucketBy(rows, (r) => r.job.state, orderStatesFor(myState, STATES), 'No state').map((b) => ({
       key: b.key,
       label: b.key,
-      rows: b.rows.sort((a, z) => {
-        const as = a.job.planned_start || a.job.roster_start || '9999';
-        const zs = z.job.planned_start || z.job.roster_start || '9999';
-        return as.localeCompare(zs) || (a.job.code || '').localeCompare(z.job.code || '');
-      }),
+      rows: b.rows.sort(byStart),
     }));
-  }, [jobs, entriesByJob, statusFilter, search, myState, dayIndex, windowStart, windowEnd]);
+  }, [jobs, entriesByJob, statusFilter, search, myState, dayIndex, windowStart, windowEnd, focus, picked]);
 
   // Drill into the single-project view; the old summary drawer is superseded
   // by it, since that view shows the same crew and kit plus the day log.
@@ -113,6 +133,14 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     const understaffed = (job.crew_count || 0) < (job.crew_size || 1);
     return (
       <>
+        <input
+          type="checkbox"
+          className="proj-pick"
+          checked={picked.has(job.id)}
+          onChange={() => togglePick(job.id)}
+          aria-label={`Select ${job.name}`}
+          title="Tick several projects, then Show only selected"
+        />
         <span className="swatch" style={{ background: job.color || '#475569' }} />
         <button
           type="button"
@@ -224,6 +252,19 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         {isAdmin && (
           <button className="btn btn-primary" onClick={() => setCreating(true)}>+ New project</button>
         )}
+        {picked.size > 0 && !focus && (
+          <>
+            <button className="btn btn-primary" onClick={() => setFocus(true)}>
+              Show only selected ({picked.size})
+            </button>
+            <button className="btn" onClick={clearPicks}>Clear</button>
+          </>
+        )}
+        {focus && (
+          <button className="btn" onClick={clearPicks} title="Back to every project">
+            Showing {shownCount} of {picked.size} selected — Show all
+          </button>
+        )}
         <div className="toolbar-spacer" />
         <div className="legend">
           <span className="legend-item">
@@ -248,7 +289,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}
         renderLabel={renderLabel}
         renderBar={renderBar}
-        emptyMessage="No jobs fall inside this date window."
+        emptyMessage={focus ? 'None of the selected projects fall inside this date window — scroll the timeline or press Show all.' : 'No jobs fall inside this date window.'}
       />
 
       {creating && (
