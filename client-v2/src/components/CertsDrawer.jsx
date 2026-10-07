@@ -96,14 +96,15 @@ export default function CertsDrawer({ member, types, held, isAdmin, onClose, onS
               </label>
               {v.on && (isAdmin ? (
                 <>
-                  <input
-                    type="date"
-                    className="np-date"
-                    value={v.never ? '' : v.expiry}
-                    disabled={v.never}
-                    onChange={(e) => set(t.id, { expiry: e.target.value })}
-                    aria-label={`${t.name} expiry`}
-                  />
+                  {!v.never && (
+                    <input
+                      type="date"
+                      className="np-date"
+                      value={v.expiry}
+                      onChange={(e) => set(t.id, { expiry: e.target.value })}
+                      aria-label={`${t.name} expiry`}
+                    />
+                  )}
                   <label className="cert-never" title="This certificate does not expire">
                     <input
                       type="checkbox"
