@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildBars, layoutLanes, bucketBy, conflictDays, groupByEntity, groupByJob, isWork, isQuickJob, orderStatesFor,
+  splitAroundSpan,
 } from '../src/lib/model.js';
 import {
   addDays, diffDays, rangeOf, monthBands, isWeekend, parseISO, isoOf, fmtRange,
@@ -600,4 +601,25 @@ test('a bar with neither geometry nor dates shares lane 0 rather than claiming i
 
 test('lane count never drops below one, even with no bars', () => {
   assert.equal(layoutLanes([]).lanes, 1);
+});
+
+test('splitAroundSpan: kit inside, before and after the crew span', () => {
+  const crew = { start: '2026-10-10', end: '2026-10-14' };
+  assert.deepEqual(splitAroundSpan('2026-10-11', '2026-10-13', crew), [
+    { start: '2026-10-11', end: '2026-10-13', beyond: false },
+  ]);
+  assert.deepEqual(splitAroundSpan('2026-10-08', '2026-10-16', crew), [
+    { start: '2026-10-08', end: '2026-10-09', beyond: true },
+    { start: '2026-10-10', end: '2026-10-14', beyond: false },
+    { start: '2026-10-15', end: '2026-10-16', beyond: true },
+  ]);
+  assert.deepEqual(splitAroundSpan('2026-10-01', '2026-10-03', crew), [
+    { start: '2026-10-01', end: '2026-10-03', beyond: true },
+  ]);
+  assert.deepEqual(splitAroundSpan('2026-10-20', '2026-10-22', crew), [
+    { start: '2026-10-20', end: '2026-10-22', beyond: true },
+  ]);
+  assert.deepEqual(splitAroundSpan('2026-10-01', '2026-10-03', null), [
+    { start: '2026-10-01', end: '2026-10-03', beyond: false },
+  ]);
 });

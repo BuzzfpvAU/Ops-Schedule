@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import Timeline from './Timeline.jsx';
+import Timeline, { rowHeight } from './Timeline.jsx';
 import { SearchBox } from './ui.jsx';
 import NewProjectDialog from './NewProjectDialog.jsx';
 import { JOB_STATUSES, STATES, shiftJob } from '../api.js';
 import useBarDrag from '../lib/useBarDrag.js';
-import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor } from '../lib/model.js';
+import { buildBars, groupByJob, bucketBy, isQuickJob, orderStatesFor, splitAroundSpan } from '../lib/model.js';
 import { makeMatcher } from '../lib/search.js';
 import { diffDays, fmtLong } from '../lib/dates.js';
 
@@ -15,7 +15,9 @@ import { diffDays, fmtLong } from '../lib/dates.js';
 // really booked — draws solid on top. Where they disagree, the gap is the
 // point of the view.
 
-export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, onChanged, currentUser, showToast }) {
+const KIT_H = 10;
+
+export default function ProjectsView({ jobs, schedule, equipment = [], days, zoom, labelWidth, myState, scrollCmd, onReachEdge, onOpenProject, onChanged, currentUser, showToast }) {
   const isAdmin = !!currentUser?.isAdmin;
   const [creating, setCreating] = useState(false);
   const [collapsed, setCollapsed] = useState({});
@@ -57,6 +59,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
   };
 
   const entriesByJob = useMemo(() => groupByJob(schedule), [schedule]);
+  const kitIds = useMemo(() => new Set((equipment || []).map((e) => e.id)), [equipment]);
 
   const groups = useMemo(() => {
     const match = makeMatcher(search);
@@ -80,10 +83,13 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         bars.push({ ...planned, key: `plan-${job.id}`, kind: 'planned', job, lane: 0 });
       }
 
-      // Rostered days — what is actually booked. Merged per contiguous run so
-      // a job that pauses over a weekend shows two bars, not one.
+      // Rostered days — the people actually booked. Merged per contiguous run
+      // so a job that pauses over a weekend shows two bars, not one. Kit is
+      // drawn separately, as a thin line under the bar.
       const entries = entriesByJob.get(job.id) || [];
-      const runs = buildBars(entries, (e) => e.job_id);
+      const crewEntries = entries.filter((e) => !kitIds.has(e.team_member_id));
+      const kitEntries = entries.filter((e) => kitIds.has(e.team_member_id));
+      const runs = buildBars(crewEntries, (e) => e.job_id);
       for (const run of runs) {
         const geo = clip(run.start, run.end);
         if (!geo) continue;
@@ -97,12 +103,34 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         });
       }
 
-      if (!bars.length) return null;
+      // Kit days, split around the crew's span so the parts that run beyond
+      // it (travel pads, early dispatch, late return) read differently.
+      const crewSpan = crewEntries.length
+        ? {
+            start: crewEntries.reduce((m, e) => (e.date < m ? e.date : m), crewEntries[0].date),
+            end: crewEntries.reduce((m, e) => (e.date > m ? e.date : m), crewEntries[0].date),
+          }
+        : null;
+      const kit = [];
+      for (const run of buildBars(kitEntries, (e) => e.job_id)) {
+        const names = [...new Set(run.entries.map((e) => e.member_name).filter(Boolean))];
+        for (const part of splitAroundSpan(run.start, run.end, crewSpan)) {
+          const geo = clip(part.start, part.end);
+          if (geo) kit.push({ ...geo, beyond: part.beyond, names, start: part.start, end: part.end });
+        }
+      }
+
+      if (!bars.length && !kit.length) return null;
+      const lanes = planned && runs.length ? 2 : 1;
       return {
         id: job.id,
         job,
         bars,
-        lanes: planned && runs.length ? 2 : 1,
+        lanes,
+        kit,
+        kitCount: new Set(kitEntries.map((e) => e.team_member_id)).size,
+        // Room for the kit line under the bars.
+        minHeight: kit.length ? rowHeight(lanes) + KIT_H : 0,
       };
     }).filter(Boolean);
 
@@ -121,7 +149,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
       label: b.key,
       rows: b.rows.sort(byStart),
     }));
-  }, [jobs, entriesByJob, statusFilter, search, myState, dayIndex, windowStart, windowEnd, focus, picked]);
+  }, [jobs, entriesByJob, kitIds, statusFilter, search, myState, dayIndex, windowStart, windowEnd, focus, picked]);
 
   // Drill into the single-project view; the old summary drawer is superseded
   // by it, since that view shows the same crew and kit plus the day log.
@@ -194,7 +222,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
     onClick: () => openCard(job),
   });
 
-  const renderBar = (bar) => {
+  const renderBar = (bar, row) => {
     const job = bar.job;
     const drag = dragStyle(job.id);
     const grab = isAdmin ? ' is-draggable' : '';
@@ -211,17 +239,30 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
       );
     }
     const crew = new Set(bar.run.entries.map((e) => e.team_member_id)).size;
+    const kitN = row?.kitCount || 0;
     return (
       <div
         className={`bar${grab}`}
         style={{ background: job.color || '#3b82f6', ...drag }}
-        title={`${job.code} ${job.name}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}\n${crew} rostered${isAdmin ? '\nDrag to move the project' : ''}`}
+        title={`${job.code} ${job.name}\n${fmtLong(bar.run.start)} → ${fmtLong(bar.run.end)}\n${crew} crew${kitN ? `, ${kitN} kit` : ''}${isAdmin ? '\nDrag to move the project' : ''}`}
         {...barProps(job)}
       >
         <span className="bar-text">{job.name}</span>
       </div>
     );
   };
+
+  // Kit as a thin line under the bar. Amber where it runs outside the crew's
+  // dates; clicking opens the project like the bar does.
+  const renderOverlay = (row) => (row.kit || []).map((k, i) => (
+    <span
+      key={`kit-${row.id}-${k.start}-${i}`}
+      className={`kit-line${k.beyond ? ' is-beyond' : ''}`}
+      style={{ left: k.startIdx * zoom.colW, width: Math.max(k.span * zoom.colW - 1, 3) }}
+      title={`Kit: ${k.names.join(', ') || 'equipment'}\n${fmtLong(k.start)} → ${fmtLong(k.end)}${k.beyond ? '\nOutside the crew’s dates' : ''}`}
+      onClick={(e) => { e.stopPropagation(); openCard(row.job); }}
+    />
+  ));
 
   const shownCount = groups.reduce((n, g) => n + g.rows.length, 0);
   const totalCount = jobs.filter((j) => !j.archived && !isQuickJob(j)).length;
@@ -273,6 +314,12 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
           <span className="legend-item">
             <span className="legend-key" style={{ background: 'transparent', border: '1px dashed var(--text-mute)' }} /> Planned
           </span>
+          <span className="legend-item">
+            <span className="legend-key" style={{ background: 'var(--text-mute)', height: 4 }} /> Kit
+          </span>
+          <span className="legend-item">
+            <span className="legend-key" style={{ background: 'var(--warn)', height: 4 }} /> Kit beyond crew dates
+          </span>
         </div>
         <span className="count-pill">{shownCount} jobs</span>
       </div>
@@ -289,6 +336,7 @@ export default function ProjectsView({ jobs, schedule, days, zoom, labelWidth, m
         onToggleGroup={(k) => setCollapsed((c) => ({ ...c, [k]: !c[k] }))}
         renderLabel={renderLabel}
         renderBar={renderBar}
+        renderOverlay={renderOverlay}
         emptyMessage={focus ? 'None of the selected projects fall inside this date window — scroll the timeline or press Show all.' : 'No jobs fall inside this date window.'}
       />
 
