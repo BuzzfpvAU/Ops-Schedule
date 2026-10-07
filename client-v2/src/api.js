@@ -202,3 +202,6 @@ export const putMemberCerts = (memberId, certs) =>
 export const getJobCerts = (jobId) => api(`/certs/jobs/${jobId}`);
 export const putJobCerts = (jobId, cert_type_ids) =>
   api(`/certs/jobs/${jobId}`, { method: 'PUT', body: JSON.stringify({ cert_type_ids }) });
+
+export const archiveJobsBulk = (ids) =>
+  api('/jobs/archive-bulk', { method: 'POST', body: JSON.stringify({ ids }) });
