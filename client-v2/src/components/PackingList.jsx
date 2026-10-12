@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth.jsx';
 import { getJobCard } from '../api.js';
 import { today } from '../lib/dates.js';
+import { buildManifestXlsx, manifestFilename } from '../lib/manifestXlsx.js';
 
 // ── Equipment packing list ──────────────────────────────────────────────
 //
@@ -38,6 +39,10 @@ export default function PackingList({ jobId }) {
   const [rev, setRev] = useState('1');
   const [date, setDate] = useState(today());
   const [left, setLeft] = useState(() => new Set()); // items left off
+  // Title lines for the Excel manifest. Null until typed in, so they follow
+  // the job until someone changes them.
+  const [title1, setTitle1] = useState(null);
+  const [title2, setTitle2] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -64,6 +69,28 @@ export default function PackingList({ jobId }) {
   if (error) return <div className="pl-status">{error}</div>;
   if (!card) return <div className="pl-status">Loading packing list…</div>;
 
+  const defaultTitle1 = [job.client, 'Manifest'].filter(Boolean).join(' ') + (job.name ? ` - ${job.name}` : '');
+  const defaultTitle2 = job.site_address || '';
+  const shownTitle1 = title1 ?? defaultTitle1;
+  const shownTitle2 = title2 ?? defaultTitle2;
+
+  // The same items as the printed list (anything ticked off is left out), one
+  // row each. The name doubles as the asset number. Date, IBV, comments and
+  // the inspection columns are left blank to fill in in Excel.
+  const downloadExcel = () => {
+    const rows = items.map((e) => [e.equipment_name || '', e.serial_number || '', e.description || '', 1, '', '', '', '', '']);
+    const bytes = buildManifestXlsx({ title1: shownTitle1, title2: shownTitle2, rows });
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = manifestFilename(`Manifest - ${job.job_number || job.code}`);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const toggle = (id) => setLeft((s) => {
     const next = new Set(s);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -77,6 +104,12 @@ export default function PackingList({ jobId }) {
         <label>Rev <input value={rev} onChange={(e) => setRev(e.target.value)} style={{ width: 48 }} /></label>
         <label>Date <input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         <button type="button" className="pl-print" onClick={() => window.print()}>Print / Save as PDF</button>
+        <button type="button" className="pl-print" onClick={downloadExcel} disabled={items.length === 0}
+          title="Download the manifest as an Excel sheet">
+          Download Excel
+        </button>
+        <label>Excel title <input value={shownTitle1} onChange={(e) => setTitle1(e.target.value)} style={{ width: 280 }} /></label>
+        <label>Site <input value={shownTitle2} onChange={(e) => setTitle2(e.target.value)} style={{ width: 200 }} /></label>
         <span className="pl-hint">
           {incomplete.length
             ? `${incomplete.length} item${incomplete.length === 1 ? ' is' : 's are'} missing a box size, weight or contents — fill them in under Equipment → Edit.`

@@ -306,6 +306,7 @@ export default function EquipmentView({
       equipment_category: item.equipment_category || '',
       location: item.location || '',
       serial_number: item.serial_number || '',
+      description: item.description || '',
       dimensions: item.dimensions || '',
       weight: item.weight || '',
       contents: item.contents || '',
@@ -323,7 +324,7 @@ export default function EquipmentView({
     setEditing({ isNew: true });
     setForm({
       name: '', equipment_category: 'Drones', location: STATES.includes(myState) ? myState : '',
-      serial_number: '', dimensions: '', weight: '', contents: '', info_url: '', sds_url: '', airtag_name: '',
+      serial_number: '', description: '', dimensions: '', weight: '', contents: '', info_url: '', sds_url: '', airtag_name: '',
       serviceable: true, active: true,
     });
   };
@@ -639,6 +640,7 @@ export default function EquipmentView({
                 </select>
               </label>
               {field('serial_number', 'Serial')}
+              {field('description', 'Description', { placeholder: 'e.g. Matrice 300 RTK, second airframe' })}
             </Section>
 
             <Section title="Physical">
