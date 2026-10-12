@@ -79,3 +79,18 @@ test('people with the same name as equipment are unaffected', async () => {
 test('non-admins cannot add equipment', async () => {
   assert.equal((await post({ name: 'X', is_equipment: 1 }, member)).status, 403);
 });
+
+test('an equipment description is saved on create and update, and left alone when not sent', async () => {
+  const created = await (await post({ name: 'M300 2B', is_equipment: 1, description: 'Matrice 300 RTK, second airframe' })).json();
+  assert.equal(created.description, 'Matrice 300 RTK, second airframe');
+
+  const put = (body) => fetch(`${base}/${created.id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', cookie: admin }, body: JSON.stringify(body),
+  });
+  assert.equal((await put({ name: 'M300 2B', serial_number: 'SN-9' })).status, 200);
+  assert.equal(db.prepare('SELECT description FROM team_members WHERE id = ?').get(created.id).description,
+    'Matrice 300 RTK, second airframe', 'untouched when the update does not mention it');
+
+  assert.equal((await put({ name: 'M300 2B', description: 'Updated text' })).status, 200);
+  assert.equal(db.prepare('SELECT description FROM team_members WHERE id = ?').get(created.id).description, 'Updated text');
+});

@@ -148,6 +148,11 @@ export function initDb() {
   if (!columns.includes('contents')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN contents TEXT DEFAULT ''`);
   }
+  // A fuller description of an equipment item, shown on manifests next to
+  // its name (the name doubles as the asset number, e.g. "M300 2B").
+  if (!columns.includes('description')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN description TEXT DEFAULT ''`);
+  }
   if (!columns.includes('dimensions')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN dimensions TEXT DEFAULT ''`);
   }

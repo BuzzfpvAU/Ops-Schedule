@@ -269,7 +269,7 @@ router.get('/:id', (req, res) => {
              WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_days,
            tm.name AS equipment_name, tm.equipment_category AS category,
            tm.role AS equipment_type, tm.serial_number,
-           tm.dimensions, tm.weight, tm.contents
+           tm.dimensions, tm.weight, tm.contents, tm.description
     FROM job_equipment je
     JOIN team_members tm ON tm.id = je.equipment_id
     WHERE je.job_id = ?
