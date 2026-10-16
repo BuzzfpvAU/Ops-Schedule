@@ -141,6 +141,15 @@ ${diagnosis}
   res.sendFile(v2Index);
 });
 
+// V2 is the default interface: a bare visit to / lands on /v2/. v1 stays
+// reachable — V2's switch links to /?ui=v1, and password-reset emails link to
+// /?token=…, a flow only v1 implements. Registered before express.static, which
+// would otherwise answer / with the v1 index.html.
+app.get('/', (req, res, next) => {
+  if (!hasV2Build() || req.query.ui === 'v1' || req.query.token) return next();
+  res.redirect(302, '/v2/');
+});
+
 app.use(express.static(clientDist));
 
 // SPA fallback
