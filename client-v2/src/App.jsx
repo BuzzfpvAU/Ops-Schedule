@@ -27,7 +27,7 @@ const VIEWS = [
 export default function App() {
   const { user, loading, logout } = useAuth();
   const labelWidth = useLabelWidth();
-  const hold = useHoldToSwitch(useCallback(() => { window.location.href = '/'; }, []));
+  const hold = useHoldToSwitch(useCallback(() => { window.location.href = '/?ui=v1'; }, []));
 
   const [view, setView] = useState('projects');
   // Set when drilling into a single project from the Projects view.
