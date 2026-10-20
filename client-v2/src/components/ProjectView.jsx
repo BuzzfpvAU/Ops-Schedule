@@ -3,9 +3,10 @@ import Timeline, { rowHeight } from './Timeline.jsx';
 import { Avatar } from './ui.jsx';
 import JobCard from './JobCard.jsx';
 import NotesPanel from './NotesPanel.jsx';
+import EquipmentDetailsDrawer from './EquipmentDetailsDrawer.jsx';
 import {
   JOB_STATUSES, STATUSES, getJobPlanner, addJobDayNote, deleteJobDayNote,
-  getJobCard, getJobReadiness, shiftJobBooking, getJobCerts, putJobCerts, bulkAssignSchedule,
+  getJobCard, getJobReadiness, shiftJobBooking, getJobCerts, putJobCerts, bulkAssignSchedule, getEquipment,
 } from '../api.js';
 import { buildBars, layoutLanes, bookingWindow } from '../lib/model.js';
 import useCerts from '../lib/useCerts.js';
@@ -26,7 +27,7 @@ import { diffDays, fmtShort, fmtLong, rangeOf, today as todayIso } from '../lib/
 
 export default function ProjectView({
   jobId, onBack, days, zoom, labelWidth, scrollCmd, onReachEdge,
-  currentUser, members, equipment, schedule, onEnsureRange, onChanged, showToast,
+  currentUser, members, equipment, schedule, onEnsureRange, onChanged, showToast, myState,
 }) {
   const [data, setData] = useState(null);
   // The card sits under the timeline rather than replacing it, so a change
@@ -48,6 +49,8 @@ export default function ProjectView({
   const [busy, setBusy] = useState(false);
   const certs = useCerts();
   const [requiredCerts, setRequiredCerts] = useState([]);
+  // The equipment item whose details drawer is open.
+  const [detailsItem, setDetailsItem] = useState(null);
 
   const isViewer = !!currentUser?.isViewer;
   const windowStart = days[0];
@@ -251,6 +254,29 @@ export default function ProjectView({
     return out;
   }, [data, dayIndex, windowStart, windowEnd, showSnippets, candidates, schedule]);
 
+  // A name on an equipment row or in the job card opens the item's register
+  // entry. The app's list may be filtered to active kit, so an item missing
+  // from it is fetched with inactive kit included.
+  const openEquipment = async (id) => {
+    let item = (equipment || []).find((x) => x.id === id);
+    if (!item) {
+      try {
+        item = (await getEquipment(true)).find((x) => x.id === id);
+      } catch (e) {
+        showToast?.(e.message, 'error');
+        return;
+      }
+    }
+    if (item) setDetailsItem(item);
+    else showToast?.('That item is no longer in the equipment register', 'error');
+  };
+
+  const onEquipmentSaved = async () => {
+    setDetailsItem(null);
+    await refreshAll();
+    showToast?.('Equipment updated', 'success');
+  };
+
   // A click on the timeline links the notes composer to that row and day.
   const openCell = (row, date) => {
     if (row.kind === 'candidate') return; // not on this job: nothing to log against
@@ -331,12 +357,21 @@ export default function ProjectView({
         </>
       );
     }
+    const isKit = row.kind === 'equipment' || row.kind === 'unbooked';
+    const Name = isKit ? 'button' : 'span';
     return (
       <>
         {row.kind === 'person'
           ? <Avatar name={e.name} color={e.color} />
           : <span className="swatch" style={{ background: e.color || '#475569' }} />}
-        <span className="rl">
+        <Name
+          className={isKit ? 'rl rl-button' : 'rl'}
+          {...(isKit ? {
+            type: 'button',
+            onClick: (ev) => { ev.stopPropagation(); openEquipment(e.id); },
+            title: 'Show equipment details',
+          } : {})}
+        >
           <span className="rl-top">
             <span className="rl-name">{e.name}</span>
             {e.allocation_status === 'confirmed' && <span className="tag tag-ok">✓</span>}
@@ -349,7 +384,7 @@ export default function ProjectView({
           <span className="rl-sub">
             {[e.role || e.category, e.days ? `${e.days}d` : null].filter(Boolean).join(' · ')}
           </span>
-        </span>
+        </Name>
       </>
     );
   };
@@ -602,6 +637,7 @@ export default function ProjectView({
                     requiredCerts={requiredCerts}
                     onToggleCert={toggleCert}
                     candidateCount={candidates.length}
+                    onOpenEquipment={openEquipment}
                   />
                 </div>
               )}
@@ -648,6 +684,17 @@ export default function ProjectView({
         </div>
       </div>
 
+      {detailsItem && (
+        <EquipmentDetailsDrawer
+          key={detailsItem.id}
+          item={detailsItem}
+          isAdmin={!!currentUser?.isAdmin}
+          myState={myState}
+          onClose={() => setDetailsItem(null)}
+          onSaved={onEquipmentSaved}
+          showToast={showToast}
+        />
+      )}
     </>
   );
 }

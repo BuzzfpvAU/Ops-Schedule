@@ -47,7 +47,7 @@ function Field({ label, children }) {
 
 export default function JobCard({
   jobId, card, readiness, members, equipment, isAdmin, onChanged, showToast,
-  certTypes = [], requiredCerts = [], onToggleCert, candidateCount = 0,
+  certTypes = [], requiredCerts = [], onToggleCert, candidateCount = 0, onOpenEquipment,
 }) {
   const job = card?.job;
   const [form, setForm] = useState(null);
@@ -449,7 +449,14 @@ export default function JobCard({
         {kit.length === 0 && <div className="rl-sub">No kit assigned.</div>}
         {kit.map((k) => (
           <div className="entry-row" key={k.id}>
-            <span className="entry-name">{k.equipment_name}</span>
+            <button
+              type="button"
+              className="entry-name entry-name-btn"
+              onClick={() => onOpenEquipment?.(k.equipment_id)}
+              title="Show equipment details"
+            >
+              {k.equipment_name}
+            </button>
             <span className="rl-sub">{k.category}</span>
             <span className="rl-sub">
               {k.booked_from ? `${fmtShort(k.booked_from)}–${fmtShort(k.booked_to)}` : 'not booked'}

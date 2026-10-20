@@ -5,7 +5,7 @@ import PlanningBar from './PlanningBar.jsx';
 const EquipmentMapPanel = lazy(() => import('./EquipmentMapPanel.jsx'));
 import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
 import {
-  STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, createEquipment, getEquipmentLocations, getStaleDays,
+  STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, getEquipmentLocations, getStaleDays,
   bookEquipmentOut, deleteScheduleEntry,
 } from '../api.js';
 import { buildBars, layoutLanes, groupByEntity, bucketBy, conflictDays, orderStatesFor, NON_WORK } from '../lib/model.js';
@@ -16,6 +16,7 @@ import {
   jobRuns, movesFor, tagChecks, usagePct, isIdle, lastUsed, nearFilter, MOVE_LOOKAHEAD_DAYS, USAGE_DAYS,
 } from '../lib/equipmentPlan.js';
 import MovesStrip from './MovesStrip.jsx';
+import EquipmentDetailsDrawer from './EquipmentDetailsDrawer.jsx';
 
 const PLAN_KEY = 'eq.plan';
 function loadPlan() {
@@ -59,7 +60,6 @@ export default function EquipmentView({
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null); // { item, bar }
   const [editing, setEditing] = useState(null); // the item whose details are open
-  const [form, setForm] = useState(null);
   const [outForm, setOutForm] = useState(null); // book-out drawer: { equipment_id, from, to, text }
   const [outSel, setOutSel] = useState(null); // an existing book-out: { item, run }
   const [busy, setBusy] = useState(false);
@@ -299,63 +299,23 @@ export default function EquipmentView({
     }
   };
 
-  const openEditor = (item) => {
-    setEditing(item);
-    setForm({
-      name: item.name || '',
-      equipment_category: item.equipment_category || '',
-      location: item.location || '',
-      serial_number: item.serial_number || '',
-      description: item.description || '',
-      dimensions: item.dimensions || '',
-      weight: item.weight || '',
-      contents: item.contents || '',
-      info_url: item.info_url || '',
-      sds_url: item.sds_url || '',
-      airtag_name: item.airtag_name || '',
-      serviceable: item.serviceable !== 0,
-      active: item.active !== 0,
-    });
-  };
+  const openEditor = (item) => setEditing(item);
 
-  // Adding uses the same drawer, blank, with the user's own state and the
-  // most common category filled in.
-  const openNew = () => {
-    setEditing({ isNew: true });
-    setForm({
-      name: '', equipment_category: 'Drones', location: STATES.includes(myState) ? myState : '',
-      serial_number: '', description: '', dimensions: '', weight: '', contents: '', info_url: '', sds_url: '', airtag_name: '',
-      serviceable: true, active: true,
-    });
-  };
+  // Adding uses the same drawer, blank.
+  const openNew = () => setEditing({ isNew: true });
 
-  const saveEditor = async () => {
-    if (!form.name.trim()) {
-      showToast?.('A name is required', 'error');
+  const onEditorSaved = async (saved, { isNew }) => {
+    setEditing(null);
+    await onChanged?.();
+    if (isNew) {
+      // Show it straight away: selected on both panes, scrolled into view
+      // once the refreshed list has rendered.
+      setSelectedId(saved.id);
+      setTimeout(() => onSelect(saved.id), 150);
+      showToast?.(`${saved.name} added`, 'success');
       return;
     }
-    setBusy(true);
-    try {
-      if (editing.isNew) {
-        const created = await createEquipment({ ...form, name: form.name.trim() });
-        setEditing(null);
-        await onChanged?.();
-        // Show it straight away: selected on both panes, scrolled into view
-        // once the refreshed list has rendered.
-        setSelectedId(created.id);
-        setTimeout(() => onSelect(created.id), 150);
-        showToast?.(`${created.name} added`, 'success');
-        return;
-      }
-      await updateEquipment(editing.id, { ...form, name: form.name.trim() });
-      setEditing(null);
-      await onChanged?.();
-      showToast?.('Equipment updated', 'success');
-    } catch (e) {
-      showToast?.(e.message, 'error');
-    } finally {
-      setBusy(false);
-    }
+    showToast?.('Equipment updated', 'success');
   };
 
   // Deactivating from the list is the common case, so it does not require
@@ -380,17 +340,6 @@ export default function EquipmentView({
       setBusy(false);
     }
   };
-
-  const field = (key, label, props = {}) => (
-    <label className="form-row" key={key}>
-      <span className="form-label">{label}</span>
-      <input
-        value={form[key]}
-        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-        {...props}
-      />
-    </label>
-  );
 
   const renderLabel = (row) => {
     const item = row.item;
@@ -599,103 +548,16 @@ export default function EquipmentView({
       )}
       </div>
 
-      {editing && form && (
-        <Drawer
-          title={editing.isNew ? 'New equipment' : editing.name}
-          subtitle={editing.isNew ? 'Add an item to the register'
-            : editing.active === 0 ? 'Inactive — hidden from the default list' : 'Equipment details'}
+      {editing && (
+        <EquipmentDetailsDrawer
+          key={editing.id || 'new'}
+          item={editing}
+          isAdmin={isAdmin}
+          myState={myState}
           onClose={() => setEditing(null)}
-          footer={
-            <>
-              <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="btn btn-primary" disabled={busy || !isAdmin} onClick={saveEditor}>
-                {busy ? 'Saving…' : editing.isNew ? 'Add' : 'Save'}
-              </button>
-            </>
-          }
-        >
-          {!isAdmin && <div className="banner banner-warn">Only admins can change equipment.</div>}
-
-          <fieldset className="form-set" disabled={!isAdmin || busy}>
-            <Section title="Identity">
-              {field('name', 'Name', { required: true })}
-              <label className="form-row">
-                <span className="form-label">Category</span>
-                <select
-                  value={form.equipment_category}
-                  onChange={(e) => setForm((f) => ({ ...f, equipment_category: e.target.value }))}
-                >
-                  <option value="">Uncategorised</option>
-                  {EQUIPMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-              <label className="form-row">
-                <span className="form-label">Home base</span>
-                <select
-                  value={form.location}
-                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                >
-                  <option value="">No home base</option>
-                  {STATES.map((st) => <option key={st} value={st}>{st}</option>)}
-                </select>
-              </label>
-              {field('serial_number', 'Serial')}
-              {field('description', 'Description', { placeholder: 'e.g. Matrice 300 RTK, second airframe' })}
-            </Section>
-
-            <Section title="Physical">
-              {field('dimensions', 'Dimensions', { placeholder: 'e.g. 60 × 40 × 30 cm' })}
-              {field('weight', 'Weight', { placeholder: 'e.g. 12 kg' })}
-              <label className="form-row">
-                <span className="form-label">Box contents</span>
-                <textarea
-                  className="note-input"
-                  rows={4}
-                  value={form.contents}
-                  onChange={(e) => setForm((f) => ({ ...f, contents: e.target.value }))}
-                  placeholder={'One item per line, e.g.\n1 x Controller\n1 x Tablet, charger, cables'}
-                />
-              </label>
-              {field('airtag_name', 'AirTag name', { placeholder: 'as it appears in Find My' })}
-            </Section>
-
-            <Section title="Links">
-              {field('info_url', 'Info / manual', { type: 'url', placeholder: 'https://…' })}
-              {field('sds_url', 'Safety data sheet', { type: 'url', placeholder: 'https://…' })}
-            </Section>
-
-            <Section title="Status">
-              <div className="opt-list">
-                <label className="opt" style={{ cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={form.serviceable}
-                    onChange={(e) => setForm((f) => ({ ...f, serviceable: e.target.checked }))}
-                  />
-                  <span className="opt-name">Serviceable</span>
-                  <span className="opt-hint">usable right now</span>
-                </label>
-                {!editing.isNew && (
-                  <label className="opt" style={{ cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={form.active}
-                      onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
-                    />
-                    <span className="opt-name">Active</span>
-                    <span className="opt-hint">in the register</span>
-                  </label>
-                )}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-mute)', marginTop: 10, lineHeight: 1.5 }}>
-                Unserviceable kit stays in the list — it is still yours, just not
-                usable. Inactive kit leaves the default list entirely; find it
-                again with the Inactive or All filter. Existing bookings are left
-                alone either way.
-              </div>
-            </Section>
-          </fieldset>
-        </Drawer>
+          onSaved={onEditorSaved}
+          showToast={showToast}
+        />
       )}
 
       {outForm && (
