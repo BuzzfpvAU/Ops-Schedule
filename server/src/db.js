@@ -162,6 +162,14 @@ export function initDb() {
   if (!columns.includes('serviceable')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN serviceable INTEGER DEFAULT 1`);
   }
+  // Dangerous goods: a flag, and the UN numbers that apply as one
+  // comma-separated string ("UN3480,UN3481").
+  if (!columns.includes('dangerous_goods')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN dangerous_goods INTEGER DEFAULT 0`);
+  }
+  if (!columns.includes('un_codes')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN un_codes TEXT DEFAULT ''`);
+  }
   if (!columns.includes('sds_url')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN sds_url TEXT DEFAULT ''`);
   }

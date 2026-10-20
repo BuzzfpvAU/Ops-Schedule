@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Timeline, { rowHeight } from './Timeline.jsx';
-import { Avatar } from './ui.jsx';
+import { Avatar, DgIcon } from './ui.jsx';
 import JobCard from './JobCard.jsx';
 import NotesPanel from './NotesPanel.jsx';
 import EquipmentDetailsDrawer from './EquipmentDetailsDrawer.jsx';
@@ -374,6 +374,7 @@ export default function ProjectView({
         >
           <span className="rl-top">
             <span className="rl-name">{e.name}</span>
+            {isKit && <DgIcon item={e} />}
             {e.allocation_status === 'confirmed' && <span className="tag tag-ok">✓</span>}
             {row.noteCount > 0 && (
               <span className="tag tag-mute" title={`${row.noteCount} note${row.noteCount === 1 ? '' : 's'}`}>

@@ -269,7 +269,8 @@ router.get('/:id', (req, res) => {
              WHERE se.job_id = je.job_id AND se.team_member_id = je.equipment_id) AS booked_days,
            tm.name AS equipment_name, tm.equipment_category AS category,
            tm.role AS equipment_type, tm.serial_number,
-           tm.dimensions, tm.weight, tm.contents, tm.description
+           tm.dimensions, tm.weight, tm.contents, tm.description,
+           tm.dangerous_goods, tm.un_codes
     FROM job_equipment je
     JOIN team_members tm ON tm.id = je.equipment_id
     WHERE je.job_id = ?
@@ -297,6 +298,7 @@ router.get('/:id/planner', (req, res) => {
   const rows = db.prepare(`
     SELECT tm.id, tm.name, tm.color, tm.role, tm.is_equipment,
            COALESCE(NULLIF(tm.equipment_category, ''), '') AS category,
+           tm.dangerous_goods, tm.un_codes,
            MIN(e.date) AS from_date, MAX(e.date) AS to_date,
            COUNT(DISTINCT e.date) AS days
     FROM schedule_entries e
@@ -381,7 +383,8 @@ router.get('/:id/planner', (req, res) => {
 
   // Kit assigned to the job but with no booked days yet
   const kit = db.prepare(`
-    SELECT tm.id, tm.name, COALESCE(NULLIF(tm.equipment_category, ''), '') AS category
+    SELECT tm.id, tm.name, COALESCE(NULLIF(tm.equipment_category, ''), '') AS category,
+           tm.dangerous_goods, tm.un_codes
     FROM job_equipment je
     JOIN team_members tm ON tm.id = je.equipment_id
     WHERE je.job_id = ?

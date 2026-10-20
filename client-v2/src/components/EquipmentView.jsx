@@ -3,7 +3,7 @@ import Timeline from './Timeline.jsx';
 import PlanningBar from './PlanningBar.jsx';
 // Leaflet is ~150 KB; load it only when the map is actually shown.
 const EquipmentMapPanel = lazy(() => import('./EquipmentMapPanel.jsx'));
-import { Drawer, Section, KV, Toggle, SearchBox } from './ui.jsx';
+import { Drawer, Section, KV, Toggle, SearchBox, DgIcon } from './ui.jsx';
 import {
   STATES, EQUIPMENT_CATEGORIES, adjustBooking, updateEquipment, getEquipmentLocations, getStaleDays,
   bookEquipmentOut, deleteScheduleEntry,
@@ -355,6 +355,7 @@ export default function EquipmentView({
         >
           <span className="rl-top">
             <span className="rl-name">{item.name}</span>
+            <DgIcon item={item} />
             {inactive && <span className="tag tag-mute">inactive</span>}
             {row.clash && <span className="tag tag-danger" title="Booked to more than one job on the same day">Clash</span>}
             {item.serviceable === 0 && <span className="tag tag-warn" title="Marked unserviceable">U/S</span>}
