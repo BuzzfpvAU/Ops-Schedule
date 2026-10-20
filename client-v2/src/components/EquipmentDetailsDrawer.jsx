@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Drawer, Section } from './ui.jsx';
 import { STATES, EQUIPMENT_CATEGORIES, updateEquipment, createEquipment } from '../api.js';
+import {
+  UN_CODES, UN_CODE_HELP, parseUnCodes, formatUnCodes, isKnownUnCode,
+} from '../lib/dangerousGoods.js';
 
 // ── Equipment details ───────────────────────────────────────────────────
 // The register entry for one item, editable by admins and read-only for
@@ -19,8 +22,11 @@ function formFor(item, myState) {
       name: '', equipment_category: 'Drones', location: STATES.includes(myState) ? myState : '',
       serial_number: '', description: '', dimensions: '', weight: '', contents: '', info_url: '', sds_url: '', airtag_name: '',
       serviceable: true, active: true,
+      dangerous_goods: false, un_codes: [], un_other: '',
     };
   }
+  // Codes from the reference list are ticked; any others go in the free-text box.
+  const { codes } = parseUnCodes(item.un_codes);
   return {
     name: item.name || '',
     equipment_category: item.equipment_category || '',
@@ -35,6 +41,9 @@ function formFor(item, myState) {
     airtag_name: item.airtag_name || '',
     serviceable: item.serviceable !== 0,
     active: item.active !== 0,
+    dangerous_goods: !!item.dangerous_goods,
+    un_codes: codes.filter(isKnownUnCode),
+    un_other: codes.filter((c) => !isKnownUnCode(c)).join(', '),
   };
 }
 
@@ -47,9 +56,18 @@ export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose
       showToast?.('A name is required', 'error');
       return;
     }
+    const other = parseUnCodes(form.un_other);
+    if (form.dangerous_goods && other.invalid.length) {
+      showToast?.(`Not a UN number: ${other.invalid.join(', ')}`, 'error');
+      return;
+    }
     setBusy(true);
     try {
-      const body = { ...form, name: form.name.trim() };
+      const { un_other, ...rest } = form;
+      const codes = form.dangerous_goods
+        ? [...UN_CODES.map((c) => c.code).filter((c) => form.un_codes.includes(c)), ...other.codes]
+        : [];
+      const body = { ...rest, name: form.name.trim(), un_codes: formatUnCodes([...new Set(codes)]) };
       const saved = item.isNew ? await createEquipment(body) : await updateEquipment(item.id, body);
       await onSaved?.(saved, { isNew: !!item.isNew });
     } catch (e) {
@@ -69,6 +87,30 @@ export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose
       />
     </label>
   );
+
+  // A link field whose label opens the address, once it holds one. Only
+  // http(s) addresses become links, so a stray "javascript:" never runs.
+  const linkField = (key, label, placeholder) => {
+    const url = form[key].trim();
+    const href = /^https?:\/\/\S+$/i.test(url) ? url : null;
+    return (
+      <label className="form-row" key={key}>
+        <span className="form-label">
+          {href ? (
+            <a className="form-label-link" href={href} target="_blank" rel="noopener noreferrer" title={`Open ${href}`}>
+              {label} ↗
+            </a>
+          ) : label}
+        </span>
+        <input
+          type="url"
+          value={form[key]}
+          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+          placeholder={placeholder}
+        />
+      </label>
+    );
+  };
 
   return (
     <Drawer
@@ -132,9 +174,59 @@ export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose
           {field('airtag_name', 'AirTag name', { placeholder: 'as it appears in Find My' })}
         </Section>
 
+        <Section
+          title={(
+            <>
+              Dangerous goods{' '}
+              <span className="dg-help" title={UN_CODE_HELP} aria-label="UN code reference">ⓘ</span>
+            </>
+          )}
+        >
+          <div className="opt-list">
+            <label className="opt" style={{ cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={form.dangerous_goods}
+                onChange={(e) => setForm((f) => ({ ...f, dangerous_goods: e.target.checked }))}
+              />
+              <span className="opt-name">Contains dangerous goods</span>
+              <span className="opt-hint">tick the UN numbers that apply</span>
+            </label>
+          </div>
+          {form.dangerous_goods && (
+            <>
+              <div className="opt-list un-list">
+                {UN_CODES.map((c) => (
+                  <label
+                    key={c.code}
+                    className="opt"
+                    style={{ cursor: 'pointer' }}
+                    title={`${c.code} — ${c.label} (Class ${c.cls})${c.hint ? `\n${c.hint}` : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.un_codes.includes(c.code)}
+                      onChange={(e) => setForm((f) => ({
+                        ...f,
+                        un_codes: e.target.checked
+                          ? [...f.un_codes, c.code]
+                          : f.un_codes.filter((x) => x !== c.code),
+                      }))}
+                    />
+                    <span className="un-code">{c.code}</span>
+                    <span className="opt-name">{c.label}</span>
+                    <span className="opt-hint">Class {c.cls}</span>
+                  </label>
+                ))}
+              </div>
+              {field('un_other', 'Other UN numbers', { placeholder: 'e.g. UN1170, UN2794' })}
+            </>
+          )}
+        </Section>
+
         <Section title="Links">
-          {field('info_url', 'Info / manual', { type: 'url', placeholder: 'https://…' })}
-          {field('sds_url', 'Safety data sheet', { type: 'url', placeholder: 'https://…' })}
+          {linkField('info_url', 'Info / manual', 'https://…')}
+          {linkField('sds_url', 'Safety data sheet', 'https://…')}
         </Section>
 
         <Section title="Status">

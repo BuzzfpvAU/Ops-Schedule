@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { dgSummary } from '../lib/dangerousGoods.js';
 
 export function Drawer({ title, subtitle, onClose, children, footer }) {
   useEffect(() => {
@@ -22,6 +23,21 @@ export function Drawer({ title, subtitle, onClose, children, footer }) {
         {footer && <footer className="drawer-foot">{footer}</footer>}
       </aside>
     </>
+  );
+}
+
+// A hazard diamond beside the name of equipment flagged as dangerous goods;
+// hovering it lists the item's UN numbers.
+export function DgIcon({ item }) {
+  if (!item?.dangerous_goods) return null;
+  const summary = dgSummary(item);
+  return (
+    <span className="dg-icon" title={summary} aria-label={summary} role="img">
+      <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+        <path d="M10 1 L19 10 L10 19 L1 10 Z" fill="currentColor" />
+        <text x="10" y="12.6" textAnchor="middle" fontSize="6.6" fontWeight="800" fill="#fff">DG</text>
+      </svg>
+    </span>
   );
 }
 

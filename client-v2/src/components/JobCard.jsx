@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Section } from './ui.jsx';
+import { Section, DgIcon } from './ui.jsx';
 import EquipmentPicker, { PadInput } from './EquipmentPicker.jsx';
 import {
   JOB_STATUSES, STATES, EQUIPMENT_CATEGORIES,
@@ -449,14 +449,17 @@ export default function JobCard({
         {kit.length === 0 && <div className="rl-sub">No kit assigned.</div>}
         {kit.map((k) => (
           <div className="entry-row" key={k.id}>
-            <button
-              type="button"
-              className="entry-name entry-name-btn"
-              onClick={() => onOpenEquipment?.(k.equipment_id)}
-              title="Show equipment details"
-            >
-              {k.equipment_name}
-            </button>
+            <span className="entry-name-wrap">
+              <button
+                type="button"
+                className="entry-name entry-name-btn"
+                onClick={() => onOpenEquipment?.(k.equipment_id)}
+                title="Show equipment details"
+              >
+                {k.equipment_name}
+              </button>
+              <DgIcon item={k} />
+            </span>
             <span className="rl-sub">{k.category}</span>
             <span className="rl-sub">
               {k.booked_from ? `${fmtShort(k.booked_from)}–${fmtShort(k.booked_to)}` : 'not booked'}

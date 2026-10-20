@@ -6,6 +6,35 @@ import { requireAdmin } from '../middleware/auth.js';
 const router = Router();
 const BCRYPT_ROUNDS = 12;
 
+// UN numbers arrive as a list or a comma-separated string, typed with or
+// without the "UN" prefix. Stored normalised and deduplicated; anything that
+// is not four digits is refused rather than silently dropped.
+function readUnCodes(raw) {
+  const parts = Array.isArray(raw) ? raw : String(raw ?? '').split(/[,;\n]+/);
+  const codes = [];
+  for (const part of parts) {
+    const text = String(part).trim();
+    if (!text) continue;
+    const m = text.toUpperCase().replace(/\s+/g, '').match(/^(?:UN)?(\d{4})$/);
+    if (!m) return { error: `"${text}" is not a UN number (expected e.g. UN3480)` };
+    const code = `UN${m[1]}`;
+    if (!codes.includes(code)) codes.push(code);
+  }
+  return { value: codes.join(',') };
+}
+
+// Unticking dangerous goods clears its codes, so an item never carries
+// codes it is not flagged for.
+function readDangerousGoods(body, existing = {}) {
+  const flag = body.dangerous_goods !== undefined
+    ? (body.dangerous_goods ? 1 : 0)
+    : (existing.dangerous_goods ?? 0);
+  if (!flag) return { flag, codes: '' };
+  if (body.un_codes === undefined) return { flag, codes: existing.un_codes ?? '' };
+  const r = readUnCodes(body.un_codes);
+  return r.error ? { error: r.error } : { flag, codes: r.value };
+}
+
 // GET all team members (excluding equipment)
 router.get('/', (req, res) => {
   const members = req.db
@@ -50,12 +79,14 @@ router.post('/', requireAdmin, async (req, res) => {
       ).get(name);
       if (dup) return res.status(409).json({ error: `Equipment called "${name}" already exists` });
     }
+    const dg = readDangerousGoods(req.body);
+    if (dg.error) return res.status(400).json({ error: dg.error });
 
     const id = uuidv4();
     req.db.prepare(`
-      INSERT INTO team_members (id, name, role, location, timezone, color, sort_order, is_equipment, info_url, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category, contents, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, role || '', location || '', timezone || 'Australia/Sydney', color || '#3B82F6', sort_order || 0, is_equipment || 0, info_url || '', serial_number || '', dimensions || '', weight || '', serviceable !== undefined ? (serviceable ? 1 : 0) : 1, sds_url || '', airtag_name || '', equipment_category || '', contents || '', description || '');
+      INSERT INTO team_members (id, name, role, location, timezone, color, sort_order, is_equipment, info_url, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category, contents, description, dangerous_goods, un_codes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, role || '', location || '', timezone || 'Australia/Sydney', color || '#3B82F6', sort_order || 0, is_equipment || 0, info_url || '', serial_number || '', dimensions || '', weight || '', serviceable !== undefined ? (serviceable ? 1 : 0) : 1, sds_url || '', airtag_name || '', equipment_category || '', contents || '', description || '', dg.flag, dg.codes);
 
     // Set credentials if provided
     if (email || password || is_admin !== undefined) {
@@ -84,12 +115,15 @@ router.put('/:id', requireAdmin, async (req, res) => {
     const { name, role, location, timezone, color, sort_order, info_url, email, password, is_admin, serial_number, dimensions, weight, serviceable, sds_url, airtag_name, equipment_category, contents, description, active } = req.body;
     const existing = req.db.prepare('SELECT * FROM team_members WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Team member not found' });
+    const dg = readDangerousGoods(req.body, existing);
+    if (dg.error) return res.status(400).json({ error: dg.error });
 
     req.db.prepare(`
       UPDATE team_members
       SET name = ?, role = ?, location = ?, timezone = ?, color = ?, sort_order = ?, info_url = ?,
           serial_number = ?, dimensions = ?, weight = ?, serviceable = ?, sds_url = ?, airtag_name = ?,
           equipment_category = ?, contents = ?, description = ?, active = ?,
+          dangerous_goods = ?, un_codes = ?,
           updated_at = datetime('now', '+10 hours')
       WHERE id = ?
     `).run(
@@ -110,6 +144,8 @@ router.put('/:id', requireAdmin, async (req, res) => {
       contents ?? existing.contents ?? '',
       description ?? existing.description ?? '',
       active !== undefined ? (active ? 1 : 0) : (existing.active ?? 1),
+      dg.flag,
+      dg.codes,
       req.params.id
     );
 
