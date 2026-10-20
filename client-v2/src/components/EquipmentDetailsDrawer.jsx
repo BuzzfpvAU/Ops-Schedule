@@ -70,6 +70,30 @@ export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose
     </label>
   );
 
+  // A link field whose label opens the address, once it holds one. Only
+  // http(s) addresses become links, so a stray "javascript:" never runs.
+  const linkField = (key, label, placeholder) => {
+    const url = form[key].trim();
+    const href = /^https?:\/\/\S+$/i.test(url) ? url : null;
+    return (
+      <label className="form-row" key={key}>
+        <span className="form-label">
+          {href ? (
+            <a className="form-label-link" href={href} target="_blank" rel="noopener noreferrer" title={`Open ${href}`}>
+              {label} ↗
+            </a>
+          ) : label}
+        </span>
+        <input
+          type="url"
+          value={form[key]}
+          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+          placeholder={placeholder}
+        />
+      </label>
+    );
+  };
+
   return (
     <Drawer
       title={item.isNew ? 'New equipment' : item.name}
@@ -133,8 +157,8 @@ export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose
         </Section>
 
         <Section title="Links">
-          {field('info_url', 'Info / manual', { type: 'url', placeholder: 'https://…' })}
-          {field('sds_url', 'Safety data sheet', { type: 'url', placeholder: 'https://…' })}
+          {linkField('info_url', 'Info / manual', 'https://…')}
+          {linkField('sds_url', 'Safety data sheet', 'https://…')}
         </Section>
 
         <Section title="Status">

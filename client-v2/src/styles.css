@@ -1109,6 +1109,8 @@ input, select, textarea { font: inherit; }
   font-size: 11.5px;
   color: var(--text-dim);
 }
+.form-label-link { color: var(--accent); text-decoration: none; }
+.form-label-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 .form-row input,
 .form-row select {
   flex: 1;
