@@ -13,6 +13,9 @@ import { buildInspectionPdf } from './inspectionPdf.js';
 
 export const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 const STAGED_PHOTO_TTL_MS = 24 * 60 * 60 * 1000;
+// Report numbers carry on from the Microsoft Forms responses, which
+// reached #43 before this form replaced them.
+export const FIRST_REPORT_NUMBER = 44;
 
 export function inspectionsDir(db) {
   return path.join(path.dirname(path.resolve(db.name)), 'inspections');
@@ -122,7 +125,8 @@ export function createInspection(db, { item, body, user }) {
   const id = crypto.randomUUID();
 
   db.transaction(() => {
-    const number = (db.prepare('SELECT MAX(number) AS n FROM equipment_inspections').get().n || 0) + 1;
+    const last = db.prepare('SELECT MAX(number) AS n FROM equipment_inspections').get().n || 0;
+    const number = Math.max(last + 1, FIRST_REPORT_NUMBER);
     db.prepare(`
       INSERT INTO equipment_inspections (
         id, number, equipment_id, template_id, template_json, details_json, answers_json, comments,

@@ -110,7 +110,7 @@ test('a staff member can submit an inspection and download its PDF', async () =>
   const res = await json('/', 'POST', await droneSubmission({ comments: 'All good' }));
   assert.equal(res.status, 201);
   const saved = await res.json();
-  assert.equal(saved.number, 1);
+  assert.equal(saved.number, 44, 'numbering carries on from the Microsoft Forms responses');
   assert.equal(saved.defect_count, 0);
   assert.equal(saved.inspected_by_name, 'Sam');
 
@@ -130,7 +130,7 @@ test('a staff member can submit an inspection and download its PDF', async () =>
 test('report numbers run on across items', async () => {
   await json('/', 'POST', await droneSubmission());
   const second = await (await json('/', 'POST', await droneSubmission())).json();
-  assert.equal(second.number, 2);
+  assert.equal(second.number, 45);
 });
 
 test('answering Yes needs a note, and can mark the item unserviceable', async () => {
