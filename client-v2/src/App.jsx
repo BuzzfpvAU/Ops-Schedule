@@ -24,7 +24,7 @@ const VIEWS = [
   { key: 'team', label: 'Team', icon: 'M7 8a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM2 16c0-2.8 2.2-5 5-5s5 2.2 5 5M14 16c0-2.2-1-4-2.5-5' },
 ];
 
-export default function App() {
+export default function App({ layout }) {
   const { user, loading, logout } = useAuth();
   const labelWidth = useLabelWidth();
   const hold = useHoldToSwitch(useCallback(() => { window.location.href = '/?ui=v1'; }, []));
@@ -228,6 +228,13 @@ export default function App() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        )}
+        {layout?.isPhone && (
+          <button className="icon-btn" onClick={() => layout.setChoice('mobile')} title="Phone layout" aria-label="Phone layout">
+            <svg width="14" height="16" viewBox="0 0 14 18" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <rect x="1.5" y="1" width="11" height="16" rx="2" /><path d="M6 14h2" strokeLinecap="round" />
             </svg>
           </button>
         )}
