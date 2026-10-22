@@ -579,6 +579,48 @@ export function initDb() {
   // Purged: gone from every list; only the identifier is kept so it stays removed.
   if (!trackerCols.includes('purged_at')) db.exec('ALTER TABLE tracker_items ADD COLUMN purged_at TEXT');
 
+  // Equipment inspections. Each report keeps a copy of the template it was
+  // filled from, so it reads the same after the questions change. Photos
+  // and the generated PDF live on disk beside the database (see
+  // services/inspections.js); a photo with no inspection_id is uploaded but
+  // not yet part of a submitted report.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS equipment_inspections (
+      id TEXT PRIMARY KEY,
+      number INTEGER NOT NULL UNIQUE,
+      equipment_id TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      template_json TEXT NOT NULL,
+      details_json TEXT NOT NULL DEFAULT '{}',
+      answers_json TEXT NOT NULL DEFAULT '{}',
+      comments TEXT NOT NULL DEFAULT '',
+      defect_count INTEGER NOT NULL DEFAULT 0,
+      marked_unserviceable INTEGER NOT NULL DEFAULT 0,
+      inspected_by_id TEXT,
+      inspected_by_name TEXT NOT NULL DEFAULT '',
+      inspected_at TEXT NOT NULL,
+      pdf_file TEXT,
+      FOREIGN KEY (equipment_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_equipment_inspections_item
+      ON equipment_inspections(equipment_id, inspected_at DESC);
+
+    CREATE TABLE IF NOT EXISTS equipment_inspection_photos (
+      id TEXT PRIMARY KEY,
+      inspection_id TEXT,
+      area_key TEXT,
+      sort INTEGER NOT NULL DEFAULT 0,
+      file TEXT NOT NULL,
+      mime TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      uploaded_by TEXT,
+      uploaded_at TEXT NOT NULL,
+      FOREIGN KEY (inspection_id) REFERENCES equipment_inspections(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_equipment_inspection_photos_inspection
+      ON equipment_inspection_photos(inspection_id);
+  `);
+
   // New tables for auth
   db.exec(`
     CREATE TABLE IF NOT EXISTS passkey_credentials (

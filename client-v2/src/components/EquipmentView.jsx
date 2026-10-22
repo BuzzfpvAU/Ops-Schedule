@@ -557,6 +557,7 @@ export default function EquipmentView({
           myState={myState}
           onClose={() => setEditing(null)}
           onSaved={onEditorSaved}
+          onInspected={() => onChanged?.()}
           showToast={showToast}
         />
       )}

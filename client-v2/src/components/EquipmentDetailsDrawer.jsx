@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Drawer, Section } from './ui.jsx';
-import { STATES, EQUIPMENT_CATEGORIES, updateEquipment, createEquipment } from '../api.js';
+import {
+  STATES, EQUIPMENT_CATEGORIES, updateEquipment, createEquipment,
+  getInspectionTemplates, getInspections, deleteInspection, inspectionPdfUrl,
+} from '../api.js';
+import { useAuth } from '../auth.jsx';
+import InspectionForm from './InspectionForm.jsx';
+import { templateFor } from '../lib/inspection.js';
 import {
   UN_CODES, UN_CODE_HELP, parseUnCodes, formatUnCodes, isKnownUnCode,
 } from '../lib/dangerousGoods.js';
@@ -12,7 +18,9 @@ import {
 //
 // `item` is either an equipment record or { isNew: true } for a blank form.
 // `onSaved(record, { isNew })` runs after a successful save; the caller
-// closes the drawer and refreshes whatever it shows.
+// closes the drawer and refreshes whatever it shows. `onInspected()` runs
+// after an inspection is submitted, so the caller can pick up a change to
+// the item's serviceability without closing the drawer.
 
 function formFor(item, myState) {
   if (item.isNew) {
@@ -47,9 +55,100 @@ function formFor(item, myState) {
   };
 }
 
-export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose, onSaved, showToast }) {
+const TZ = 'Australia/Sydney';
+const fmtWhen = (iso) => new Date(iso).toLocaleDateString('en-AU', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' });
+
+// Past reports for an item, newest first, each opening its PDF. Anyone
+// signed in (bar the shared viewer) can start a new one.
+function InspectionHistory({ reports, canInspect, isAdmin, onStart, onDelete }) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? reports : reports.slice(0, 4);
+  return (
+    <Section title="Inspections">
+      {reports.length === 0 && (
+        <div className="insp-empty">No inspections recorded yet.</div>
+      )}
+      <div className="insp-list">
+        {shown.map((r) => (
+          <div key={r.id} className="insp-report">
+            <a className="insp-report-main" href={inspectionPdfUrl(r.id)} target="_blank" rel="noopener noreferrer" title="Open the PDF report">
+              <span className="insp-report-title">{r.title} <span className="insp-report-no">#{r.number}</span></span>
+              <span className="insp-report-meta">{fmtWhen(r.inspected_at)} · {r.inspected_by_name || 'Unknown'}</span>
+            </a>
+            <span className={`tag ${r.defect_count ? 'tag-danger' : 'tag-ok'}`}>
+              {r.defect_count ? `${r.defect_count} defect${r.defect_count === 1 ? '' : 's'}` : 'No defects'}
+            </span>
+            <a className="btn btn-sm" href={inspectionPdfUrl(r.id, { download: true })} title="Download the PDF">PDF</a>
+            {isAdmin && (
+              <button className="icon-btn" aria-label={`Delete report #${r.number}`} title="Delete report" onClick={() => onDelete(r)}>✕</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {reports.length > shown.length && (
+        <button className="btn-link insp-more" onClick={() => setShowAll(true)}>Show all {reports.length} reports</button>
+      )}
+      {canInspect && (
+        <button className="btn btn-primary insp-start" onClick={onStart}>New inspection</button>
+      )}
+    </Section>
+  );
+}
+
+export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose, onSaved, onInspected, showToast }) {
   const [form, setForm] = useState(() => formFor(item, myState));
   const [busy, setBusy] = useState(false);
+  const { user } = useAuth() || {};
+  const [templates, setTemplates] = useState(null);
+  const [reports, setReports] = useState([]);
+  const [inspecting, setInspecting] = useState(false);
+
+  const loadReports = useCallback(() => {
+    if (item.isNew) return;
+    getInspections(item.id).then(setReports).catch(() => setReports([]));
+  }, [item.id, item.isNew]);
+
+  useEffect(() => {
+    if (item.isNew) return;
+    loadReports();
+    getInspectionTemplates().then(setTemplates).catch(() => setTemplates(null));
+  }, [item.isNew, loadReports]);
+
+  const removeReport = async (r) => {
+    if (!window.confirm(`Delete report #${r.number} and its photos? This cannot be undone.`)) return;
+    try {
+      await deleteInspection(r.id);
+      loadReports();
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    }
+  };
+
+  if (inspecting && templates) {
+    return (
+      <InspectionForm
+        item={item}
+        templates={templates}
+        initialTemplate={templateFor(templates, form.equipment_category || item.equipment_category)}
+        showToast={showToast}
+        onClose={() => setInspecting(false)}
+        onSubmitted={(saved) => {
+          setInspecting(false);
+          loadReports();
+          // Keep the open details in step, so a later Save does not put
+          // the item back into service.
+          if (saved.marked_unserviceable) setForm((f) => ({ ...f, serviceable: false }));
+          showToast?.(
+            saved.defect_count
+              ? `Report #${saved.number} saved · ${saved.defect_count} defect${saved.defect_count === 1 ? '' : 's'}`
+              : `Report #${saved.number} saved · no defects`,
+            saved.defect_count ? 'error' : 'success',
+          );
+          onInspected?.(saved);
+        }}
+      />
+    );
+  }
 
   const save = async () => {
     if (!form.name.trim()) {
@@ -129,6 +228,16 @@ export default function EquipmentDetailsDrawer({ item, isAdmin, myState, onClose
         </>
       }
     >
+      {!item.isNew && (
+        <InspectionHistory
+          reports={reports}
+          canInspect={!!templates && !!user && !user.isViewer}
+          isAdmin={isAdmin}
+          onStart={() => setInspecting(true)}
+          onDelete={removeReport}
+        />
+      )}
+
       {!isAdmin && <div className="banner banner-warn">Only admins can change equipment.</div>}
 
       <fieldset className="form-set" disabled={!isAdmin || busy}>
