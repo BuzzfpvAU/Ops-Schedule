@@ -18,6 +18,7 @@ import seedRoutes from './server/src/routes/seed.js';
 import equipmentRoutes from './server/src/routes/equipment.js';
 import geocodeRoutes from './server/src/routes/geocode.js';
 import certRoutes from './server/src/routes/certs.js';
+import inspectionRoutes from './server/src/routes/inspections.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +74,7 @@ app.use('/api/team-members', requireAuth, teamRoutes);
 app.use('/api/jobs', requireAuth, jobRoutes);
 app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api/certs', requireAuth, certRoutes);
+app.use('/api/inspections', requireAuth, inspectionRoutes);
 app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
 app.use('/api/seed', requireAuth, requireAdmin, seedRoutes);

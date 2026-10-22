@@ -135,6 +135,23 @@ export const confirmJobKit = (jobId, overrideReason) =>
     body: JSON.stringify({ override_reason: overrideReason }),
   });
 
+// ── Inspections ──
+// The webform's questions come from the server, which also checks each
+// submission and builds the PDF. Photos are uploaded one at a time as they
+// are added, then the submission lists them by id under their area.
+export const getInspectionTemplates = () => api('/inspections/templates');
+export const getInspections = (equipmentId) =>
+  api(`/inspections?equipment_id=${encodeURIComponent(equipmentId)}`);
+export const uploadInspectionPhoto = (blob) =>
+  api('/inspections/photos', { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+export const deleteInspectionPhoto = (id) => api(`/inspections/photos/${id}`, { method: 'DELETE' });
+export const inspectionPhotoUrl = (id) => `${API}/inspections/photos/${id}`;
+export const submitInspection = (data) =>
+  api('/inspections', { method: 'POST', body: JSON.stringify(data) });
+export const deleteInspection = (id) => api(`/inspections/${id}`, { method: 'DELETE' });
+export const inspectionPdfUrl = (id, { download = false } = {}) =>
+  `${API}/inspections/${id}/pdf${download ? '?download=1' : ''}`;
+
 export const getKits = () => api('/equipment/kits');
 
 export const applyKitToJob = (jobId, kitId) =>

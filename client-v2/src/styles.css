@@ -1883,3 +1883,95 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 }
 .kit-line.is-beyond { background: var(--warn); opacity: 1; }
 .kit-line:hover { height: 6px; }
+
+/* ── Inspections ─────────────────────────────────────────────────────── */
+/* Report history in the equipment drawer, and the inspection webform. */
+
+.btn-sm { padding: 3px 8px; font-size: 11px; text-decoration: none; display: inline-block; }
+.insp-empty { font-size: 12px; color: var(--text-mute); margin-bottom: 10px; }
+.insp-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.insp-list:empty { display: none; }
+.insp-report {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.insp-report-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; color: inherit; text-decoration: none; }
+.insp-report-main:hover .insp-report-title { color: var(--accent); }
+.insp-report-title { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-report-no { color: var(--text-mute); font-weight: 500; }
+.insp-report-meta { font-size: 11px; color: var(--text-dim); }
+.insp-more { font-size: 11.5px; display: block; margin-bottom: 10px; }
+.insp-start { width: 100%; padding: 8px 11px; }
+
+.form-row.is-invalid .form-label { color: var(--danger); }
+.form-row.is-invalid select,
+.form-row.is-invalid input { border-color: var(--danger); }
+
+.insp-area {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 10px 11px;
+  margin-bottom: 8px;
+}
+.insp-area.has-defect { border-color: rgba(239, 68, 68, 0.45); }
+.insp-area.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger) inset; }
+.insp-area-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+.insp-num { font-size: 11px; font-weight: 700; color: var(--text-mute); width: 16px; flex: none; text-align: right; }
+.insp-label { font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+.insp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-left: 24px; }
+.insp-q { font-size: 11.5px; color: var(--text-dim); }
+.insp-yn { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.insp-yn-btn {
+  border: none;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 650;
+  min-width: 56px;
+}
+.insp-yn-btn + .insp-yn-btn { border-left: 1px solid var(--line); }
+.insp-yn-btn.on-no { background: rgba(34, 197, 94, 0.18); color: var(--ok); }
+.insp-yn-btn.on-yes { background: rgba(239, 68, 68, 0.18); color: var(--danger); }
+.insp-notes { margin: 8px 0 0 24px; width: calc(100% - 24px); }
+.insp-photos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 9px 0 0 24px; }
+.insp-thumb {
+  position: relative;
+  width: 56px; height: 56px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+}
+.insp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.insp-thumb.is-uploading img { opacity: 0.45; }
+.insp-thumb-busy {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: var(--text);
+}
+.insp-thumb-x {
+  position: absolute; top: 2px; right: 2px;
+  width: 18px; height: 18px;
+  border: none; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  font-size: 10px; line-height: 18px; padding: 0;
+}
+.insp-add {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 56px; padding: 0 12px;
+  border: 1px dashed var(--line);
+  border-radius: 5px;
+  font-size: 11.5px; font-weight: 650; color: var(--accent);
+  cursor: pointer;
+}
+.insp-add:hover { border-color: var(--accent); background: var(--line-soft); }
+.insp-add input { display: none; }
+.insp-count { font-size: 10.5px; color: var(--text-mute); }
+.insp-error { font-size: 11px; color: var(--danger); margin: 7px 0 0 24px; }

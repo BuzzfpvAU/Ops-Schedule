@@ -693,6 +693,7 @@ export default function ProjectView({
           myState={myState}
           onClose={() => setDetailsItem(null)}
           onSaved={onEquipmentSaved}
+          onInspected={refreshAll}
           showToast={showToast}
         />
       )}

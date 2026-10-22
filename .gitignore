@@ -22,3 +22,6 @@ tracker/portal/__pycache__/
 
 # Generated at build time on the deploy host
 client-v2/.build-error.log
+
+# Inspection photos and PDF reports (kept beside the database)
+server/data/inspections/
