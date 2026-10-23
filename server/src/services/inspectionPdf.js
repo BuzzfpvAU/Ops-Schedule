@@ -54,7 +54,7 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
   });
 
   const logo = logoPath && fs.existsSync(logoPath) ? logoPath : null;
-  const subtitle = `${template.title}  ·  Report #${inspection.number}`;
+  const subtitle = `${template.title}  ·  Report #${inspection.number}  ·  ${shortDate(inspection.inspected_at)}`;
   const areas = template.areas;
   const defectAreas = areas.filter((a) => answers[a.key]?.defects === 'yes');
   const photosByArea = {};
@@ -81,6 +81,7 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
     ['Serial number', item.serial_number || '—'],
     ...template.details.map((f) => [f.label, formatDetail(f, details[f.key])]),
     ['Inspected by', inspection.inspected_by_name || '—'],
+    ['Date compiled', `${longDate(inspection.inspected_at)}, ${timeOf(inspection.inspected_at)}`],
   ];
   const colW = WIDTH / 2;
   let y = doc.y;

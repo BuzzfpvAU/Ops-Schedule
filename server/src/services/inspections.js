@@ -173,9 +173,17 @@ export function summarise(row) {
   };
 }
 
-// The PDF for a report, building and saving it if it is not on disk yet.
+// Bump when the PDF layout changes so stored reports are rebuilt on next open.
+const PDF_LAYOUT = 2;
+const pdfFileFor = (inspection) => `${inspection.id}-v${PDF_LAYOUT}.pdf`;
+
+// The PDF for a report, building and saving it if it is not on disk yet
+// (or was built with an older layout).
 export async function ensureReportPdf(db, inspection, { logoPath } = {}) {
-  if (inspection.pdf_file && fs.existsSync(reportPath(db, inspection))) return reportPath(db, inspection);
+  if (inspection.pdf_file === pdfFileFor(inspection) && fs.existsSync(reportPath(db, inspection))) {
+    return reportPath(db, inspection);
+  }
+  if (inspection.pdf_file) fs.rmSync(reportPath(db, inspection), { force: true });
   const item = db.prepare('SELECT id, name, serial_number, equipment_category FROM team_members WHERE id = ?')
     .get(inspection.equipment_id) || { name: '', serial_number: '' };
   const photos = db.prepare(
@@ -190,7 +198,7 @@ export async function ensureReportPdf(db, inspection, { logoPath } = {}) {
     photos,
     logoPath,
   });
-  const file = `${inspection.id}.pdf`;
+  const file = pdfFileFor(inspection);
   fs.mkdirSync(reportsDir(db), { recursive: true });
   fs.writeFileSync(path.join(reportsDir(db), file), buf);
   db.prepare('UPDATE equipment_inspections SET pdf_file = ? WHERE id = ?').run(file, inspection.id);

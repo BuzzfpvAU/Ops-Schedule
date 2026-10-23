@@ -124,7 +124,7 @@ test('a staff member can submit an inspection and download its PDF', async () =>
   assert.match(pdf.headers.get('content-disposition'), /AUAV_Inspection_DJI-M4T_1581F7K3C24C600A0RZP_\d{4}-\d{2}-\d{2}\.pdf/);
   const buf = Buffer.from(await pdf.arrayBuffer());
   assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
-  assert.ok(fs.existsSync(path.join(inspectionsDir(db), 'reports', `${saved.id}.pdf`)), 'the PDF is kept on file');
+  assert.ok(fs.existsSync(path.join(inspectionsDir(db), 'reports', `${saved.id}-v2.pdf`)), 'the PDF is kept on file');
 });
 
 test('report numbers run on across items', async () => {
@@ -214,7 +214,7 @@ test('only admins can delete a report, which removes its files', async () => {
   assert.equal((await json(`/${saved.id}`, 'DELETE', null, admin)).status, 200);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM equipment_inspection_photos').get().n, 0);
   assert.ok(files.length && files.every((f) => !fs.existsSync(f)));
-  assert.ok(!fs.existsSync(path.join(inspectionsDir(db), 'reports', `${saved.id}.pdf`)));
+  assert.ok(!fs.existsSync(path.join(inspectionsDir(db), 'reports', `${saved.id}-v2.pdf`)));
 });
 
 test('uploads left on an abandoned form are cleared after a day', async () => {
