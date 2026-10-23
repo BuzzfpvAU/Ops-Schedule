@@ -174,7 +174,7 @@ export function summarise(row) {
 }
 
 // Bump when the PDF layout changes so stored reports are rebuilt on next open.
-const PDF_LAYOUT = 2;
+const PDF_LAYOUT = 3;
 const pdfFileFor = (inspection) => `${inspection.id}-v${PDF_LAYOUT}.pdf`;
 
 // The PDF for a report, building and saving it if it is not on disk yet

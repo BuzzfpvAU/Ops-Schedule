@@ -26,8 +26,12 @@ const longDate = (iso) => new Date(iso).toLocaleDateString('en-AU', { timeZone: 
 const shortDate = (iso) => new Date(iso).toLocaleDateString('en-AU', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' });
 const timeOf = (iso) => new Date(iso).toLocaleTimeString('en-AU', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
 
+// Choice wording changed since some reports were stored; print the current one.
+const RENAMED = { 'Before dispatch / hire': 'Before dispatch' };
+
 function formatDetail(field, value) {
   if (!value) return '—';
+  if (RENAMED[value]) return RENAMED[value];
   if (field.type === 'date') {
     const [y, m, d] = value.split('-');
     return `${d}/${m}/${y}`;
@@ -131,7 +135,7 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
     const hy = doc.y;
     doc.rect(PAGE.left, hy, WIDTH, 30).fill(NAVY);
     doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff');
-    ['#', 'Inspection area', 'Photos (uploaded / requested)', 'Defects observed'].forEach((t, i) => {
+    ['#', 'Inspection area', 'Photos provided', 'Defects observed'].forEach((t, i) => {
       doc.text(t, cols[i].x + 8, hy + 8, { width: cols[i].w - 14 });
     });
     doc.y = hy + 30;
@@ -140,8 +144,7 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
   areas.forEach((a, i) => {
     const ans = answers[a.key] || {};
     const yes = ans.defects === 'yes';
-    const got = (photosByArea[a.key] || []).length;
-    const photoText = a.photos ? `${got} / ${a.photos}` : got ? String(got) : '—';
+    const photoText = String((photosByArea[a.key] || []).length);
     doc.font('Helvetica').fontSize(8.5);
     let h = doc.heightOfString(a.label, { width: cols[1].w - 14 }) + 16;
     let noteH = 0;
@@ -165,11 +168,6 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
     }
     doc.y = ry + h;
   });
-  doc.moveDown(0.8);
-  doc.font('Helvetica').fontSize(7).fillColor(MUTE).text(
-    'Requested counts are taken from the form’s instructions. Each photo may show more than one view, so a lower count does not necessarily mean a view is missing.',
-    PAGE.left, doc.y, { width: WIDTH },
-  );
 
   // ── Comments ──
   if (inspection.comments) {

@@ -16,7 +16,7 @@
 
 const REASONS = [
   'Scheduled maintenance',
-  'Before dispatch / hire',
+  'Before dispatch',
   'Return from job / hire',
   'After incident or damage',
   'After repair or modification',
