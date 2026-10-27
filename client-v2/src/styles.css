@@ -1976,6 +1976,47 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 .insp-count { font-size: 10.5px; color: var(--text-mute); }
 .insp-error { font-size: 11px; color: var(--danger); margin: 7px 0 0 24px; }
 
+/* ── Validation of Competency ────────────────────────────────────────── */
+/* Certificate list in the VOC drawer (and phone Me tab), and the VOC form. */
+
+.voc-hint { font-size: 11px; color: var(--text-mute); line-height: 1.5; margin-top: 6px; }
+.voc-report { flex-direction: column; align-items: stretch; gap: 5px; }
+.voc-report-top { display: flex; align-items: center; gap: 8px; }
+.voc-report .insp-report-title { white-space: normal; }
+.voc-report-cats { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-dim); }
+.voc-report-cats b { font-weight: 650; color: var(--text); }
+.voc-report-cats .is-nyc, .voc-report-cats .is-nyc b { color: var(--text-mute); }
+.voc-date-btn { font-size: 11px; align-self: flex-start; }
+.voc-date-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.voc-cat { border-radius: var(--radius); }
+.voc-cat.is-invalid { box-shadow: 0 0 0 1px var(--danger); padding: 6px; }
+.voc-sub { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-mute); margin: 4px 0 6px; }
+.voc-sub-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.voc-sub-row .btn-link { text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 600; }
+.voc-equip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.voc-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--line); border-radius: 999px;
+  font-size: 12px; background: var(--bg);
+}
+.voc-chip.is-on { border-color: var(--accent); background: var(--line-soft); }
+.voc-chip label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.voc-chip-x { border: none; background: none; color: var(--text-mute); font-size: 10px; padding: 0 2px; cursor: pointer; }
+.voc-chip-x:hover { color: var(--danger); }
+.voc-add { margin-bottom: 4px; }
+.voc-task {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.voc-task-label { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.35; display: flex; align-items: center; gap: 8px; }
+.voc-task .insp-yn-btn { padding: 5px 10px; min-width: 48px; font-size: 11.5px; }
+.voc-score { width: 78px; }
+.voc-notes { margin-top: 10px; width: 100%; }
+.voc-outcome { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; }
+
 /* ── Phone layout ────────────────────────────────────────────────────── */
 /* MobileApp: a header, one scrolling column and a bottom tab bar. Sized for
    thumbs — 44px+ touch targets and 16px inputs so iOS does not zoom. */

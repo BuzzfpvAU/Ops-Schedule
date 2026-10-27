@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth.jsx';
 import Login from './Login.jsx';
 import EquipmentDetailsDrawer from './EquipmentDetailsDrawer.jsx';
+import { VocList } from './VocDrawer.jsx';
 import { Drawer, Section, KV, DgIcon, Toasts } from './ui.jsx';
 import {
   STATUSES, JOB_STATUSES, EQUIPMENT_CATEGORIES,
-  getTeamMembers, getEquipment, getSchedule, getEquipmentLocations, getJobCard,
+  getTeamMembers, getEquipment, getSchedule, getEquipmentLocations, getJobCard, getVocs,
 } from '../api.js';
 import { addDays, fmtShort, fmtLong, today as todayIso } from '../lib/dates.js';
 import { makeMatcher } from '../lib/search.js';
@@ -392,6 +393,11 @@ function KitTab({ user, equipment, schedule, locations, today, onOpenItem }) {
 // ── Me ──
 
 function MeTab({ user, me, layout, onLogout }) {
+  const [vocs, setVocs] = useState(null);
+  useEffect(() => {
+    if (user.isViewer) return;
+    getVocs(user.memberId).then(setVocs).catch(() => setVocs([]));
+  }, [user.memberId, user.isViewer]);
   return (
     <>
       <div className="m-title"><h1>{user.isViewer ? 'Viewer' : user.name}</h1></div>
@@ -400,6 +406,11 @@ function MeTab({ user, me, layout, onLogout }) {
         <KV label="Role">{user.isAdmin ? 'Admin' : user.isViewer ? 'Viewer' : 'User'}</KV>
         <KV label="Home base">{me?.location}</KV>
       </Section>
+      {vocs && (
+        <Section title="My VOCs">
+          <VocList vocs={vocs} isAdmin={false} />
+        </Section>
+      )}
       <Section title="Layout">
         <p className="m-help">
           This phone layout opens automatically on small screens. The full

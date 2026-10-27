@@ -8,7 +8,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 // ── Certificate types (the business-wide list) ──────────────────────────
 
 router.get('/types', (req, res) => {
-  res.json(req.db.prepare('SELECT id, name, active FROM cert_types ORDER BY sort, name').all());
+  res.json(req.db.prepare('SELECT id, name, active, source FROM cert_types ORDER BY sort, name').all());
 });
 
 router.post('/types', requireAdmin, (req, res) => {
@@ -20,20 +20,21 @@ router.post('/types', requireAdmin, (req, res) => {
   const id = uuidv4();
   const sort = req.db.prepare('SELECT COALESCE(MAX(sort), -1) + 1 AS n FROM cert_types').get().n;
   req.db.prepare('INSERT INTO cert_types (id, name, sort) VALUES (?, ?, ?)').run(id, name, sort);
-  res.status(201).json({ id, name, active: 1 });
+  res.status(201).json({ id, name, active: 1, source: '' });
 });
 
 // Rename, or retire (active: false hides it from pickers; holders keep it).
 router.put('/types/:id', requireAdmin, (req, res) => {
   const t = req.db.prepare('SELECT * FROM cert_types WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: 'Certificate type not found' });
+  if (t.source) return res.status(409).json({ error: 'This certificate is kept up to date by VOCs' });
   const name = req.body.name === undefined ? t.name : String(req.body.name).trim();
   if (!name) return res.status(400).json({ error: 'name cannot be empty' });
   const clash = req.db.prepare('SELECT 1 FROM cert_types WHERE name = ? COLLATE NOCASE AND id != ?').get(name, t.id);
   if (clash) return res.status(409).json({ error: 'That certificate already exists' });
   const active = req.body.active === undefined ? t.active : (req.body.active ? 1 : 0);
   req.db.prepare('UPDATE cert_types SET name = ?, active = ? WHERE id = ?').run(name, active, t.id);
-  res.json({ id: t.id, name, active });
+  res.json({ id: t.id, name, active, source: t.source });
 });
 
 // ── What each person holds ──────────────────────────────────────────────
@@ -42,9 +43,11 @@ router.get('/members', (req, res) => {
   res.json(req.db.prepare('SELECT member_id, cert_type_id, expiry_date, no_expiry FROM member_certs').all());
 });
 
-// Replace one person's set of certificates.
+// Replace one person's set of certificates. Types kept up to date by
+// something else (VOCs) are left as they are, whatever is sent for them.
 router.put('/members/:memberId', requireAdmin, (req, res) => {
-  const { certs } = req.body;
+  const managed = new Set(req.db.prepare("SELECT id FROM cert_types WHERE source != ''").all().map((t) => t.id));
+  const certs = Array.isArray(req.body.certs) ? req.body.certs.filter((c) => !managed.has(c.cert_type_id)) : req.body.certs;
   if (!Array.isArray(certs)) return res.status(400).json({ error: 'certs array is required' });
   if (!req.db.prepare('SELECT 1 FROM team_members WHERE id = ?').get(req.params.memberId)) {
     return res.status(404).json({ error: 'Team member not found' });
@@ -64,7 +67,9 @@ router.put('/members/:memberId', requireAdmin, (req, res) => {
     }
   }
   req.db.transaction(() => {
-    req.db.prepare('DELETE FROM member_certs WHERE member_id = ?').run(req.params.memberId);
+    req.db.prepare(
+      "DELETE FROM member_certs WHERE member_id = ? AND cert_type_id NOT IN (SELECT id FROM cert_types WHERE source != '')"
+    ).run(req.params.memberId);
     const ins = req.db.prepare(
       'INSERT INTO member_certs (member_id, cert_type_id, expiry_date, no_expiry) VALUES (?, ?, ?, ?)'
     );

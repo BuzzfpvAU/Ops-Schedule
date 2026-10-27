@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { VOC_CATEGORIES, vocCertTypeId, vocCertTypeName } from './services/vocTemplates.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -620,6 +621,59 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_equipment_inspection_photos_inspection
       ON equipment_inspection_photos(inspection_id);
   `);
+
+  // Validation of Competency (VOC) assessments. Like inspections, each keeps
+  // a copy of the categories it was assessed against; the PDF certificate
+  // lives on disk beside the database (see services/vocs.js). assessed_on
+  // is the date of assessment (admins may move it, e.g. to back-date) and
+  // expires_on follows it, one year on. voc_equipment is the pick-list of
+  // models per category, built up from what assessors have entered.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS voc_assessments (
+      id TEXT PRIMARY KEY,
+      number INTEGER NOT NULL UNIQUE,
+      member_id TEXT NOT NULL,
+      member_name TEXT NOT NULL DEFAULT '',
+      categories_json TEXT NOT NULL,
+      results_json TEXT NOT NULL,
+      comments TEXT NOT NULL DEFAULT '',
+      assessed_on TEXT NOT NULL,
+      expires_on TEXT NOT NULL,
+      assessor_id TEXT,
+      assessor_name TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      pdf_file TEXT,
+      FOREIGN KEY (member_id) REFERENCES team_members(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_voc_assessments_member
+      ON voc_assessments(member_id, assessed_on DESC);
+
+    CREATE TABLE IF NOT EXISTS voc_equipment (
+      id TEXT PRIMARY KEY,
+      category_key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE (category_key, name COLLATE NOCASE)
+    );
+  `);
+  // Certificate types kept up to date by something else (a VOC) are marked,
+  // so the certificates drawer shows them read-only.
+  if (!db.pragma('table_info(cert_types)').some((c) => c.name === 'source')) {
+    db.exec("ALTER TABLE cert_types ADD COLUMN source TEXT NOT NULL DEFAULT ''");
+  }
+  {
+    const sort = db.prepare('SELECT COALESCE(MAX(sort), -1) AS n FROM cert_types').get().n;
+    const ins = db.prepare(
+      "INSERT OR IGNORE INTO cert_types (id, name, sort, source) VALUES (?, ?, ?, 'voc')"
+    );
+    VOC_CATEGORIES.forEach((c, i) => {
+      // A hand-made type of the same name would block the insert; leave it be.
+      if (!db.prepare('SELECT 1 FROM cert_types WHERE name = ? COLLATE NOCASE').get(vocCertTypeName(c))) {
+        ins.run(vocCertTypeId(c.key), vocCertTypeName(c), sort + 1 + i);
+      }
+    });
+  }
 
   // New tables for auth
   db.exec(`

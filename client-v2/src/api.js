@@ -207,6 +207,18 @@ export const adjustBooking = (assignmentId, edge, delta) =>
     body: JSON.stringify({ edge, delta }),
   });
 
+// ── Validation of Competency (VOC) ──
+export const getVocCategories = () => api('/vocs/categories');
+export const getVocEquipment = () => api('/vocs/equipment');
+export const removeVocEquipment = (id) => api(`/vocs/equipment/${id}`, { method: 'DELETE' });
+export const getVocs = (memberId) => api(`/vocs?member_id=${encodeURIComponent(memberId)}`);
+export const submitVoc = (data) => api('/vocs', { method: 'POST', body: JSON.stringify(data) });
+export const changeVocDate = (id, assessed_on) =>
+  api(`/vocs/${id}`, { method: 'PATCH', body: JSON.stringify({ assessed_on }) });
+export const deleteVoc = (id) => api(`/vocs/${id}`, { method: 'DELETE' });
+export const vocPdfUrl = (id, { download = false } = {}) =>
+  `${API}/vocs/${id}/pdf${download ? '?download=1' : ''}`;
+
 // ── Training & certifications ───────────────────────────────────────────
 export const getCertTypes = () => api('/certs/types');
 export const createCertType = (name) =>
