@@ -133,6 +133,10 @@ export function initDb() {
   if (!columns.includes('is_admin')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN is_admin INTEGER DEFAULT 0`);
   }
+  // Non-admins an admin has allowed to record VOC assessments.
+  if (!columns.includes('is_voc_assessor')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN is_voc_assessor INTEGER NOT NULL DEFAULT 0`);
+  }
   if (!columns.includes('must_change_password')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN must_change_password INTEGER DEFAULT 0`);
   }

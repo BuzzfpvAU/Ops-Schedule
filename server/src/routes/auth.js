@@ -59,7 +59,7 @@ router.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   if (!checkRateLimit(loginAttempts, req.ip, 5, 15 * 60 * 1000)) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
 
-  const user = req.db.prepare('SELECT id, name, email, password_hash, is_admin, is_viewer, active, must_change_password FROM team_members WHERE email = ? COLLATE NOCASE').get(email);
+  const user = req.db.prepare('SELECT id, name, email, password_hash, is_admin, is_viewer, is_voc_assessor, active, must_change_password FROM team_members WHERE email = ? COLLATE NOCASE').get(email);
   if (!user || !user.password_hash) return res.status(401).json({ error: 'Invalid email or password' });
   if (!user.active) return res.status(401).json({ error: 'Account deactivated' });
 
@@ -68,7 +68,7 @@ router.post('/login', async (req, res) => {
 
   const token = signToken(user.id, user.is_admin === 1);
   setAuthCookie(res, token);
-  res.json({ success: true, user: { memberId: user.id, name: user.name, email: user.email, isAdmin: user.is_admin === 1, isViewer: user.is_viewer === 1, mustChangePassword: user.must_change_password === 1 } });
+  res.json({ success: true, user: { memberId: user.id, name: user.name, email: user.email, isAdmin: user.is_admin === 1, isViewer: user.is_viewer === 1, isVocAssessor: user.is_voc_assessor === 1, mustChangePassword: user.must_change_password === 1 } });
 });
 
 router.post('/logout', (req, res) => {
@@ -104,7 +104,7 @@ router.get('/init', (req, res) => {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = req.db.prepare(
-      'SELECT id, name, email, is_admin, is_viewer, active, must_change_password FROM team_members WHERE id = ?'
+      'SELECT id, name, email, is_admin, is_viewer, is_voc_assessor, active, must_change_password FROM team_members WHERE id = ?'
     ).get(payload.memberId);
 
     if (!user || !user.active) {
@@ -121,6 +121,7 @@ router.get('/init', (req, res) => {
         email: user.email,
         isAdmin: user.is_admin === 1,
         isViewer: user.is_viewer === 1,
+        isVocAssessor: user.is_voc_assessor === 1,
         mustChangePassword: user.must_change_password === 1,
       }
     });

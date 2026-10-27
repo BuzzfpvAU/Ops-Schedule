@@ -216,6 +216,8 @@ export const submitVoc = (data) => api('/vocs', { method: 'POST', body: JSON.str
 export const changeVocDate = (id, assessed_on) =>
   api(`/vocs/${id}`, { method: 'PATCH', body: JSON.stringify({ assessed_on }) });
 export const deleteVoc = (id) => api(`/vocs/${id}`, { method: 'DELETE' });
+export const setVocAssessor = (memberId, is_assessor) =>
+  api(`/vocs/assessors/${memberId}`, { method: 'PUT', body: JSON.stringify({ is_assessor }) });
 export const vocPdfUrl = (id, { download = false } = {}) =>
   `${API}/vocs/${id}/pdf${download ? '?download=1' : ''}`;
 

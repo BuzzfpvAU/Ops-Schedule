@@ -80,7 +80,7 @@ router.post('/login-verify', async (req, res) => {
     const expectedChallenge = getChallenge(challengeKey);
     if (!expectedChallenge) return res.status(400).json({ error: 'Challenge expired. Please try again.' });
 
-    const credRecord = req.db.prepare('SELECT pc.*, tm.id as member_id, tm.name, tm.email, tm.is_admin, tm.active FROM passkey_credentials pc JOIN team_members tm ON pc.team_member_id = tm.id WHERE pc.id = ?').get(body.id);
+    const credRecord = req.db.prepare('SELECT pc.*, tm.id as member_id, tm.name, tm.email, tm.is_admin, tm.is_viewer, tm.is_voc_assessor, tm.active FROM passkey_credentials pc JOIN team_members tm ON pc.team_member_id = tm.id WHERE pc.id = ?').get(body.id);
     if (!credRecord || !credRecord.active) return res.status(401).json({ error: 'Invalid credential or account deactivated' });
 
     const verification = await verifyAuthenticationResponse({
@@ -92,7 +92,7 @@ router.post('/login-verify', async (req, res) => {
     req.db.prepare('UPDATE passkey_credentials SET counter = ? WHERE id = ?').run(verification.authenticationInfo.newCounter, credRecord.id);
     const token = signToken(credRecord.member_id, credRecord.is_admin === 1);
     setAuthCookie(res, token);
-    res.json({ success: true, user: { memberId: credRecord.member_id, name: credRecord.name, email: credRecord.email, isAdmin: credRecord.is_admin === 1 } });
+    res.json({ success: true, user: { memberId: credRecord.member_id, name: credRecord.name, email: credRecord.email, isAdmin: credRecord.is_admin === 1, isViewer: credRecord.is_viewer === 1, isVocAssessor: credRecord.is_voc_assessor === 1 } });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

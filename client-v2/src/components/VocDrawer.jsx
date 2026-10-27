@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Drawer, Section } from './ui.jsx';
 import VocForm from './VocForm.jsx';
-import { getVocs, getVocCategories, getVocEquipment, changeVocDate, deleteVoc, vocPdfUrl } from '../api.js';
+import { getVocs, getVocCategories, getVocEquipment, changeVocDate, deleteVoc, setVocAssessor, vocPdfUrl } from '../api.js';
 import { vocStatus } from '../lib/voc.js';
 import { fmtLong, today as todayIso } from '../lib/dates.js';
 
 // ── One person's Validation of Competency certificates ──────────────
-// Admins record new VOCs, move a VOC's date (e.g. to back-date one done
-// earlier) and delete them; anyone can open their own certificates.
+// Admins and VOC assessors record new VOCs (never for themselves); admins
+// also move a VOC's date (e.g. to back-date one done earlier), delete them
+// and choose who is an assessor. Anyone can open their own certificates.
 
 const STATUS = {
   current: ['tag-ok', 'Current'],
@@ -83,7 +84,13 @@ export function VocList({ vocs, isAdmin, onChangeDate, onDelete }) {
   );
 }
 
-export default function VocDrawer({ member, isAdmin, currentUser, onClose, onChanged, showToast }) {
+// Admins, and the people they have made VOC assessors, can record VOCs.
+export const canRecordVocs = (user) => !!user && !user.isViewer && (user.isAdmin || user.isVocAssessor);
+
+export default function VocDrawer({ member, currentUser, onClose, onChanged, showToast }) {
+  const isAdmin = !!currentUser?.isAdmin;
+  const canRecord = canRecordVocs(currentUser) && member.id !== currentUser?.memberId;
+  const [assessor, setAssessor] = useState(member.is_voc_assessor === 1);
   const [vocs, setVocs] = useState([]);
   const [categories, setCategories] = useState(null);
   const [equipment, setEquipment] = useState({});
@@ -96,11 +103,22 @@ export default function VocDrawer({ member, isAdmin, currentUser, onClose, onCha
 
   useEffect(() => {
     load();
-    if (isAdmin) {
+    if (canRecord) {
       getVocCategories().then(setCategories).catch(() => setCategories(null));
       loadEquipment();
     }
-  }, [load, loadEquipment, isAdmin]);
+  }, [load, loadEquipment, canRecord]);
+
+  const toggleAssessor = async (on) => {
+    try {
+      await setVocAssessor(member.id, on);
+      setAssessor(on);
+      showToast?.(on ? `${member.name} can now record VOCs` : `${member.name} can no longer record VOCs`, 'success');
+      await onChanged?.();
+    } catch (e) {
+      showToast?.(e.message, 'error');
+    }
+  };
 
   const changeDate = async (v, value) => {
     try {
@@ -133,6 +151,7 @@ export default function VocDrawer({ member, isAdmin, currentUser, onClose, onCha
         categories={categories}
         equipment={equipment}
         currentUser={currentUser}
+        isAdmin={isAdmin}
         showToast={showToast}
         onEquipmentChanged={loadEquipment}
         onClose={() => setCreating(false)}
@@ -151,12 +170,21 @@ export default function VocDrawer({ member, isAdmin, currentUser, onClose, onCha
     <Drawer title={member.name} subtitle="Validation of Competency" onClose={onClose}>
       <Section title="Certificates">
         <VocList vocs={vocs} isAdmin={isAdmin} onChangeDate={changeDate} onDelete={remove} />
-        {isAdmin && (
+        {canRecord && (
           <button className="btn btn-primary insp-start" disabled={!categories} onClick={() => setCreating(true)}>
             New VOC
           </button>
         )}
       </Section>
+      {isAdmin && !member.is_admin && (
+        <Section title="Assessor">
+          <label className="opt" style={{ cursor: 'pointer' }}>
+            <input type="checkbox" checked={assessor} onChange={(e) => toggleAssessor(e.target.checked)} />
+            <span className="opt-name">Can record VOCs for others</span>
+            <span className="opt-hint">admins always can</span>
+          </label>
+        </Section>
+      )}
       <div className="voc-hint">
         Each category found competent is valid for one year from the date of assessment and shows in
         Certificates as “VOC – …”, so jobs can require it.
