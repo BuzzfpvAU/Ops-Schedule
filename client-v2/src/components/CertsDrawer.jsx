@@ -7,6 +7,8 @@ import { today as todayIso, fmtLong } from '../lib/dates.js';
 // One person's training and certifications. Anyone can read it; admins edit.
 // Ticking a certificate means "has held it" — the planner lists such people
 // and warns when the expiry has passed, so an expired record is kept.
+// "VOC – …" certificates are kept up to date by VOC assessments and are shown
+// here read-only.
 
 const TONE = { expired: 'danger', lapses: 'warn', soon: 'warn', nodate: 'mute', valid: 'ok', never: 'ok' };
 
@@ -82,19 +84,21 @@ export default function CertsDrawer({ member, types, held, isAdmin, onClose, onS
         {shown.map((t) => {
           const v = state[t.id] || { on: false, never: false, expiry: '' };
           const status = v.on ? certStatus(v.never ? NO_EXPIRY : (v.expiry || null), { today }) : null;
+          const editable = isAdmin && !t.source;
           return (
             <div className="cert-row" key={t.id}>
               <label className="cert-name">
                 <input
                   type="checkbox"
                   checked={v.on}
-                  disabled={!isAdmin}
+                  disabled={!editable}
                   onChange={(e) => set(t.id, { on: e.target.checked })}
                 />
                 {t.name}
                 {!t.active && <span className="rl-sub"> (retired)</span>}
+                {t.source === 'voc' && <span className="rl-sub"> · from VOC</span>}
               </label>
-              {v.on && (isAdmin ? (
+              {v.on && (editable ? (
                 <>
                   {!v.never && (
                     <input

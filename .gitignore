@@ -25,3 +25,6 @@ client-v2/.build-error.log
 
 # Inspection photos and PDF reports (kept beside the database)
 server/data/inspections/
+
+# VOC certificate PDFs (kept beside the database)
+server/data/vocs/

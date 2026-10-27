@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Avatar, SearchBox } from './ui.jsx';
 import CertsDrawer from './CertsDrawer.jsx';
+import VocDrawer from './VocDrawer.jsx';
 import useCerts from '../lib/useCerts.js';
 import { worstStatus } from '../lib/certs.js';
 import { STATES, STATUSES, quickEntry, deleteScheduleEntry } from '../api.js';
@@ -34,6 +35,7 @@ export default function TeamView({
   const [dayPanel, setDayPanel] = useState(null); // { member, date, entries }
   const [busy, setBusy] = useState(false);
   const [certsFor, setCertsFor] = useState(null); // member whose certificates are open
+  const [vocFor, setVocFor] = useState(null); // member whose VOCs are open
   const certs = useCerts();
   // Certificate filter: people who have held every ticked certificate.
   const [certFilter, setCertFilter] = useState([]);
@@ -267,6 +269,16 @@ export default function TeamView({
         >
           Certs{certs.held.get(m.id)?.size ? ` ${certs.held.get(m.id).size}` : ''}
         </button>
+        {(isAdmin || (isMe && !isViewer)) && (
+          <button
+            type="button"
+            className={`btn cert-btn${vocTone(m) ? ` is-${vocTone(m)}` : ''}`}
+            title="Validation of Competency"
+            onClick={(e) => { e.stopPropagation(); setVocFor(m); }}
+          >
+            VOC{vocCount(m) ? ` ${vocCount(m)}` : ''}
+          </button>
+        )}
       </>
     );
   };
@@ -283,6 +295,19 @@ export default function TeamView({
     const mine = certs.held.get(m.id);
     if (!certFilter.length) return worstStatus(mine, ctx);
     return worstStatus(new Map(certFilter.map((id) => [id, mine?.get(id) ?? null])), ctx);
+  };
+  // The VOC button counts and colours only the VOC-kept certificates.
+  const vocTypeIds = useMemo(() => certs.types.filter((t) => t.source === 'voc').map((t) => t.id), [certs.types]);
+  const vocHeld = (m) => {
+    const mine = certs.held.get(m.id);
+    return new Map(vocTypeIds.filter((id) => mine?.has(id)).map((id) => [id, mine.get(id)]));
+  };
+  const vocCount = (m) => vocHeld(m).size;
+  const vocTone = (m) => {
+    const held = vocHeld(m);
+    if (!held.size) return '';
+    const s = worstStatus(held, { today: todayIso() });
+    return s === 'expired' ? 'danger' : s === 'soon' ? 'warn' : '';
   };
   const certTitle = (m) => {
     const n = certs.held.get(m.id)?.size || 0;
@@ -449,6 +474,17 @@ export default function TeamView({
           isAdmin={!!currentUser?.isAdmin}
           onClose={() => setCertsFor(null)}
           onSaved={certs.reload}
+          showToast={showToast}
+        />
+      )}
+
+      {vocFor && (
+        <VocDrawer
+          member={vocFor}
+          isAdmin={isAdmin}
+          currentUser={currentUser}
+          onClose={() => setVocFor(null)}
+          onChanged={certs.reload}
           showToast={showToast}
         />
       )}

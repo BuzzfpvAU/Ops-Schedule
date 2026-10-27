@@ -19,6 +19,7 @@ import equipmentRoutes from './server/src/routes/equipment.js';
 import geocodeRoutes from './server/src/routes/geocode.js';
 import certRoutes from './server/src/routes/certs.js';
 import inspectionRoutes from './server/src/routes/inspections.js';
+import vocRoutes from './server/src/routes/vocs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +76,7 @@ app.use('/api/jobs', requireAuth, jobRoutes);
 app.use('/api/schedule', requireAuth, scheduleRoutes);
 app.use('/api/certs', requireAuth, certRoutes);
 app.use('/api/inspections', requireAuth, inspectionRoutes);
+app.use('/api/vocs', requireAuth, vocRoutes);
 app.use('/api/export', requireAuth, exportRoutes);
 app.use('/api/notifications', requireAuth, notificationRoutes);
 app.use('/api/seed', requireAuth, requireAdmin, seedRoutes);
