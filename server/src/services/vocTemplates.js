@@ -38,8 +38,8 @@ const flight = [
 export const VOC_CATEGORIES = [
   {
     key: 'confined-space',
-    title: 'Confined space Drone',
-    equipmentLabel: 'Confined space equipment',
+    title: 'Confined Space Drone',
+    equipmentLabel: 'Confined Space Drone',
     tasks: [
       { key: 'permit', label: 'Entry permit, authorisation and confined space risk assessment' },
       { key: 'gas_testing', label: 'Atmospheric testing – gas detector bump test and readings' },

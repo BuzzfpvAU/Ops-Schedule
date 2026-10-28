@@ -257,14 +257,14 @@ test('a renamed category renames its certificate type and older VOCs show the ne
   const id = vocCertTypeId('confined-space');
   db.prepare("UPDATE cert_types SET name = 'VOC – Confined space' WHERE id = ?").run(id);
   const reopened = initDb();
-  assert.equal(reopened.prepare('SELECT name FROM cert_types WHERE id = ?').get(id).name, 'VOC – Confined space Drone');
+  assert.equal(reopened.prepare('SELECT name FROM cert_types WHERE id = ?').get(id).name, 'VOC – Confined Space Drone');
   reopened.close();
 
   const saved = await (await call('/vocs', 'POST', submission({
     results: [result('confined-space', { equipment: ['Elios 3'] })],
   }))).json();
   db.prepare('UPDATE voc_assessments SET categories_json = REPLACE(categories_json, ?, ?) WHERE id = ?')
-    .run('Confined space Drone', 'Confined space', saved.id);
+    .run('Confined Space Drone', 'Confined space', saved.id);
   const [listed] = await (await call('/vocs?member_id=m2', 'GET')).json();
-  assert.equal(listed.results[0].title, 'Confined space Drone');
+  assert.equal(listed.results[0].title, 'Confined Space Drone');
 });
