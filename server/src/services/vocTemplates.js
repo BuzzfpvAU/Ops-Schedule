@@ -7,13 +7,14 @@
 // Each category has:
 //   equipment — the models it was assessed on. The pick-list is not fixed
 //               here: it grows from what assessors type in (voc_equipment).
-//   tasks     — the practical checklist, each marked Competent or Not yet
-//               competent. A task may name a `section`; the form and the
+//   tasks     — the practical checklist, each marked Competent, Not yet
+//               competent or N/A. A task may name a `section`; the form and the
 //               certificate put a heading wherever the section changes.
 //   plus a Theory and a Practical result (Pass / Fail).
 //
-// A category is Competent only when every task is Competent and both the
-// theory and practical were passed. A competent category is valid for one
+// A category is Competent when no task is Not yet competent and at least
+// one is Competent (N/A tasks are left out), and both the theory and
+// practical were passed. A competent category is valid for one
 // year from the date of assessment and appears in Certificates as
 // "VOC – <title>", so jobs can require it.
 //

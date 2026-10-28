@@ -268,3 +268,24 @@ test('a renamed category renames its certificate type and older VOCs show the ne
   const [listed] = await (await call('/vocs?member_id=m2', 'GET')).json();
   assert.equal(listed.results[0].title, 'Confined Space Drone');
 });
+
+test('N/A tasks are left out of the outcome, but at least one task must be competent', async () => {
+  const some = result('payload');
+  some.tasks.mounting = 'na';
+  some.tasks.quality = 'na';
+  let res = await call('/vocs', 'POST', submission({ results: [some] }));
+  assert.equal(res.status, 201);
+  assert.equal((await res.json()).results[0].outcome, 'competent');
+
+  const all = result('payload', { task: 'na' });
+  res = await call('/vocs', 'POST', submission({ results: [all] }));
+  assert.equal(res.status, 400, 'all N/A is not competent, so notes are needed');
+  all.notes = 'Nothing applicable demonstrated';
+  res = await call('/vocs', 'POST', submission({ results: [all] }));
+  assert.equal((await res.json()).results[0].outcome, 'nyc');
+
+  const bad = result('payload');
+  bad.tasks.mounting = 'maybe';
+  res = await call('/vocs', 'POST', submission({ results: [bad] }));
+  assert.equal(res.status, 400);
+});

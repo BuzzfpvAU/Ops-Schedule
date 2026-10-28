@@ -68,3 +68,9 @@ test('VOC status: current, expiring soon, expired, or nothing certified', () => 
   assert.equal(vocStatus(voc('2026-10-26'), '2026-10-27'), 'expired');
   assert.equal(vocStatus(voc('2027-06-01', 'nyc'), '2026-10-27'), 'nyc');
 });
+
+test('N/A tasks do not count against the outcome', () => {
+  assert.equal(outcomeOf(cat, done({ tasks: { mounting: 'na', operation: 'competent' } })), 'competent');
+  assert.equal(outcomeOf(cat, done({ tasks: { mounting: 'na', operation: 'na' } })), 'nyc');
+  assert.equal(outcomeOf(cat, done({ tasks: { mounting: 'na', operation: 'nyc' } })), 'nyc');
+});

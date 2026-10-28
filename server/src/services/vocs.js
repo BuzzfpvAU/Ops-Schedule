@@ -39,6 +39,9 @@ export function expiryFor(assessedOn) {
   return `${year}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
 }
 
+// How each task can be marked: Competent, Not yet competent, or not applicable.
+const TASK_MARKS = ['competent', 'nyc', 'na'];
+
 const str = (v) => (v === undefined || v === null ? '' : String(v)).trim();
 
 // An assessment date must be a real day and not in the future.
@@ -90,7 +93,7 @@ export function validateSubmission(body = {}, { today } = {}) {
     const tasks = {};
     for (const task of category.tasks) {
       const v = str(r.tasks?.[task.key]).toLowerCase();
-      if (v !== 'competent' && v !== 'nyc') errors.push(`${t}: mark “${task.label}”`);
+      if (!TASK_MARKS.includes(v)) errors.push(`${t}: mark “${task.label}”`);
       tasks[task.key] = v;
     }
     const theory = str(r.theory).toLowerCase();
@@ -105,7 +108,10 @@ export function validateSubmission(body = {}, { today } = {}) {
         theoryScore = null;
       }
     }
-    const competent = category.tasks.every((task) => tasks[task.key] === 'competent')
+    // N/A tasks are left out: competent means none Not yet competent and
+    // at least one Competent, with both theory and practical passed.
+    const marks = category.tasks.map((task) => tasks[task.key]);
+    const competent = !marks.includes('nyc') && marks.includes('competent')
       && theory === 'pass' && practical === 'pass';
     const notes = str(r.notes);
     if (!competent && !notes) errors.push(`${t}: note what still needs to be demonstrated`);
