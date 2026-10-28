@@ -12,7 +12,7 @@ export function requireAuth(req, res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     // Look up current user state from DB (handles demotion/deactivation in real-time)
     const user = req.db.prepare(
-      'SELECT id, name, email, is_admin, is_viewer, active, must_change_password FROM team_members WHERE id = ?'
+      'SELECT id, name, email, is_admin, is_viewer, is_voc_assessor, active, must_change_password FROM team_members WHERE id = ?'
     ).get(payload.memberId);
 
     if (!user || !user.active) {
@@ -26,6 +26,7 @@ export function requireAuth(req, res, next) {
       email: user.email,
       isAdmin: user.is_admin === 1,
       isViewer: user.is_viewer === 1,
+      isVocAssessor: user.is_voc_assessor === 1,
       mustChangePassword: user.must_change_password === 1,
     };
     next();

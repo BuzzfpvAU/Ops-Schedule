@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import Timeline from './Timeline.jsx';
 import { Drawer, Section, KV, Avatar, SearchBox } from './ui.jsx';
 import CertsDrawer from './CertsDrawer.jsx';
-import VocDrawer from './VocDrawer.jsx';
+import VocDrawer, { canRecordVocs } from './VocDrawer.jsx';
 import useCerts from '../lib/useCerts.js';
 import { worstStatus } from '../lib/certs.js';
 import { STATES, STATUSES, quickEntry, deleteScheduleEntry } from '../api.js';
@@ -269,7 +269,7 @@ export default function TeamView({
         >
           Certs{certs.held.get(m.id)?.size ? ` ${certs.held.get(m.id).size}` : ''}
         </button>
-        {(isAdmin || (isMe && !isViewer)) && (
+        {(canRecordVocs(currentUser) || (isMe && !isViewer)) && (
           <button
             type="button"
             className={`btn cert-btn${vocTone(m) ? ` is-${vocTone(m)}` : ''}`}
@@ -481,10 +481,9 @@ export default function TeamView({
       {vocFor && (
         <VocDrawer
           member={vocFor}
-          isAdmin={isAdmin}
           currentUser={currentUser}
           onClose={() => setVocFor(null)}
-          onChanged={certs.reload}
+          onChanged={async () => { await certs.reload(); await onChanged?.(); }}
           showToast={showToast}
         />
       )}

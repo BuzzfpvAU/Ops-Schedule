@@ -87,7 +87,7 @@ test('an admin records a VOC; it gets a certificate number and a PDF', async () 
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
   assert.match(pdf.headers.get('content-disposition'), /attachment; filename="AUAV_VOC_Sam-Pilot_VOC-0001_2026-03-10\.pdf"/);
   assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
-  assert.ok(fs.existsSync(path.join(vocsDir(db), `${saved.id}-v1.pdf`)), 'the certificate is kept on file');
+  assert.ok(fs.existsSync(path.join(vocsDir(db), `${saved.id}-v2.pdf`)), 'the certificate is kept on file');
 });
 
 test('only admins can record a VOC', async () => {
@@ -222,4 +222,49 @@ test('saving the certificates drawer leaves VOC certificates alone', async () =>
 
 test('the date check uses the Sydney calendar day', () => {
   assert.equal(todayInSydney(new Date('2026-10-27T14:30:00Z')), '2026-10-28');
+});
+
+test('an admin can make someone a VOC assessor, who can then record and see VOCs', async () => {
+  let res = await call('/vocs', 'POST', submission({ member_id: 'm3' }), member);
+  assert.equal(res.status, 403, 'not an assessor yet');
+
+  res = await call('/vocs/assessors/m2', 'PUT', { is_assessor: true }, member);
+  assert.equal(res.status, 403, 'only admins choose assessors');
+  res = await call('/vocs/assessors/m2', 'PUT', { is_assessor: true });
+  assert.equal(res.status, 200);
+
+  res = await call('/vocs', 'POST', submission({ member_id: 'm3' }), member);
+  assert.equal(res.status, 201);
+  const saved = await res.json();
+  assert.equal((await call('/vocs?member_id=m3', 'GET', null, member)).status, 200);
+  assert.equal((await fetch(`${base}/vocs/${saved.id}/pdf`, { headers: { cookie: member } })).status, 200);
+
+  // Re-dating and deleting stay with admins.
+  assert.equal((await call(`/vocs/${saved.id}`, 'PATCH', { assessed_on: '2025-01-01' }, member)).status, 403);
+  assert.equal((await call(`/vocs/${saved.id}`, 'DELETE', null, member)).status, 403);
+
+  await call('/vocs/assessors/m2', 'PUT', { is_assessor: false });
+  assert.equal((await call('/vocs', 'POST', submission({ member_id: 'm3' }), member)).status, 403);
+});
+
+test('nobody can record a VOC for themselves', async () => {
+  const res = await call('/vocs', 'POST', submission({ member_id: 'm1' }));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /yourself/);
+});
+
+test('a renamed category renames its certificate type and older VOCs show the new name', async () => {
+  const id = vocCertTypeId('confined-space');
+  db.prepare("UPDATE cert_types SET name = 'VOC – Confined space' WHERE id = ?").run(id);
+  const reopened = initDb();
+  assert.equal(reopened.prepare('SELECT name FROM cert_types WHERE id = ?').get(id).name, 'VOC – Confined Space Drone');
+  reopened.close();
+
+  const saved = await (await call('/vocs', 'POST', submission({
+    results: [result('confined-space', { equipment: ['Elios 3'] })],
+  }))).json();
+  db.prepare('UPDATE voc_assessments SET categories_json = REPLACE(categories_json, ?, ?) WHERE id = ?')
+    .run('Confined Space Drone', 'Confined space', saved.id);
+  const [listed] = await (await call('/vocs?member_id=m2', 'GET')).json();
+  assert.equal(listed.results[0].title, 'Confined Space Drone');
 });

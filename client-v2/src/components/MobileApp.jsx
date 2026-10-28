@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth.jsx';
 import Login from './Login.jsx';
 import EquipmentDetailsDrawer from './EquipmentDetailsDrawer.jsx';
-import { VocList } from './VocDrawer.jsx';
+import VocDrawer, { VocList, canRecordVocs } from './VocDrawer.jsx';
 import { Drawer, Section, KV, DgIcon, Toasts } from './ui.jsx';
 import {
   STATUSES, JOB_STATUSES, EQUIPMENT_CATEGORIES,
@@ -117,7 +117,7 @@ export default function MobileApp({ layout }) {
           />
         )}
         {tab === 'me' && (
-          <MeTab user={user} me={me} layout={layout} onLogout={logout} />
+          <MeTab user={user} me={me} members={members} layout={layout} onLogout={logout} showToast={showToast} />
         )}
       </main>
 
@@ -392,8 +392,10 @@ function KitTab({ user, equipment, schedule, locations, today, onOpenItem }) {
 
 // ── Me ──
 
-function MeTab({ user, me, layout, onLogout }) {
+function MeTab({ user, me, members, layout, onLogout, showToast }) {
   const [vocs, setVocs] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [vocFor, setVocFor] = useState(null);
   useEffect(() => {
     if (user.isViewer) return;
     getVocs(user.memberId).then(setVocs).catch(() => setVocs([]));
@@ -406,10 +408,30 @@ function MeTab({ user, me, layout, onLogout }) {
         <KV label="Role">{user.isAdmin ? 'Admin' : user.isViewer ? 'Viewer' : 'User'}</KV>
         <KV label="Home base">{me?.location}</KV>
       </Section>
+      {canRecordVocs(user) && (
+        <Section title="Validation of Competency">
+          <button className="btn btn-primary m-wide" onClick={() => setPicking(true)}>Record a VOC</button>
+        </Section>
+      )}
       {vocs && (
         <Section title="My VOCs">
           <VocList vocs={vocs} isAdmin={false} />
         </Section>
+      )}
+      {picking && (
+        <PersonPicker
+          members={members.filter((m) => m.id !== user.memberId)}
+          onClose={() => setPicking(false)}
+          onPick={(m) => { setPicking(false); setVocFor(m); }}
+        />
+      )}
+      {vocFor && (
+        <VocDrawer
+          member={vocFor}
+          currentUser={user}
+          onClose={() => setVocFor(null)}
+          showToast={showToast}
+        />
       )}
       <Section title="Layout">
         <p className="m-help">
@@ -420,5 +442,33 @@ function MeTab({ user, me, layout, onLogout }) {
       </Section>
       <button className="btn btn-danger m-wide" onClick={onLogout}>Sign out</button>
     </>
+  );
+}
+
+// Who the VOC is for: everyone but you, searchable by name, role or state.
+function PersonPicker({ members, onClose, onPick }) {
+  const [q, setQ] = useState('');
+  const match = makeMatcher(q);
+  const shown = members.filter((m) => match(m.name, m.role, m.location));
+  return (
+    <Drawer title="Record a VOC" subtitle="Who is being assessed?" onClose={onClose}>
+      <input
+        className="np-select m-search"
+        type="search"
+        placeholder="Search people…"
+        value={q}
+        autoFocus
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <div className="opt-list" style={{ marginTop: 10 }}>
+        {shown.map((m) => (
+          <button key={m.id} className="opt" onClick={() => onPick(m)}>
+            <span className="opt-name">{m.name}</span>
+            <span className="opt-hint">{[m.role, m.location].filter(Boolean).join(' · ')}</span>
+          </button>
+        ))}
+        {shown.length === 0 && <div className="rl-sub">Nobody matches.</div>}
+      </div>
+    </Drawer>
   );
 }

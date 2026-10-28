@@ -35,7 +35,7 @@ function Toggle2({ value, options, onChange, label }) {
 const COMPETENCY = [['competent', 'Competent', 'no'], ['nyc', 'NYC', 'yes']];
 const PASS_FAIL = [['pass', 'Pass', 'no'], ['fail', 'Fail', 'yes']];
 
-export default function VocForm({ member, categories, equipment, currentUser, onClose, onSubmitted, onEquipmentChanged, showToast }) {
+export default function VocForm({ member, categories, equipment, currentUser, isAdmin, onClose, onSubmitted, onEquipmentChanged, showToast }) {
   const today = todayIso();
   const [assessedOn, setAssessedOn] = useState(today);
   const [assessorName, setAssessorName] = useState(currentUser?.name || '');
@@ -165,7 +165,7 @@ export default function VocForm({ member, categories, equipment, currentUser, on
                           <input type="checkbox" checked={on} onChange={(e) => toggleEquipment(c.key, name, e.target.checked)} />
                           {name}
                         </label>
-                        {saved && !on && (
+                        {isAdmin && saved && !on && (
                           <button type="button" className="voc-chip-x" aria-label={`Remove ${name} from the list`} title="Remove from the list" onClick={() => forget(c.key, name)}>✕</button>
                         )}
                       </span>

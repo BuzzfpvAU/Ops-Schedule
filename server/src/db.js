@@ -133,6 +133,10 @@ export function initDb() {
   if (!columns.includes('is_admin')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN is_admin INTEGER DEFAULT 0`);
   }
+  // Non-admins an admin has allowed to record VOC assessments.
+  if (!columns.includes('is_voc_assessor')) {
+    db.exec(`ALTER TABLE team_members ADD COLUMN is_voc_assessor INTEGER NOT NULL DEFAULT 0`);
+  }
   if (!columns.includes('must_change_password')) {
     db.exec(`ALTER TABLE team_members ADD COLUMN must_change_password INTEGER DEFAULT 0`);
   }
@@ -667,10 +671,17 @@ export function initDb() {
     const ins = db.prepare(
       "INSERT OR IGNORE INTO cert_types (id, name, sort, source) VALUES (?, ?, ?, 'voc')"
     );
+    const clash = db.prepare('SELECT 1 FROM cert_types WHERE name = ? COLLATE NOCASE AND id != ?');
     VOC_CATEGORIES.forEach((c, i) => {
-      // A hand-made type of the same name would block the insert; leave it be.
-      if (!db.prepare('SELECT 1 FROM cert_types WHERE name = ? COLLATE NOCASE').get(vocCertTypeName(c))) {
-        ins.run(vocCertTypeId(c.key), vocCertTypeName(c), sort + 1 + i);
+      const id = vocCertTypeId(c.key);
+      const name = vocCertTypeName(c);
+      // A hand-made type of the same name would block it; leave that be.
+      if (clash.get(name, id)) return;
+      // A category renamed since the type was made keeps its id; follow the name.
+      if (db.prepare('SELECT 1 FROM cert_types WHERE id = ?').get(id)) {
+        db.prepare('UPDATE cert_types SET name = ? WHERE id = ? AND name != ?').run(name, id, name);
+      } else {
+        ins.run(id, name, sort + 1 + i);
       }
     });
   }
