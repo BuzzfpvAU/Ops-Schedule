@@ -8,7 +8,8 @@
 //   equipment — the models it was assessed on. The pick-list is not fixed
 //               here: it grows from what assessors type in (voc_equipment).
 //   tasks     — the practical checklist, each marked Competent or Not yet
-//               competent.
+//               competent. A task may name a `section`; the form and the
+//               certificate put a heading wherever the section changes.
 //   plus a Theory and a Practical result (Pass / Fail).
 //
 // A category is Competent only when every task is Competent and both the
@@ -40,15 +41,32 @@ export const VOC_CATEGORIES = [
     key: 'confined-space',
     title: 'Confined Space Drone',
     equipmentLabel: 'Confined Space Drone',
+    // Drawn from the AUAV Scout Operator Training Agenda, plus the
+    // confined space entry tasks.
     tasks: [
-      { key: 'permit', label: 'Entry permit, authorisation and confined space risk assessment' },
-      { key: 'gas_testing', label: 'Atmospheric testing – gas detector bump test and readings' },
-      { key: 'isolation', label: 'Isolation and lock-out / tag-out of the space' },
-      { key: 'ppe', label: 'Selection, fit and inspection of PPE / RPE' },
-      { key: 'standby', label: 'Communication with the standby person' },
-      { key: 'equipment_check', label: 'Inspection and set-up of confined space equipment' },
-      { key: 'operation', label: 'Entry, work and exit procedures / operating the equipment in the space' },
-      { key: 'rescue', label: 'Emergency and rescue procedures' },
+      { section: 'Setup & systems', key: 'core_setup', label: 'Setup and assembly of core systems' },
+      { section: 'Setup & systems', key: 'tether_setup', label: 'Tether setup procedures' },
+      { section: 'Setup & systems', key: 'utm', label: 'UTM assembly, attachment procedures and readings' },
+      { section: 'Setup & systems', key: 'ups', label: 'UPS setup and procedure' },
+      { section: 'Setup & systems', key: 'ui', label: 'UI navigation and features, button mapping / presets' },
+      { section: 'Planning & permits', key: 'avcrm_job', label: 'Job set-up, risk assessment and JSA in AVCRM' },
+      { section: 'Planning & permits', key: 'permit', label: 'Entry permit, authorisation and confined space risk assessment' },
+      { section: 'Planning & permits', key: 'flight_planning', label: 'Flight planning, including sea state limitations' },
+      { section: 'Planning & permits', key: 'inspectors', label: 'Working with inspectors' },
+      { section: 'Flight', key: 'presession', label: 'Pre-session checks' },
+      { section: 'Flight', key: 'gas_testing', label: 'Gas testing and gas detection' },
+      { section: 'Flight', key: 'tether_management', label: 'Tether management and the tether team' },
+      { section: 'Flight', key: 'standby', label: 'Communication with the standby person' },
+      { section: 'Flight', key: 'navigation', label: 'Navigation techniques, including camera or lidar failure' },
+      { section: 'Flight', key: 'collision', label: 'Collision avoidance settings and lidar limitations (blind spots)' },
+      { section: 'Flight', key: 'tether_snag', label: 'Strain indication and tether snag procedures' },
+      { section: 'Flight', key: 'failsafe', label: 'Failsafe features and emergency actions' },
+      { section: 'Flight', key: 'camera', label: 'Camera settings, image quality and optimal focus' },
+      { section: 'Flight', key: 'manoeuvres', label: 'Flight manoeuvres and pilot competency' },
+      { section: 'Post-flight & data', key: 'crash_extraction', label: 'Crash, black box and drone extraction from confined spaces' },
+      { section: 'Post-flight & data', key: 'postflight', label: 'Post-flight checks, AVCRM flight logging and maintenance triggers' },
+      { section: 'Post-flight & data', key: 'data', label: 'Data backup (Beyond Compare) and Scout Portal upload' },
+      { section: 'Maintenance', key: 'maintenance', label: 'Prop / motor replacement, cleaning and re-calibration' },
     ],
   },
   {

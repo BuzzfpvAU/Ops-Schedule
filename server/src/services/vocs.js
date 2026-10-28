@@ -265,7 +265,7 @@ export function addEquipment(db, categoryKey, rawName) {
 // ── Certificate PDF ──
 
 // Bump when the certificate layout changes so stored ones are rebuilt.
-const PDF_LAYOUT = 2;
+const PDF_LAYOUT = 3;
 const pdfFileFor = (row) => `${row.id}-v${PDF_LAYOUT}.pdf`;
 
 export async function ensureCertificatePdf(db, row, { logoPath } = {}) {

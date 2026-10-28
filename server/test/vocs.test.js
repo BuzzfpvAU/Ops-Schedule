@@ -87,7 +87,7 @@ test('an admin records a VOC; it gets a certificate number and a PDF', async () 
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
   assert.match(pdf.headers.get('content-disposition'), /attachment; filename="AUAV_VOC_Sam-Pilot_VOC-0001_2026-03-10\.pdf"/);
   assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
-  assert.ok(fs.existsSync(path.join(vocsDir(db), `${saved.id}-v2.pdf`)), 'the certificate is kept on file');
+  assert.ok(fs.existsSync(path.join(vocsDir(db), `${saved.id}-v3.pdf`)), 'the certificate is kept on file');
 });
 
 test('only admins can record a VOC', async () => {

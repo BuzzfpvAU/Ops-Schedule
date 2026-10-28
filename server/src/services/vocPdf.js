@@ -231,7 +231,13 @@ export function buildVocPdf({ assessment, categories, results, logoPath }) {
 
     tableHead('Task assessed');
     cat.tasks.forEach((task, i) => {
-      if (!room(24)) tableHead('Task assessed');
+      if (!room(task.section ? 48 : 24)) tableHead('Task assessed');
+      if (task.section && task.section !== cat.tasks[i - 1]?.section) {
+        const sy = doc.y;
+        doc.rect(PAGE.left, sy, WIDTH, 20).fill(TINT);
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(NAVY).text(task.section.toUpperCase(), PAGE.left + 38, sy + 6, { characterSpacing: 0.5 });
+        doc.y = sy + 20;
+      }
       const v = r.tasks?.[task.key];
       tableRow(i, task.label, RESULT[v] || '—', v === 'competent');
     });
