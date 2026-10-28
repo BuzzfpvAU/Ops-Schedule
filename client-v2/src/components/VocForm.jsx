@@ -176,7 +176,7 @@ export default function VocForm({ member, categories, equipment, currentUser, is
                   <input
                     className="np-select"
                     value={typed[c.key] || ''}
-                    placeholder={`Add ${c.equipmentLabel.toLowerCase()}, e.g. ${c.key === 'payload' ? 'Zenmuse L2' : c.key === 'confined-space' ? 'Elios 3' : 'DJI M350 RTK'}`}
+                    placeholder={`Add ${c.equipmentLabel.toLowerCase()}, e.g. ${c.key === 'payload' ? 'Zenmuse L2' : c.key === 'confined-space' ? 'Scout' : 'DJI M350 RTK'}`}
                     onChange={(e) => setTyped((t) => ({ ...t, [c.key]: e.target.value }))}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTyped(c.key); } }}
                   />
@@ -188,16 +188,21 @@ export default function VocForm({ member, categories, equipment, currentUser, is
                   <button type="button" className="btn-link" onClick={() => markAll(c)}>Mark all competent</button>
                 </div>
                 {c.tasks.map((t, i) => (
-                  <div className="voc-task" key={t.key}>
-                    <span className="insp-num">{i + 1}</span>
-                    <span className="voc-task-label">{t.label}</span>
-                    <Toggle2
-                      label={t.label}
-                      value={r.tasks[t.key]}
-                      options={COMPETENCY}
-                      onChange={(v) => setResult(c.key, { tasks: { ...r.tasks, [t.key]: v } })}
-                    />
-                  </div>
+                  <React.Fragment key={t.key}>
+                    {t.section && t.section !== c.tasks[i - 1]?.section && (
+                      <div className="voc-section">{t.section}</div>
+                    )}
+                    <div className="voc-task">
+                      <span className="insp-num">{i + 1}</span>
+                      <span className="voc-task-label">{t.label}</span>
+                      <Toggle2
+                        label={t.label}
+                        value={r.tasks[t.key]}
+                        options={COMPETENCY}
+                        onChange={(v) => setResult(c.key, { tasks: { ...r.tasks, [t.key]: v } })}
+                      />
+                    </div>
+                  </React.Fragment>
                 ))}
 
                 <div className="voc-task">
