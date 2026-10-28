@@ -671,10 +671,17 @@ export function initDb() {
     const ins = db.prepare(
       "INSERT OR IGNORE INTO cert_types (id, name, sort, source) VALUES (?, ?, ?, 'voc')"
     );
+    const clash = db.prepare('SELECT 1 FROM cert_types WHERE name = ? COLLATE NOCASE AND id != ?');
     VOC_CATEGORIES.forEach((c, i) => {
-      // A hand-made type of the same name would block the insert; leave it be.
-      if (!db.prepare('SELECT 1 FROM cert_types WHERE name = ? COLLATE NOCASE').get(vocCertTypeName(c))) {
-        ins.run(vocCertTypeId(c.key), vocCertTypeName(c), sort + 1 + i);
+      const id = vocCertTypeId(c.key);
+      const name = vocCertTypeName(c);
+      // A hand-made type of the same name would block it; leave that be.
+      if (clash.get(name, id)) return;
+      // A category renamed since the type was made keeps its id; follow the name.
+      if (db.prepare('SELECT 1 FROM cert_types WHERE id = ?').get(id)) {
+        db.prepare('UPDATE cert_types SET name = ? WHERE id = ? AND name != ?').run(name, id, name);
+      } else {
+        ins.run(id, name, sort + 1 + i);
       }
     });
   }

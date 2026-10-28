@@ -196,7 +196,7 @@ export function summarise(row) {
     comments: row.comments,
     results: results.map((r) => ({
       key: r.key,
-      title: categories.find((c) => c.key === r.key)?.title || r.key,
+      title: getCategory(r.key)?.title || categories.find((c) => c.key === r.key)?.title || r.key,
       equipment: r.equipment,
       outcome: r.outcome,
     })),
@@ -265,7 +265,7 @@ export function addEquipment(db, categoryKey, rawName) {
 // ── Certificate PDF ──
 
 // Bump when the certificate layout changes so stored ones are rebuilt.
-const PDF_LAYOUT = 1;
+const PDF_LAYOUT = 2;
 const pdfFileFor = (row) => `${row.id}-v${PDF_LAYOUT}.pdf`;
 
 export async function ensureCertificatePdf(db, row, { logoPath } = {}) {
@@ -273,7 +273,8 @@ export async function ensureCertificatePdf(db, row, { logoPath } = {}) {
   if (row.pdf_file) fs.rmSync(pdfPath(db, row), { force: true });
   const buf = await buildVocPdf({
     assessment: row,
-    categories: JSON.parse(row.categories_json),
+    // Tasks as they were assessed, under the category's current name.
+    categories: JSON.parse(row.categories_json).map((c) => ({ ...c, title: getCategory(c.key)?.title || c.title })),
     results: JSON.parse(row.results_json),
     logoPath,
   });

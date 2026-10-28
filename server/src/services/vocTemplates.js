@@ -38,7 +38,7 @@ const flight = [
 export const VOC_CATEGORIES = [
   {
     key: 'confined-space',
-    title: 'Confined space',
+    title: 'Confined space Drone',
     equipmentLabel: 'Confined space equipment',
     tasks: [
       { key: 'permit', label: 'Entry permit, authorisation and confined space risk assessment' },
