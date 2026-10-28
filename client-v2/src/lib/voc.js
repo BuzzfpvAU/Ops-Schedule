@@ -8,12 +8,14 @@ export function blankResult() {
   return { equipment: [], tasks: {}, theory: '', theory_score: '', practical: '', notes: '' };
 }
 
-// Competent only when every task is Competent and both theory and practical
-// were passed; null while anything is still unanswered.
+// Competent when no task is NYC and at least one is Competent (N/A tasks
+// are left out), and both theory and practical were passed; null while
+// anything is still unanswered.
 export function outcomeOf(category, r) {
   const marks = category.tasks.map((t) => r.tasks[t.key]);
   if (marks.some((m) => !m) || !r.theory || !r.practical) return null;
-  return marks.every((m) => m === 'competent') && r.theory === 'pass' && r.practical === 'pass' ? 'competent' : 'nyc';
+  const tasksOk = !marks.includes('nyc') && marks.includes('competent');
+  return tasksOk && r.theory === 'pass' && r.practical === 'pass' ? 'competent' : 'nyc';
 }
 
 // What still stops the form being sent. `general` holds form-wide problems;

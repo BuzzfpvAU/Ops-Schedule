@@ -32,7 +32,7 @@ function Toggle2({ value, options, onChange, label }) {
   );
 }
 
-const COMPETENCY = [['competent', 'Competent', 'no'], ['nyc', 'NYC', 'yes']];
+const COMPETENCY = [['competent', 'Competent', 'no'], ['nyc', 'NYC', 'yes'], ['na', 'N/A', 'na']];
 const PASS_FAIL = [['pass', 'Pass', 'no'], ['fail', 'Fail', 'yes']];
 
 export default function VocForm({ member, categories, equipment, currentUser, isAdmin, onClose, onSubmitted, onEquipmentChanged, showToast }) {

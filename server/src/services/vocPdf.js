@@ -32,7 +32,7 @@ const longDay = (iso) => {
 };
 const shortDay = (iso) => iso.split('-').reverse().join('/');
 
-const RESULT = { competent: 'Competent', nyc: 'Not yet competent', pass: 'Pass', fail: 'Fail' };
+const RESULT = { competent: 'Competent', nyc: 'Not yet competent', na: 'N/A', pass: 'Pass', fail: 'Fail' };
 
 export function buildVocPdf({ assessment, categories, results, logoPath }) {
   const number = certNumber(assessment.number);
@@ -198,6 +198,7 @@ export function buildVocPdf({ assessment, categories, results, logoPath }) {
     ['#', title, 'Result'].forEach((t, i) => doc.text(t, cols[i].x + 8, hy + 9, { width: cols[i].w - 14 }));
     doc.y = hy + 26;
   };
+  // `good` is true (green), false (red) or null (grey, for N/A).
   const tableRow = (i, label, value, good) => {
     doc.font('Helvetica').fontSize(8.5);
     const h = doc.heightOfString(label, { width: cols[1].w - 14 }) + 14;
@@ -207,7 +208,7 @@ export function buildVocPdf({ assessment, categories, results, logoPath }) {
     doc.font('Helvetica').fontSize(8.5).fillColor(INK);
     doc.text(i === null ? '' : String(i + 1), cols[0].x + 8, ry + 7, { width: cols[0].w - 10 });
     doc.text(label, cols[1].x + 8, ry + 7, { width: cols[1].w - 14 });
-    doc.font('Helvetica-Bold').fillColor(good ? GOOD : BAD).text(value, cols[2].x + 8, ry + 7, { width: cols[2].w - 14 });
+    doc.font('Helvetica-Bold').fillColor(good === null ? MUTE : good ? GOOD : BAD).text(value, cols[2].x + 8, ry + 7, { width: cols[2].w - 14 });
     doc.y = ry + h;
   };
 
@@ -239,7 +240,7 @@ export function buildVocPdf({ assessment, categories, results, logoPath }) {
         doc.y = sy + 20;
       }
       const v = r.tasks?.[task.key];
-      tableRow(i, task.label, RESULT[v] || '—', v === 'competent');
+      tableRow(i, task.label, RESULT[v] || '—', v === 'na' ? null : v === 'competent');
     });
     if (!room(48)) tableHead('Task assessed');
     const score = r.theory_score === null || r.theory_score === undefined ? '' : ` (${r.theory_score}%)`;

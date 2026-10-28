@@ -1939,6 +1939,7 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 .insp-yn-btn + .insp-yn-btn { border-left: 1px solid var(--line); }
 .insp-yn-btn.on-no { background: rgba(34, 197, 94, 0.18); color: var(--ok); }
 .insp-yn-btn.on-yes { background: rgba(239, 68, 68, 0.18); color: var(--danger); }
+.insp-yn-btn.on-na { background: var(--line-soft); color: var(--text); }
 .insp-notes { margin: 8px 0 0 24px; width: calc(100% - 24px); }
 .insp-photos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 9px 0 0 24px; }
 .insp-thumb {
