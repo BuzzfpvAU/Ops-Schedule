@@ -149,6 +149,47 @@ export const TEMPLATES = [
       { key: 'case', label: 'Case or packaging', photos: 1 },
     ],
   },
+  // Our own pre-check of kit going to a Woodside site, done before Woodside's
+  // T4 sign-off. DRAFT: built without Woodside's T4 definition or forms (the
+  // i99 hazardous-area form is the only known reference), so the areas are a
+  // proposed structure. Tune them once the Woodside requirement is in hand.
+  // Not tied to a category: pick it from the form for any item.
+  {
+    id: 'woodside-t4',
+    title: 'Woodside T4 Pre-Deployment (draft)',
+    reportTitle: 'Woodside T4 Pre-Deployment Inspection',
+    itemLabel: 'Item',
+    categories: [],
+    details: [
+      {
+        key: 'site', label: 'Woodside site / facility', type: 'choice', required: true,
+        options: ['Karratha Gas Plant', 'Pluto LNG', 'Offshore facility', 'Other'],
+      },
+      { key: 'site_detail', label: 'Facility name / location', type: 'text', placeholder: 'e.g. Goodwyn A, or the area on the plant' },
+      { key: 'job_ref', label: 'Job / PO / work order reference', type: 'text', required: true },
+      { key: 'asset_tag', label: 'Asset tag #', type: 'text' },
+      { key: 'part_number', label: 'Part / model #', type: 'text' },
+      { key: 'test_tag_date', label: 'Electrical test & tag date (AS/NZS 3760)', type: 'date' },
+      { key: 'test_tag_due', label: 'Test & tag next due', type: 'date' },
+      {
+        key: 'dg_class', label: 'Dangerous goods', type: 'choice', required: true,
+        options: ['Not DG', 'Class 9 – Li-ion battery (UN3480)', 'Class 9 – Li-ion packed with / in equipment (UN3481)', 'Other DG'],
+      },
+      { key: 'state_of_charge', label: 'Battery state of charge for transport', type: 'text', placeholder: 'e.g. 30% – n/a if not DG' },
+    ],
+    areas: [
+      { key: 'condition', label: 'Overall condition – damage, cracks, corrosion, loose parts', photos: 4 },
+      { key: 'identification', label: 'Asset tag, serial and part # fitted, legible and match the paperwork', photos: 1 },
+      { key: 'dropped_objects', label: 'Dropped-object risks – fasteners secure, loose items tethered or removed', photos: 2 },
+      { key: 'electrical', label: 'Electrical – leads, plugs, chargers undamaged; test & tag current', photos: 2 },
+      { key: 'hazardous_area', label: 'Hazardous-area suitability – Ex rating, or controls for use outside zoned areas', photos: 1 },
+      { key: 'batteries', label: 'Batteries – no swelling or damage, terminals protected, DG labels fitted', photos: 2 },
+      { key: 'lifting_tether', label: 'Lifting points, tethers and rigging – tagged, WLL marked, in date (n/a if none)', photos: 1 },
+      { key: 'function', label: 'Function test passed', photos: 0 },
+      { key: 'case', label: 'Case / packaging – latches, foam, weight and dimensions labelled', photos: 2 },
+      { key: 'paperwork', label: 'Paperwork ready – manuals, certificates, DG declaration, manifest details', photos: 1 },
+    ],
+  },
 ];
 
 export const DEFAULT_TEMPLATE_ID = 'general';

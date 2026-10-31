@@ -127,6 +127,31 @@ test('a staff member can submit an inspection and download its PDF', async () =>
   assert.ok(fs.existsSync(path.join(inspectionsDir(db), 'reports', `${saved.id}-v3.pdf`)), 'the PDF is kept on file');
 });
 
+test('the Woodside T4 form can be used on any item and makes a PDF', async () => {
+  const t = getTemplate('woodside-t4');
+  assert.ok(t, 'the T4 form is served');
+  assert.notEqual(templateForCategory('Drones').id, 'woodside-t4', 'it is never the default for a category');
+
+  const answers = {};
+  for (const a of t.areas) {
+    answers[a.key] = { defects: 'no', notes: '', photos: a.photos ? [(await upload()).body.id] : [] };
+  }
+  const sub = {
+    equipment_id: 'd1', template_id: 'woodside-t4', answers,
+    details: { site: 'Karratha Gas Plant', job_ref: 'PO 12345', dg_class: 'Not DG' },
+  };
+  let res = await json('/', 'POST', { ...sub, details: { site: 'Karratha Gas Plant' } });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Job \/ PO \/ work order reference is required/);
+
+  res = await json('/', 'POST', sub);
+  assert.equal(res.status, 201);
+  const saved = await res.json();
+  const pdf = await fetch(`${base}/${saved.id}/pdf`, { headers: { cookie: member } });
+  assert.equal(pdf.status, 200);
+  assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+});
+
 test('report numbers run on across items', async () => {
   await json('/', 'POST', await droneSubmission());
   const second = await (await json('/', 'POST', await droneSubmission())).json();
