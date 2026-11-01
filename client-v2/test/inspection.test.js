@@ -57,10 +57,18 @@ test('the Woodside T4 form asks positive questions, where No is the fail', () =>
   assert.equal(areaQuestion(t4, t4.areas[0]), 'Free from damage and in working order?');
   assert.equal(areaQuestion(t4, t4.areas.find((a) => a.key === 'paperwork')), 'Complete and ready to go?');
   assert.equal(areaQuestion(drone, drone.areas[0]), 'Defects observed?', 'other forms are unchanged');
-  assert.deepEqual(answerOptions(t4).map((o) => [o.label, o.defects]), [['Yes', 'no'], ['No', 'yes']]);
+  assert.deepEqual(answerOptions(t4).map((o) => [o.label, o.defects]), [['Yes', 'no'], ['No', 'yes'], ['N/A', 'na']]);
   assert.deepEqual(answerOptions(drone).map((o) => [o.label, o.defects]), [['No', 'no'], ['Yes', 'yes']]);
 
   const answers = blankAnswers(t4);
   answers.condition = { defects: 'yes', notes: '', photos: [] };
   assert.equal(formProblems(t4, {}, answers).areas.condition, 'Describe what is wrong');
+});
+
+test('N/A on the T4 form needs no note or photo and is not a defect', () => {
+  const t4 = TEMPLATES.find((t) => t.id === 'woodside-t4');
+  const answers = blankAnswers(t4);
+  for (const a of t4.areas) answers[a.key] = { defects: 'na', notes: '', photos: [] };
+  assert.equal(formProblems(t4, { site: 'Pluto LNG', job_ref: 'PO 1', dg_class: 'Not DG' }, answers).count, 0);
+  assert.equal(defectCount(t4, answers), 0);
 });

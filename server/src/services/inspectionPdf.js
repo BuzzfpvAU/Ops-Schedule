@@ -168,12 +168,16 @@ export async function buildInspectionPdf({ inspection, template, details, answer
 
   // ── Result banner ──
   const ok = defectAreas.length === 0;
+  const naAreas = areas.filter((a) => answers[a.key]?.defects === 'na');
+  const naNote = naAreas.length ? ` ${naAreas.length} marked N/A: ${naAreas.map((a) => a.label.split(' – ')[0]).join('; ')}.` : '';
+  const answered = areas.length - naAreas.length;
   const heading = ok ? 'RESULT: NO DEFECTS RECORDED' : `RESULT: ${defectAreas.length} DEFECT${defectAreas.length === 1 ? '' : 'S'} RECORDED`;
   let summary = ok
     ? (template.positive
-      ? `All ${areas.length} inspection areas were answered “Yes”: free from damage and in working order.`
+      ? `${naAreas.length ? `All ${answered} applicable` : `All ${areas.length}`} inspection areas were answered “Yes”: free from damage and in working order.`
       : `All ${areas.length} inspection areas were answered “No” to defects observed.`)
     : `${template.positive ? 'Answered “No” in' : 'Defects observed in'}: ${defectAreas.map((a) => a.label).join('; ')}.`;
+  summary += naNote;
   if (inspection.marked_unserviceable) summary += ' The item was marked unserviceable in the equipment register.';
   doc.font('Helvetica').fontSize(9);
   const bannerH = Math.max(46, doc.heightOfString(summary, { width: WIDTH - 230 }) + 26);
@@ -225,7 +229,8 @@ export async function buildInspectionPdf({ inspection, template, details, answer
     doc.text(String(i + 1), cols[0].x + 8, ry + 8, { width: cols[0].w - 10 });
     doc.text(a.label, cols[1].x + 8, ry + 8, { width: cols[1].w - 14 });
     doc.text(photoText, cols[2].x + 8, ry + 8, { width: cols[2].w - 14 });
-    doc.font('Helvetica-Bold').fillColor(yes ? BAD : GOOD).text(yes === !template.positive ? 'Yes' : 'No', cols[3].x + 8, ry + 8);
+    if (ans.defects === 'na') doc.font('Helvetica-Bold').fillColor(MUTE).text('N/A', cols[3].x + 8, ry + 8);
+    else doc.font('Helvetica-Bold').fillColor(yes ? BAD : GOOD).text(yes === !template.positive ? 'Yes' : 'No', cols[3].x + 8, ry + 8);
     if (noteH) {
       doc.font('Helvetica-Oblique').fontSize(8).fillColor(BAD)
         .text(`Defect: ${ans.notes}`, cols[1].x + 8, ry + h - noteH, { width: WIDTH - 46 });
@@ -277,12 +282,13 @@ export async function buildInspectionPdf({ inspection, template, details, answer
     for (const a of withPhotos) {
       const idx = areas.indexOf(a) + 1;
       const yes = answers[a.key]?.defects === 'yes';
+      const na = answers[a.key]?.defects === 'na';
       const list = photosByArea[a.key];
       room(18 + cellH + 24);
       const hy = doc.y;
       doc.font('Helvetica-Bold').fontSize(9).fillColor(INK)
         .text(`${idx}. ${a.label}  ·  `, PAGE.left, hy, { continued: true })
-        .fillColor(yes ? BAD : GOOD).text(yes ? 'Defects observed' : 'No defects');
+        .fillColor(na ? MUTE : yes ? BAD : GOOD).text(na ? 'N/A' : yes ? 'Defects observed' : 'No defects');
       doc.y = hy + 18;
       for (let i = 0; i < list.length; i += 3) {
         if (i > 0) room(cellH + 24);

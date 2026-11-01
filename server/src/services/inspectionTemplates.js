@@ -10,7 +10,9 @@
 //             Yes needs a note. A template with `positive: true` asks its
 //             `question` instead (an area's own `question` overrides it),
 //             where Yes is the pass and No needs a note. Answers are stored
-//             the same way either way: `defects` is 'yes' for a fail. `photos` is how many views the form asks
+//             the same way either way: `defects` is 'yes' for a fail.
+//             `allowNA: true` adds an N/A answer (stored as 'na'): not a
+//             defect, and no note or photo needed. `photos` is how many views the form asks
 //             for; any area asking for photos needs at least one.
 //
 // "Basic Drone Inspection" follows the Microsoft Form it replaces
@@ -164,6 +166,7 @@ export const TEMPLATES = [
     itemLabel: 'Item',
     categories: [],
     positive: true,
+    allowNA: true,
     question: 'Free from damage and in working order?',
     details: [
       {
@@ -189,7 +192,7 @@ export const TEMPLATES = [
       { key: 'electrical', label: 'Electrical – leads, plugs, chargers undamaged; test & tag current', question: 'Free from damage, working and test & tag in date?', photos: 2 },
       { key: 'hazardous_area', label: 'Hazardous-area suitability – Ex rating, or controls for use outside zoned areas', question: 'Suitable for where it will be used?', photos: 1 },
       { key: 'batteries', label: 'Batteries – no swelling or damage, terminals protected, DG labels fitted', photos: 2 },
-      { key: 'lifting_tether', label: 'Lifting points, tethers and rigging – tagged, WLL marked, in date', question: 'Free from damage, tagged and in date (Yes if none fitted)?', photos: 1 },
+      { key: 'lifting_tether', label: 'Lifting points, tethers and rigging – tagged, WLL marked, in date', question: 'Free from damage, tagged and in date?', photos: 1 },
       { key: 'function', label: 'Function test', question: 'Passed – working as it should?', photos: 0 },
       { key: 'case', label: 'Case / packaging – latches, foam, weight and dimensions labelled', photos: 2 },
       { key: 'paperwork', label: 'Paperwork – manuals, certificates, DG declaration, manifest details', question: 'Complete and ready to go?', photos: 1 },

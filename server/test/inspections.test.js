@@ -10,7 +10,7 @@ import { initDb } from '../src/db.js';
 import { signToken, requireAuth } from '../src/middleware/auth.js';
 import inspectionRoutes from '../src/routes/inspections.js';
 import { getTemplate, templateForCategory } from '../src/services/inspectionTemplates.js';
-import { inspectionsDir, removeStalePhotos, reportFilename } from '../src/services/inspections.js';
+import { inspectionsDir, removeStalePhotos, reportFilename, validateSubmission } from '../src/services/inspections.js';
 
 let db, server, base, dbPath, admin, member, viewer;
 
@@ -146,6 +146,11 @@ test('the Woodside T4 form can be used on any item and makes a PDF', async () =>
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /Job \/ PO \/ work order reference is required/);
 
+  sub.answers.lifting_tether = { defects: 'na', notes: '', photos: [] };
+  const drone = getTemplate('drone-basic');
+  const droneAnswers = Object.fromEntries(drone.areas.map((a) => [a.key, { defects: 'na', photos: [] }]));
+  assert.ok(validateSubmission(drone, { answers: droneAnswers }).errors.some((e) => /answer whether defects were observed/.test(e)),
+    'forms without N/A refuse it');
   sub.answers.batteries = { ...sub.answers.batteries, defects: 'yes', notes: '' };
   res = await json('/', 'POST', sub);
   assert.equal(res.status, 400);

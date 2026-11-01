@@ -11,12 +11,16 @@ export function templateFor(templates, category) {
 // What each area asks, and its two answers in the order they are shown.
 // `defects` is the stored value: 'yes' is always the fail. A positive
 // template asks "is this OK?", so its Yes is stored as defects 'no'.
+// Templates with allowNA add an N/A answer, stored as 'na'.
 export const areaQuestion = (template, area) =>
   area.question || (template.positive && template.question) || 'Defects observed?';
 
-export const answerOptions = (template) => (template.positive
-  ? [{ label: 'Yes', defects: 'no' }, { label: 'No', defects: 'yes' }]
-  : [{ label: 'No', defects: 'no' }, { label: 'Yes', defects: 'yes' }]);
+export const answerOptions = (template) => [
+  ...(template.positive
+    ? [{ label: 'Yes', defects: 'no' }, { label: 'No', defects: 'yes' }]
+    : [{ label: 'No', defects: 'no' }, { label: 'Yes', defects: 'yes' }]),
+  ...(template.allowNA ? [{ label: 'N/A', defects: 'na' }] : []),
+];
 
 // A blank form for a template: no answers yet, no photos.
 export function blankAnswers(template) {
@@ -38,11 +42,11 @@ export function formProblems(template, details, answers) {
     const ans = answers[a.key] || {};
     const ready = (ans.photos || []).filter((p) => p.id);
     if ((ans.photos || []).some((p) => p.uploading)) add('areas', a.key, 'Wait for photos to finish uploading');
-    else if (!ans.defects) add('areas', a.key, template.positive ? 'Answer Yes or No' : 'Answer whether defects were observed');
+    else if (!ans.defects) add('areas', a.key, template.positive ? `Answer Yes, No${template.allowNA ? ' or N/A' : ''}` : 'Answer whether defects were observed');
     else if (ans.defects === 'yes' && !String(ans.notes || '').trim()) {
       add('areas', a.key, template.positive ? 'Describe what is wrong' : 'Describe the defect');
     }
-    else if (a.photos > 0 && !ready.length) add('areas', a.key, 'Add at least one photo');
+    else if (a.photos > 0 && ans.defects !== 'na' && !ready.length) add('areas', a.key, 'Add at least one photo');
   }
   return problems;
 }

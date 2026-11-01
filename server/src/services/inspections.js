@@ -91,11 +91,12 @@ export function validateSubmission(template, body = {}) {
     const defects = str(raw.defects).toLowerCase();
     const notes = str(raw.notes);
     const photos = Array.isArray(raw.photos) ? raw.photos.map(str).filter(Boolean) : [];
-    if (defects !== 'yes' && defects !== 'no') {
-      errors.push(`${a.label}: ${template.positive ? 'answer Yes or No' : 'answer whether defects were observed'}`);
+    const na = defects === 'na' && !!template.allowNA;
+    if (defects !== 'yes' && defects !== 'no' && !na) {
+      errors.push(`${a.label}: ${template.positive ? `answer Yes, No${template.allowNA ? ' or N/A' : ''}` : 'answer whether defects were observed'}`);
     }
     if (defects === 'yes' && !notes) errors.push(`${a.label}: ${template.positive ? 'describe what is wrong' : 'describe the defect'}`);
-    if (a.photos > 0 && !photos.length) errors.push(`${a.label}: add at least one photo`);
+    if (a.photos > 0 && !na && !photos.length) errors.push(`${a.label}: add at least one photo`);
     for (const id of photos) {
       if (seen.has(id)) errors.push(`${a.label}: a photo is used twice`);
       seen.add(id);
