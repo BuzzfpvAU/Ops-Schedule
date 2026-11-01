@@ -19,6 +19,14 @@ function Root() {
   return layout.layout === 'mobile' ? <MobileApp layout={layout} /> : <App layout={layout} />;
 }
 
+// Installable as a phone app (see public/sw.js). Production only: in dev
+// a service worker would get in the way of hot reload.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => {});
+  });
+}
+
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>

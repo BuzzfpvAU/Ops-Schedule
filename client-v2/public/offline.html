@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1117" />
+    <title>Offline – AUAV Ops</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        padding: 24px; box-sizing: border-box; text-align: center;
+        background: #0e1117; color: #e6e9ef; font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      img { width: 72px; height: 72px; border-radius: 16px; }
+      h1 { font-size: 20px; margin: 0; }
+      p { margin: 0; color: #9aa4b2; max-width: 320px; }
+      button {
+        margin-top: 8px; min-height: 48px; padding: 0 28px; border: none; border-radius: 8px;
+        background: #4c8dff; color: #fff; font-size: 16px; font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="/v2/icons/icon-192.png" alt="" />
+    <h1>You're offline</h1>
+    <p>AUAV Ops needs a connection to load the schedule and equipment. Check your signal and try again.</p>
+    <button onclick="location.reload()">Try again</button>
+  </body>
+</html>
