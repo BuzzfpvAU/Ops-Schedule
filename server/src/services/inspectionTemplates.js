@@ -195,6 +195,7 @@ export const TEMPLATES = [
       { key: 'lifting_tether', label: 'Lifting points, tethers and rigging – tagged, WLL marked, in date', question: 'Free from damage, tagged and in date?', photos: 1 },
       { key: 'function', label: 'Function test', question: 'Passed – working as it should?', photos: 0 },
       { key: 'case', label: 'Case / packaging – latches, foam, weight and dimensions labelled', photos: 2 },
+      { key: 'calibration', label: 'Calibration certificates – photo of each certificate (payload, sensors, gas detector, test gear)', question: 'Certificates current and matching the serial numbers?', photos: 3 },
       { key: 'paperwork', label: 'Paperwork – manuals, certificates, DG declaration, manifest details', question: 'Complete and ready to go?', photos: 1 },
     ],
   },
