@@ -25,7 +25,9 @@ function noViewer(req, res, next) {
 }
 
 const equipmentItem = (db, id) => db.prepare(
-  'SELECT id, name, serial_number, equipment_category FROM team_members WHERE id = ? AND is_equipment = 1'
+  `SELECT id, name, serial_number, equipment_category, description, dimensions, weight, contents,
+          dangerous_goods, un_codes, info_url, sds_url
+   FROM team_members WHERE id = ? AND is_equipment = 1`
 ).get(id);
 
 router.get('/templates', (req, res) => {

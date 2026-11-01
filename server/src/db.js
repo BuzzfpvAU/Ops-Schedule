@@ -625,6 +625,12 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_equipment_inspection_photos_inspection
       ON equipment_inspection_photos(inspection_id);
   `);
+  // The item's register details (size, weight, DG, links) as they were when
+  // the report was submitted, for the PDF. Older reports have none.
+  const inspectionCols = db.prepare('PRAGMA table_info(equipment_inspections)').all().map((c) => c.name);
+  if (!inspectionCols.includes('item_json')) {
+    db.exec(`ALTER TABLE equipment_inspections ADD COLUMN item_json TEXT NOT NULL DEFAULT '{}'`);
+  }
 
   // Validation of Competency (VOC) assessments. Like inspections, each keeps
   // a copy of the categories it was assessed against; the PDF certificate

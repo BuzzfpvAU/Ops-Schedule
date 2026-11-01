@@ -1,10 +1,12 @@
 import fs from 'fs';
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 
 // ── Inspection report PDF ────────────────────────────────────────────
 // Lays out one submitted inspection in the AUAV report style the
-// Microsoft Forms reports used: letterhead band, item details, a result
-// banner, the checklist table, a sign-off block and a photo register.
+// Microsoft Forms reports used: letterhead band, item details, the item's
+// register details with QR codes for its manual and SDS, a result banner,
+// the checklist table, a sign-off block and a photo register.
 
 const NAVY = '#0b2236';
 const INK = '#12263a';
@@ -39,7 +41,11 @@ function formatDetail(field, value) {
   return value;
 }
 
-export function buildInspectionPdf({ inspection, template, details, answers, item, photos, logoPath }) {
+export async function buildInspectionPdf({ inspection, template, details, answers, item, photos, logoPath, register }) {
+  const qrImages = {};
+  for (const url of [register?.info_url, register?.sds_url].filter(Boolean)) {
+    qrImages[url] = await QRCode.toBuffer(url, { type: 'png', margin: 1, scale: 8, errorCorrectionLevel: 'M' });
+  }
   const doc = new PDFDocument({
     size: 'A4',
     bufferPages: true,
@@ -87,22 +93,78 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
     ['Inspected by', inspection.inspected_by_name || '—'],
     ['Date compiled', `${longDate(inspection.inspected_at)}, ${timeOf(inspection.inspected_at)}`],
   ];
-  const colW = WIDTH / 2;
-  let y = doc.y;
-  for (let i = 0; i < cells.length; i += 2) {
-    const row = cells.slice(i, i + 2);
-    doc.font('Helvetica-Bold').fontSize(10);
-    const h = Math.max(...row.map(([, v]) => doc.heightOfString(v, { width: colW - 24 }))) + 30;
-    row.forEach(([label, value], j) => {
-      const x = PAGE.left + j * colW;
-      doc.rect(x, y, colW, h).fillAndStroke(TINT, RULE);
-      doc.font('Helvetica-Bold').fontSize(6.5).fillColor(MUTE).text(label.toUpperCase(), x + 12, y + 10, { width: colW - 24, characterSpacing: 0.4 });
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text(value, x + 12, y + 21, { width: colW - 24 });
+  // Label/value boxes two to a row; a `full` cell takes a row of its own.
+  const grid = (list) => {
+    const colW = WIDTH / 2;
+    const rows = [];
+    for (let i = 0; i < list.length;) {
+      if (list[i].full || !list[i + 1] || list[i + 1].full) rows.push([list[i++]]);
+      else { rows.push([list[i], list[i + 1]]); i += 2; }
+    }
+    for (const row of rows) {
+      const w = row.length === 1 && row[0].full ? WIDTH : colW;
+      doc.font('Helvetica-Bold').fontSize(10);
+      const h = Math.max(...row.map((c) => doc.heightOfString(c.value, { width: w - 24 }))) + 30;
+      room(h);
+      const y = doc.y;
+      row.forEach((c, j) => {
+        const x = PAGE.left + j * colW;
+        doc.rect(x, y, w, h).fillAndStroke(TINT, RULE);
+        doc.font('Helvetica-Bold').fontSize(6.5).fillColor(MUTE).text(c.label.toUpperCase(), x + 12, y + 10, { width: w - 24, characterSpacing: 0.4 });
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text(c.value, x + 12, y + 21, { width: w - 24 });
+      });
+      if (w === colW && row.length === 1) doc.rect(PAGE.left + colW, y, colW, h).fillAndStroke(TINT, RULE);
+      doc.y = y + h;
+    }
+    doc.y += 18;
+  };
+  grid(cells.map(([label, value]) => ({ label, value })));
+
+  // ── Equipment register ──
+  // Reports from before the register was copied in have none of this.
+  const reg = register || {};
+  const regCells = [
+    ['Category', reg.category],
+    ['Description', reg.description],
+    ['Dimensions', reg.dimensions],
+    ['Weight', reg.weight],
+  ].filter(([, v]) => v).map(([label, value]) => ({ label, value }));
+  const links = [
+    ['Info / manual', reg.info_url],
+    ['Safety data sheet (SDS)', reg.sds_url],
+  ].filter(([, url]) => url);
+  if (regCells.length || reg.contents || links.length || 'dangerous_goods' in reg) {
+    room(60);
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(INK).text('Equipment details', PAGE.left, doc.y);
+    doc.moveDown(0.6);
+    regCells.push({
+      label: 'Dangerous goods',
+      value: reg.dangerous_goods ? `Yes${reg.un_codes ? ` – ${reg.un_codes}` : ''}` : 'No',
     });
-    if (row.length === 1) doc.rect(PAGE.left + colW, y, colW, h).fillAndStroke(TINT, RULE);
-    y += h;
+    if (reg.contents) regCells.push({ label: 'Box contents', value: reg.contents, full: true });
+    grid(regCells);
+
+    // One card per link: the QR code, what it opens, and the address.
+    if (links.length) {
+      const cardW = (WIDTH - 12) / 2;
+      const cardH = 82;
+      const qr = 64;
+      room(cardH + 12);
+      const y = doc.y;
+      links.forEach(([label, url], i) => {
+        const x = PAGE.left + i * (cardW + 12);
+        doc.rect(x, y, cardW, cardH).lineWidth(0.5).fillAndStroke('#ffffff', RULE);
+        doc.image(qrImages[url], x + 10, y + 10, { width: qr, height: qr });
+        const tx = x + qr + 22;
+        const tw = cardW - qr - 32;
+        doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(label, tx, y + 14, { width: tw });
+        doc.font('Helvetica').fontSize(7.5).fillColor(MUTE).text('Scan to open', tx, doc.y + 2, { width: tw });
+        doc.font('Helvetica').fontSize(7).fillColor(NAVY)
+          .text(url, tx, doc.y + 6, { width: tw, height: cardH - (doc.y + 6 - y) - 8, ellipsis: true, link: url, underline: true });
+      });
+      doc.y = y + cardH + 14;
+    }
   }
-  doc.y = y + 18;
 
   // ── Result banner ──
   const ok = defectAreas.length === 0;
@@ -116,7 +178,7 @@ export function buildInspectionPdf({ inspection, template, details, answers, ite
   doc.font('Helvetica').fontSize(9);
   const bannerH = Math.max(46, doc.heightOfString(summary, { width: WIDTH - 230 }) + 26);
   room(bannerH);
-  y = doc.y;
+  let y = doc.y;
   doc.rect(PAGE.left, y, WIDTH, bannerH).fill(ok ? GOOD_BG : BAD_BG);
   doc.rect(PAGE.left, y, 4, bannerH).fill(ok ? GOOD : BAD);
   doc.font('Helvetica-Bold').fontSize(11.5).fillColor(ok ? GOOD : BAD).text(heading, PAGE.left + 18, y + 13, { width: 190 });

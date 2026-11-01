@@ -105,6 +105,22 @@ export function validateSubmission(template, body = {}) {
   return { errors, details, answers, photoIds: [...seen] };
 }
 
+// The register details printed on the report, copied at submission so the
+// PDF shows the item as it was on the day.
+export function itemSnapshot(item) {
+  return {
+    category: str(item.equipment_category),
+    description: str(item.description),
+    dimensions: str(item.dimensions),
+    weight: str(item.weight),
+    contents: str(item.contents),
+    dangerous_goods: !!item.dangerous_goods,
+    un_codes: str(item.un_codes),
+    info_url: str(item.info_url),
+    sds_url: str(item.sds_url),
+  };
+}
+
 // Save a submitted inspection and claim its photos. The PDF is generated
 // afterwards (see ensureReportPdf); a report whose PDF failed to build is
 // rebuilt the first time it is downloaded.
@@ -131,11 +147,12 @@ export function createInspection(db, { item, body, user }) {
     const number = Math.max(last + 1, FIRST_REPORT_NUMBER);
     db.prepare(`
       INSERT INTO equipment_inspections (
-        id, number, equipment_id, template_id, template_json, details_json, answers_json, comments,
+        id, number, equipment_id, template_id, template_json, details_json, answers_json, item_json, comments,
         defect_count, marked_unserviceable, inspected_by_id, inspected_by_name, inspected_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, number, item.id, template.id, JSON.stringify(template), JSON.stringify(details), JSON.stringify(answers),
+      JSON.stringify(itemSnapshot(item)),
       str(body.comments), defectCount, markUnserviceable ? 1 : 0, user.memberId, user.name || '', new Date().toISOString(),
     );
     const claim = db.prepare('UPDATE equipment_inspection_photos SET inspection_id = ?, area_key = ?, sort = ? WHERE id = ?');
@@ -197,6 +214,7 @@ export async function ensureReportPdf(db, inspection, { logoPath } = {}) {
     details: JSON.parse(inspection.details_json),
     answers: JSON.parse(inspection.answers_json),
     item,
+    register: JSON.parse(inspection.item_json || '{}'),
     photos,
     logoPath,
   });

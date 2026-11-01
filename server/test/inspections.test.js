@@ -130,6 +130,8 @@ test('a staff member can submit an inspection and download its PDF', async () =>
 test('the Woodside T4 form can be used on any item and makes a PDF', async () => {
   const t = getTemplate('woodside-t4');
   assert.ok(t, 'the T4 form is served');
+  db.prepare(`UPDATE team_members SET dimensions = '60 × 40 × 30 cm', weight = '12 kg', dangerous_goods = 1,
+    un_codes = 'UN3481', info_url = 'https://example.com/manual', sds_url = 'https://example.com/sds.pdf' WHERE id = 'd1'`).run();
   assert.notEqual(templateForCategory('Drones').id, 'woodside-t4', 'it is never the default for a category');
 
   const answers = {};
@@ -154,6 +156,10 @@ test('the Woodside T4 form can be used on any item and makes a PDF', async () =>
   assert.equal(res.status, 201);
   const saved = await res.json();
   assert.equal(saved.defect_count, 1, 'a No answer counts as a defect');
+  const register = JSON.parse(db.prepare('SELECT item_json FROM equipment_inspections WHERE id = ?').get(saved.id).item_json);
+  assert.equal(register.weight, '12 kg', 'the item’s register details are copied onto the report');
+  assert.equal(register.dangerous_goods, true);
+  assert.equal(register.sds_url, 'https://example.com/sds.pdf');
   const pdf = await fetch(`${base}/${saved.id}/pdf`, { headers: { cookie: member } });
   assert.equal(pdf.status, 200);
   assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
