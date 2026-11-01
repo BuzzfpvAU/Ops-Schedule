@@ -27,6 +27,7 @@ export default function InspectionForm({ item, templates, initialTemplate, onClo
 
   const problems = formProblems(template, details, answers);
   const defects = defectCount(template, answers);
+  const answered = template.areas.filter((a) => answers[a.key]?.defects).length;
   const touched = Object.values(answers).some((a) => a.defects || a.photos.length) || comments.trim();
 
   const setArea = (key, patch) => setAnswers((all) => ({ ...all, [key]: { ...all[key], ...patch } }));
@@ -125,6 +126,7 @@ export default function InspectionForm({ item, templates, initialTemplate, onClo
 
   return (
     <Drawer
+      className="insp-drawer"
       title={template.title}
       subtitle={[item.name, item.serial_number].filter(Boolean).join(' · ')}
       onClose={close}
@@ -148,7 +150,7 @@ export default function InspectionForm({ item, templates, initialTemplate, onClo
           {template.details.map(detailField)}
         </Section>
 
-        <Section title={`Checklist · ${template.areas.length} areas`}>
+        <Section title={`Checklist · ${answered} / ${template.areas.length} answered`}>
           {template.areas.map((a, i) => {
             const ans = answers[a.key];
             const invalid = tried && problems.areas[a.key];

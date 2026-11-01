@@ -1923,23 +1923,22 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 .insp-area.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger) inset; }
 .insp-area-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
 .insp-num { font-size: 11px; font-weight: 700; color: var(--text-mute); width: 16px; flex: none; text-align: right; }
-.insp-label { font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+.insp-label { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
 .insp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-left: 24px; }
-.insp-q { font-size: 11.5px; color: var(--text-dim); }
+.insp-q { font-size: 12.5px; color: var(--text-dim); }
 .insp-yn { flex: none; display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .insp-yn-btn {
   border: none;
   background: var(--bg-raised);
   color: var(--text-dim);
   padding: 6px 16px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   min-width: 56px;
 }
 .insp-yn-btn + .insp-yn-btn { border-left: 1px solid var(--line); }
 .insp-yn-btn.on-no { background: rgba(34, 197, 94, 0.18); color: var(--ok); }
 .insp-yn-btn.on-yes { background: rgba(239, 68, 68, 0.18); color: var(--danger); }
-.insp-yn-btn.on-na { background: rgba(148, 163, 184, 0.22); color: var(--text-dim); }
 .insp-yn-btn.on-na { background: var(--line-soft); color: var(--text); }
 .insp-notes { margin: 8px 0 0 24px; width: calc(100% - 24px); }
 .insp-photos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 9px 0 0 24px; }
@@ -1977,6 +1976,39 @@ body.is-dragging-bar, body.is-dragging-bar * { cursor: grabbing !important; user
 .insp-add input { display: none; }
 .insp-count { font-size: 10.5px; color: var(--text-mute); }
 .insp-error { font-size: 11px; color: var(--danger); margin: 7px 0 0 24px; }
+
+/* The inspection form on a phone: full screen, larger text, the question on
+   its own line over thumb-sized answer buttons, and no indent to waste width. */
+@media (max-width: 760px), (pointer: coarse) {
+  .insp-drawer { width: 100%; border-left: none; }
+  .insp-drawer .drawer-head { padding: 14px 16px 12px; padding-top: calc(14px + env(safe-area-inset-top)); }
+  .insp-drawer .drawer-title { font-size: 18px; }
+  .insp-drawer .drawer-sub { font-size: 13px; }
+  .insp-drawer .icon-btn { width: 40px; height: 40px; font-size: 16px; }
+  .insp-drawer .drawer-body { padding: 14px 12px 24px; }
+  .insp-drawer .dsec-title { font-size: 12px; }
+  .insp-drawer .form-row { flex-direction: column; align-items: stretch; gap: 6px; margin-bottom: 14px; }
+  .insp-drawer .form-label { width: auto; font-size: 14px; color: var(--text); }
+  .insp-drawer .form-row input, .insp-drawer .form-row select { min-height: 48px; padding: 10px 12px; }
+  .insp-drawer .insp-area { padding: 14px 14px; margin-bottom: 12px; border-radius: 10px; }
+  .insp-drawer .insp-area-head { gap: 10px; margin-bottom: 10px; }
+  .insp-drawer .insp-num { font-size: 13px; width: auto; min-width: 16px; }
+  .insp-drawer .insp-label { font-size: 16px; line-height: 1.4; }
+  .insp-drawer .insp-row { flex-direction: column; align-items: stretch; gap: 8px; padding-left: 0; }
+  .insp-drawer .insp-q { font-size: 15px; color: var(--text); }
+  .insp-drawer .insp-yn { display: flex; border-radius: 8px; }
+  .insp-drawer .insp-yn-btn { flex: 1; min-height: 48px; font-size: 16px; padding: 10px 8px; }
+  .insp-drawer .insp-notes { margin: 10px 0 0; width: 100%; font-size: 16px; }
+  .insp-drawer .insp-photos { margin: 12px 0 0; gap: 8px; }
+  .insp-drawer .insp-thumb { width: 72px; height: 72px; border-radius: 8px; }
+  .insp-drawer .insp-thumb-x { width: 26px; height: 26px; line-height: 26px; font-size: 12px; }
+  .insp-drawer .insp-add { height: 72px; padding: 0 18px; font-size: 15px; border-radius: 8px; }
+  .insp-drawer .insp-count { font-size: 13px; }
+  .insp-drawer .insp-error { margin: 10px 0 0; font-size: 14px; }
+  .insp-drawer .opt-name { font-size: 15px; }
+  .insp-drawer .drawer-foot { padding: 10px 12px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .insp-drawer .drawer-foot .btn { flex: 1; min-height: 48px; font-size: 16px; }
+}
 
 /* ── Validation of Competency ────────────────────────────────────────── */
 /* Certificate list in the VOC drawer (and phone Me tab), and the VOC form. */

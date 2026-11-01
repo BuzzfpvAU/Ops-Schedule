@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { dgSummary } from '../lib/dangerousGoods.js';
 
-export function Drawer({ title, subtitle, onClose, children, footer }) {
+export function Drawer({ title, subtitle, onClose, children, footer, className = '' }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -11,7 +11,7 @@ export function Drawer({ title, subtitle, onClose, children, footer }) {
   return (
     <>
       <div className="drawer-scrim" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-label={typeof title === 'string' ? title : 'Details'}>
+      <aside className={`drawer ${className}`.trim()} role="dialog" aria-label={typeof title === 'string' ? title : 'Details'}>
         <header className="drawer-head">
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="drawer-title">{title}</div>
