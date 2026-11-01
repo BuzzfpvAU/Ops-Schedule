@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEMPLATES, templateForCategory } from '../../server/src/services/inspectionTemplates.js';
-import { templateFor, blankAnswers, formProblems, defectCount, submission } from '../src/lib/inspection.js';
+import { templateFor, blankAnswers, formProblems, defectCount, submission, areaQuestion, answerOptions } from '../src/lib/inspection.js';
 
 // The shape GET /api/inspections/templates returns.
 const byCategory = {};
@@ -50,4 +50,17 @@ test('the submission sends photo ids, drops notes on a No and only asks for unse
   assert.deepEqual(body.answers.motor_1, { defects: 'no', notes: '', photos: ['p-motor_1'] });
   assert.equal(body.comments, 'ok');
   assert.equal(body.mark_unserviceable, false);
+});
+
+test('the Woodside T4 form asks positive questions, where No is the fail', () => {
+  const t4 = TEMPLATES.find((t) => t.id === 'woodside-t4');
+  assert.equal(areaQuestion(t4, t4.areas[0]), 'Free from damage and in working order?');
+  assert.equal(areaQuestion(t4, t4.areas.find((a) => a.key === 'paperwork')), 'Complete and ready to go?');
+  assert.equal(areaQuestion(drone, drone.areas[0]), 'Defects observed?', 'other forms are unchanged');
+  assert.deepEqual(answerOptions(t4).map((o) => [o.label, o.defects]), [['Yes', 'no'], ['No', 'yes']]);
+  assert.deepEqual(answerOptions(drone).map((o) => [o.label, o.defects]), [['No', 'no'], ['Yes', 'yes']]);
+
+  const answers = blankAnswers(t4);
+  answers.condition = { defects: 'yes', notes: '', photos: [] };
+  assert.equal(formProblems(t4, {}, answers).areas.condition, 'Describe what is wrong');
 });

@@ -7,7 +7,10 @@
 // A template has:
 //   details — header fields asked once (text, number, date or choice)
 //   areas   — the checklist. Every area asks "Defects observed?" (Yes/No);
-//             Yes needs a note. `photos` is how many views the form asks
+//             Yes needs a note. A template with `positive: true` asks its
+//             `question` instead (an area's own `question` overrides it),
+//             where Yes is the pass and No needs a note. Answers are stored
+//             the same way either way: `defects` is 'yes' for a fail. `photos` is how many views the form asks
 //             for; any area asking for photos needs at least one.
 //
 // "Basic Drone Inspection" follows the Microsoft Form it replaces
@@ -160,6 +163,8 @@ export const TEMPLATES = [
     reportTitle: 'Woodside T4 Pre-Deployment Inspection',
     itemLabel: 'Item',
     categories: [],
+    positive: true,
+    question: 'Free from damage and in working order?',
     details: [
       {
         key: 'site', label: 'Woodside site / facility', type: 'choice', required: true,
@@ -179,15 +184,15 @@ export const TEMPLATES = [
     ],
     areas: [
       { key: 'condition', label: 'Overall condition – damage, cracks, corrosion, loose parts', photos: 4 },
-      { key: 'identification', label: 'Asset tag, serial and part # fitted, legible and match the paperwork', photos: 1 },
-      { key: 'dropped_objects', label: 'Dropped-object risks – fasteners secure, loose items tethered or removed', photos: 2 },
-      { key: 'electrical', label: 'Electrical – leads, plugs, chargers undamaged; test & tag current', photos: 2 },
-      { key: 'hazardous_area', label: 'Hazardous-area suitability – Ex rating, or controls for use outside zoned areas', photos: 1 },
+      { key: 'identification', label: 'Asset tag, serial and part # fitted, legible and match the paperwork', question: 'Fitted, legible and matching?', photos: 1 },
+      { key: 'dropped_objects', label: 'Dropped-object risks – fasteners secure, loose items tethered or removed', question: 'Secure, with no dropped-object risk?', photos: 2 },
+      { key: 'electrical', label: 'Electrical – leads, plugs, chargers undamaged; test & tag current', question: 'Free from damage, working and test & tag in date?', photos: 2 },
+      { key: 'hazardous_area', label: 'Hazardous-area suitability – Ex rating, or controls for use outside zoned areas', question: 'Suitable for where it will be used?', photos: 1 },
       { key: 'batteries', label: 'Batteries – no swelling or damage, terminals protected, DG labels fitted', photos: 2 },
-      { key: 'lifting_tether', label: 'Lifting points, tethers and rigging – tagged, WLL marked, in date (n/a if none)', photos: 1 },
-      { key: 'function', label: 'Function test passed', photos: 0 },
+      { key: 'lifting_tether', label: 'Lifting points, tethers and rigging – tagged, WLL marked, in date', question: 'Free from damage, tagged and in date (Yes if none fitted)?', photos: 1 },
+      { key: 'function', label: 'Function test', question: 'Passed – working as it should?', photos: 0 },
       { key: 'case', label: 'Case / packaging – latches, foam, weight and dimensions labelled', photos: 2 },
-      { key: 'paperwork', label: 'Paperwork ready – manuals, certificates, DG declaration, manifest details', photos: 1 },
+      { key: 'paperwork', label: 'Paperwork – manuals, certificates, DG declaration, manifest details', question: 'Complete and ready to go?', photos: 1 },
     ],
   },
 ];

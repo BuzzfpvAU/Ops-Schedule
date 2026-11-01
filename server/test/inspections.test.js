@@ -144,9 +144,16 @@ test('the Woodside T4 form can be used on any item and makes a PDF', async () =>
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /Job \/ PO \/ work order reference is required/);
 
+  sub.answers.batteries = { ...sub.answers.batteries, defects: 'yes', notes: '' };
+  res = await json('/', 'POST', sub);
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Batteries.*describe what is wrong/);
+
+  sub.answers.batteries.notes = 'Pack 2 swollen';
   res = await json('/', 'POST', sub);
   assert.equal(res.status, 201);
   const saved = await res.json();
+  assert.equal(saved.defect_count, 1, 'a No answer counts as a defect');
   const pdf = await fetch(`${base}/${saved.id}/pdf`, { headers: { cookie: member } });
   assert.equal(pdf.status, 200);
   assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');

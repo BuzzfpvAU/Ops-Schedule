@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Drawer, Section } from './ui.jsx';
 import { uploadInspectionPhoto, deleteInspectionPhoto, submitInspection } from '../api.js';
-import { blankAnswers, formProblems, defectCount, submission, shrinkPhoto } from '../lib/inspection.js';
+import { blankAnswers, formProblems, defectCount, submission, shrinkPhoto, areaQuestion, answerOptions } from '../lib/inspection.js';
 
 // ── Inspection webform ──────────────────────────────────────────────
 // Fills in one inspection of an equipment item. The questions come from
 // the template for the item's category (switchable); each area asks
 // "Defects observed?" and a Yes opens a notes box that must be filled.
+// Positive templates ask "is this OK?" instead, where No opens the notes.
 // Photos upload as they are added, so a slow connection is spread over
 // the inspection rather than all at the end.
 
@@ -152,6 +153,7 @@ export default function InspectionForm({ item, templates, initialTemplate, onClo
             const ans = answers[a.key];
             const invalid = tried && problems.areas[a.key];
             const ready = ans.photos.filter((p) => p.id).length;
+            const question = areaQuestion(template, a);
             return (
               <div key={a.key} className={`insp-area${invalid ? ' is-invalid' : ''}${ans.defects === 'yes' ? ' has-defect' : ''}`}>
                 <div className="insp-area-head">
@@ -160,18 +162,18 @@ export default function InspectionForm({ item, templates, initialTemplate, onClo
                 </div>
 
                 <div className="insp-row">
-                  <span className="insp-q">Defects observed?</span>
-                  <div className="insp-yn" role="radiogroup" aria-label={`Defects observed: ${a.label}`}>
-                    {['no', 'yes'].map((v) => (
+                  <span className="insp-q">{question}</span>
+                  <div className="insp-yn" role="radiogroup" aria-label={`${question} ${a.label}`}>
+                    {answerOptions(template).map((o) => (
                       <button
-                        key={v}
+                        key={o.defects}
                         type="button"
                         role="radio"
-                        aria-checked={ans.defects === v}
-                        className={`insp-yn-btn${ans.defects === v ? ` on-${v}` : ''}`}
-                        onClick={() => setArea(a.key, { defects: v })}
+                        aria-checked={ans.defects === o.defects}
+                        className={`insp-yn-btn${ans.defects === o.defects ? ` on-${o.defects}` : ''}`}
+                        onClick={() => setArea(a.key, { defects: o.defects })}
                       >
-                        {v === 'yes' ? 'Yes' : 'No'}
+                        {o.label}
                       </button>
                     ))}
                   </div>
@@ -184,7 +186,9 @@ export default function InspectionForm({ item, templates, initialTemplate, onClo
                     autoFocus
                     value={ans.notes}
                     onChange={(e) => setArea(a.key, { notes: e.target.value })}
-                    placeholder="Describe the defect: what, where, how bad, and any action taken"
+                    placeholder={template.positive
+                      ? 'Describe what is wrong: what, where, how bad, and any action taken'
+                      : 'Describe the defect: what, where, how bad, and any action taken'}
                   />
                 )}
 
